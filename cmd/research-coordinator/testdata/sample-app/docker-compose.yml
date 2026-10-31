@@ -1,0 +1,329 @@
+name: station-finder
+
+# Station Finder: the server (API, map app, landing page), the feed importer
+# and Redis. Copy .env.example to .env first; every service reads it.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+services:
+  server:
+    <<: *default-restart
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: station-finder
+    command: ["node", "dist/server/index.js"]
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - PORT=8700
+      - LOG_LEVEL=info
+      - CITY_NAME=${CITY_NAME:-Sample City}
+      - DEFAULT_LAT=${DEFAULT_LAT:-40.0}
+      - DEFAULT_LON=${DEFAULT_LON:--75.0}
+      - DEFAULT_ZOOM=${DEFAULT_ZOOM:-13}
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-120}
+      - LANDING_ENABLED=${LANDING_ENABLED:-true}
+      - METRICS_ENABLED=${METRICS_ENABLED:-true}
+    ports:
+      - "8700:8700"
+    volumes:
+      - station-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8700/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    logging: *default-logging
+    networks:
+      - internal
+      - public
+
+  importer:
+    <<: *default-restart
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: station-finder-importer
+    command: ["node", "dist/feed/run.js"]
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - FEED_URL=${FEED_URL:-https://feeds.example.org/stations.json}
+      - FEED_POLL_SECONDS=${FEED_POLL_SECONDS:-60}
+      - FEED_TIMEOUT_MS=${FEED_TIMEOUT_MS:-10000}
+      - STATION_TTL_SECONDS=${STATION_TTL_SECONDS:-900}
+      - HISTORY_HOURS=${HISTORY_HOURS:-24}
+      - MAX_STATIONS=${MAX_STATIONS:-5000}
+    volumes:
+      - station-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "dist/feed/health.js"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+    logging: *default-logging
+    networks:
+      - internal
+
+  redis:
+    <<: *default-restart
+    image: redis:7-alpine
+    container_name: station-finder-redis
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 320m
+    logging: *default-logging
+    networks:
+      - internal
+
+  # Optional: a one-shot job that loads the bundled sample feed into Redis,
+  # for demos without network access. Run with:
+  #   docker compose --profile demo run --rm sample-loader
+  sample-loader:
+    profiles: ["demo"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: ["node", "dist/feed/load-sample.js", "tests/fixtures/sample-feed.json"]
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+    networks:
+      - internal
+
+  # Optional: nightly snapshot of the station history to DATA_DIR/backups.
+  backup:
+    <<: *default-restart
+    profiles: ["backup"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: station-finder-backup
+    command: ["node", "dist/ops/backup.js", "--schedule", "0 3 * * *"]
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - BACKUP_KEEP_DAYS=${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - station-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+    networks:
+      - internal
+
+  # Optional monitoring: Prometheus scrapes /metrics of the server and the
+  # importer; Grafana ships with a station-availability dashboard.
+  prometheus:
+    <<: *default-restart
+    profiles: ["monitoring"]
+    image: prom/prometheus:v2.53.0
+    container_name: station-finder-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - server
+      - importer
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *default-logging
+    networks:
+      - internal
+
+  grafana:
+    <<: *default-restart
+    profiles: ["monitoring"]
+    image: grafana/grafana:11.1.0
+    container_name: station-finder-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging: *default-logging
+    networks:
+      - internal
+      - public
+
+  alertmanager:
+    <<: *default-restart
+    profiles: ["monitoring"]
+    image: prom/alertmanager:v0.27.0
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./ops/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging: *default-logging
+    networks:
+      - internal
+
+  # Optional: a local copy of the sample feed served over HTTP, so the
+  # importer can poll FEED_URL=http://sample-feed:8800/sample-feed.json.
+  sample-feed:
+    profiles: ["demo"]
+    image: nginx:1.27-alpine
+    container_name: station-finder-sample-feed
+    volumes:
+      - ./tests/fixtures:/usr/share/nginx/html:ro
+    expose:
+      - "8800"
+    command: ["nginx", "-g", "daemon off;", "-c", "/etc/nginx/nginx.conf"]
+    logging: *default-logging
+    networks:
+      - internal
+
+  # Optional: a load generator for the API, used before releases.
+  loadtest:
+    profiles: ["loadtest"]
+    image: grafana/k6:0.52.0
+    command: ["run", "/scripts/api.js"]
+    environment:
+      - TARGET=http://server:8700
+      - VUS=${LOADTEST_VUS:-20}
+      - DURATION=${LOADTEST_DURATION:-2m}
+    volumes:
+      - ./ops/loadtest:/scripts:ro
+    depends_on:
+      - server
+    networks:
+      - internal
+
+  # Optional: Redis web UI for debugging, bound to localhost only.
+  redis-ui:
+    profiles: ["debug"]
+    image: redis/redisinsight:2.52
+    container_name: station-finder-redis-ui
+    ports:
+      - "127.0.0.1:5540:5540"
+    volumes:
+      - redis-ui-data:/data
+    depends_on:
+      - redis
+    logging: *default-logging
+    networks:
+      - internal
+
+volumes:
+  station-data:
+    name: station-finder-data
+  redis-data:
+    name: station-finder-redis
+  prometheus-data:
+    name: station-finder-prometheus
+  grafana-data:
+    name: station-finder-grafana
+  redis-ui-data:
+    name: station-finder-redis-ui
+  alertmanager-data:
+    name: station-finder-alertmanager
+
+networks:
+  internal:
+    name: station-finder-internal
+    internal: true
+  public:
+    name: station-finder-public
+
+# Notes
+# - The server and the importer share the station-data volume: the importer
+#   writes the last good feed snapshot there and the server reads it at start.
+# - Only the server (8700) and Grafana (3001) publish ports. Put a reverse
+#   proxy with TLS in front of the server in production.
+# - Profiles: demo (sample feed and loader), backup, monitoring, loadtest,
+#   debug. Start them with: docker compose --profile monitoring up -d
+# - Memory limits are sized for a city of a few thousand stations; raise the
+#   Redis limit together with HISTORY_HOURS.
+# - Upgrading: docker compose build && docker compose up -d. The importer
+#   tolerates a server restart and the other way round.
+# - Logs: docker compose logs -f server importer
+# - Redis data survives container rebuilds in the redis-data volume. To
+#   start from scratch: docker compose down -v (this deletes the history).
+# - The healthchecks gate start order: the server and the importer wait for
+#   Redis to answer PING before they start.
+# - Resource limits apply with docker compose v2; the deploy section is
+#   ignored by docker compose v1.
+# - For a second city, copy this file, change the name: line at the top and
+#   the published ports, and point FEED_URL at that city's feed.
+# - The backup job keeps BACKUP_KEEP_DAYS daily files under
+#   /data/backups; restore with: node dist/ops/restore.js <file>
+# - Grafana's admin password must be set in .env; there is no default.
+# - The sample feed is fictional and only meant for demos and tests.
+# - See docs/configuration.md for every variable.
+# - Questions and bug reports: open an issue in the repository.

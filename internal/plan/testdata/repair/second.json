@@ -1,0 +1,19 @@
+[
+  {
+    "title": "Fix discount order",
+    "description": "Apply the fixed discount first in Calculate.",
+    "criterion_ids": ["AC-1"],
+    "deliverable": "Calculate applies the fixed discount before the percentage discount",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [{"path": "calculate.go", "evidence_ref": "repo:c3"}]
+  },
+  {
+    "title": "Compute tax on the discounted subtotal",
+    "description": "Move the tax computation after both discounts.",
+    "criterion_ids": ["AC-2"],
+    "deliverable": "Tax uses the discounted subtotal",
+    "verification": [{"check_kind": "test", "command": "go test -run TestTax ./..."}],
+    "files": [{"path": "calculate.go", "evidence_ref": "repo:c3"}],
+    "depends_on": ["Fix discount order"]
+  }
+]

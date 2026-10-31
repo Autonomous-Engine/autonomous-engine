@@ -1,0 +1,36 @@
+{
+  "id": "path-to-regexp-es2015-target",
+  "summary": "Compile for ES2015 (target and lib) and stop generating regexps with the ES2018 dotAll flag, without changing matching behaviour.",
+  "repo": "https://github.com/pillarjs/path-to-regexp",
+  "base_sha": "df39d6c30b2a8bdc9b8bda186f658cc89d47e44c",
+  "language": "typescript",
+  "task_class": "dependency_or_config",
+  "difficulty": "medium",
+  "size_stratum": "small",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { rm -f node_modules/.bench-result.json; npx vitest run src/index.spec src/bench- --reporter=default --reporter=json --outputFile=node_modules/.bench-result.json; rc=$?; node -e \"const fs=require('fs');const [rc,...h]=process.argv.slice(1);const on=h.some(p=>fs.existsSync(p));let r=null;try{r=JSON.parse(fs.readFileSync('node_modules/.bench-result.json','utf8'))}catch(e){}if(!r){if(rc==='0'){console.log('[setup failed] hidden tests did not run (no test report)');process.exit(1)}process.exit(+rc)}const t=r.testResults||[];const as=x=>x.assertionResults||[];const f=t.filter(x=>x.status==='failed'&&!as(x).some(a=>a.status==='failed'));if(f.length)console.log('[setup failed] '+f.length+' test file(s) failed to load');else if(r.numFailedTests>0)console.log('--- FAIL: '+r.numFailedTests+' test(s) failed');if(rc==='0'&&on&&!t.some(x=>/bench[-_]/.test(x.name.replace(/.*[\\x5c/]/,''))&&as(x).some(a=>a.status==='passed')&&!as(x).some(a=>a.status==='failed'))){console.log('[setup failed] hidden tests did not run');process.exit(1)}process.exit(+rc)\" \"$rc\" src/bench-es2015.spec.ts; }",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "test_command_note": "src/cases.spec.ts is a data module that vitest would otherwise collect as an empty suite, so the command names src/index.spec explicitly. The hidden test runs `npx tsc --showConfig` and `npx tsc --noEmit` against the repository's tsconfig, i.e. it checks the effective compiler configuration and that the project compiles under it.",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the first of two consecutive upstream commits (\"Remove s flag from regexp\", \"Target ES2015\"); the reference patch is their combined diff. Neither commit is reachable from the sealed clone. The repository still committed package-lock.json at this point (it was removed upstream in 2025).",
+    "upstream_commits": [
+      "51dbd45e00043f082e3cf1857861e856c40a32f0",
+      "59690338f2a089f45505718c94b86dcb2d32f29d"
+    ],
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "vitest 1 (no type-check), the repository's runner, over src/index.spec.ts plus the hidden tests. npm ci runs the repository's prepare script (ts-scripts install + build). Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "59690338f2a089f45505718c94b86dcb2d32f29d",
+        "paths": [
+          "src/index.ts",
+          "tsconfig.json"
+        ]
+      }
+    ]
+  }
+}

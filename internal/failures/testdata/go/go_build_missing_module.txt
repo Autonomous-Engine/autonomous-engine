@@ -1,0 +1,2 @@
+go: finding module for package github.com/nonexistent/zzzpkg
+calc/calc.go:3:8: cannot find module providing package github.com/nonexistent/zzzpkg: module lookup disabled by GOPROXY=off

@@ -1,0 +1,34 @@
+{
+  "id": "uuid-v1-timestamp-carry",
+  "summary": "v1Bytes() drops the carry from nsecs out of time_low, so v1/v6 timestamps jump ~430 s backwards near 2^32 boundaries.",
+  "repo": "https://github.com/uuidjs/uuid",
+  "base_sha": "ea83515d6a4de13a8f9d253fe772752c9dd7bbbe",
+  "language": "typescript",
+  "task_class": "historical_defect",
+  "difficulty": "hard",
+  "size_stratum": "small",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { ( rm -rf dist-node && npx tsc -p tsconfig.json --outDir dist-node && node --test --enable-source-maps 'dist-node/test/*.js' ) 2>&1 | tee node_modules/.bench-out.txt; rc=${PIPESTATUS[0]}; if [ $rc -ne 0 ]; then if grep -qE \"TSError|error TS[0-9]+|Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError:\" node_modules/.bench-out.txt; then echo \"[setup failed] a test file failed to load\"; elif grep -qE \"AssertionError|[0-9]+ failing|^# fail [1-9]|ℹ fail [1-9]\" node_modules/.bench-out.txt; then echo \"--- FAIL: assertion failures\"; fi; elif { [ -e src/test/bench_v1_timestamp_carry.test.ts ]; } && ! grep -q \"bench:\" node_modules/.bench-out.txt; then echo \"[setup failed] hidden tests did not run\"; rc=1; fi; exit $rc; }",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "6adcc1d81bfaeb653c49d9b7ca7b0579244ae60c",
+    "upstream_pr": "https://github.com/uuidjs/uuid/pull/972",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "node:test (built in) over the tsc output in dist-node/test, the repository's `test` script; the upstream build.sh (browser build, tarball pack) is replaced by a plain `tsc --outDir dist-node`, which is all the node tests need. Hidden tests live in src/test and are compiled with the rest. Failure classification greps the captured output. Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "6adcc1d81bfaeb653c49d9b7ca7b0579244ae60c",
+        "paths": [
+          "src/test/v1.test.ts",
+          "src/test/v6.test.ts",
+          "src/v1.ts"
+        ]
+      }
+    ]
+  }
+}

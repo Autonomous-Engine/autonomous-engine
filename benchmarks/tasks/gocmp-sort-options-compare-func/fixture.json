@@ -1,0 +1,38 @@
+{
+  "id": "gocmp-sort-options-compare-func",
+  "summary": "Let cmpopts.SortSlices/SortMaps accept three-way compare functions func(T, T) int in addition to less functions.",
+  "repo": "https://github.com/google/go-cmp",
+  "base_sha": "c3ad8435e7bef96af35732bc0789e5a2278c6d5f",
+  "language": "go",
+  "task_class": "small_feature",
+  "difficulty": "medium",
+  "size_stratum": "medium",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream feature commit; that commit is never reachable from the sealed clone.",
+    "upstream_feature_commit": "391980c4b2e1cc2c30d2bfae6039815350490495",
+    "upstream_issue": "https://github.com/google/go-cmp/issues/365",
+    "reference_patch": "git diff --binary c3ad843..391980c (verbatim; also bumps the go directive to 1.21 and the CI matrix, which the prompt does not require)",
+    "fail_mode_note": "The options take interface{}, so the hidden tests compile at base and fail because constructing the option with a compare function panics (recovered and reported as a test failure).",
+    "hidden_tests_note": "Written for the base module's go 1.13 language version (no generics, no `any`).",
+    "size_note": "about 6.6k non-test Go lines at base"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "391980c4b2e1cc2c30d2bfae6039815350490495",
+        "paths": [
+          ".github/workflows/test.yml",
+          "cmp/cmpopts/sort.go",
+          "cmp/cmpopts/util_test.go",
+          "cmp/internal/function/func.go",
+          "go.mod"
+        ]
+      }
+    ]
+  }
+}

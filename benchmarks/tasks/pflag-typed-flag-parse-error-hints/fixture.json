@@ -1,0 +1,47 @@
+{
+  "id": "pflag-typed-flag-parse-error-hints",
+  "summary": "Replace verbatim strconv/time parse errors in the Set methods of 14 scalar flag types (one file each) with uniform human-readable hints, without clobbering the value on failure.",
+  "repo": "https://github.com/spf13/pflag",
+  "base_sha": "18450ea2f1d4209b15df2915d762da99171ebb67",
+  "language": "go",
+  "task_class": "cross_file_refactor",
+  "difficulty": "medium",
+  "size_stratum": "medium",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream change (75568a5, a single-parent squash commit on master); the change is never reachable from the sealed clone.",
+    "upstream_commit": "75568a5a6689c27d55286707e5d2831da6506cc6",
+    "upstream_issue": "https://github.com/spf13/pflag/issues/269",
+    "reference_patch": "git diff --binary 18450ea..75568a5 (14 source files plus the updated TestParse expectation and upstream's new test, unchanged)",
+    "class_note": "Same mechanical change repeated consistently across 14 per-type files; the hidden tests check every type, so a partial refactor fails.",
+    "size_note": "about 6.3k non-test Go lines at base"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "75568a5a6689c27d55286707e5d2831da6506cc6",
+        "paths": [
+          "bool.go",
+          "duration.go",
+          "flag_test.go",
+          "float32.go",
+          "float64.go",
+          "int.go",
+          "int16.go",
+          "int32.go",
+          "int64.go",
+          "int8.go",
+          "uint.go",
+          "uint16.go",
+          "uint32.go",
+          "uint64.go",
+          "uint8.go"
+        ]
+      }
+    ]
+  }
+}

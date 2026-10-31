@@ -1,0 +1,97 @@
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache git
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /service ./cmd/qa-agent
+# gopls shipped alongside so the codex LSP tools work against Go repos in-container.
+RUN go install golang.org/x/tools/gopls@v0.16.1
+
+# ─── asm-lsp builder ─────────────────────────────────────────────────────────
+# asm-lsp upstream releases include a linux-gnu binary but no linux-musl
+# artifact, so on Alpine we must compile from source. Pin v0.10.1.
+FROM rust:1.95-alpine3.21 AS asm-lsp-builder
+# g++ is needed by cc-rs while building asm-lsp's symbolic-demangle
+# transitive dependency. cmake is pulled in by some tree-sitter crates.
+RUN apk add --no-cache musl-dev pkgconf openssl-dev openssl-libs-static \
+    gcc g++ make cmake
+RUN cargo install asm-lsp --version 0.10.1 --locked --root /out
+
+# ─── Runtime ─────────────────────────────────────────────────────────────────
+# The QA agent needs both (a) language toolchains to run customer tests
+# (`go test`, `npm test`, `pytest`, `cargo test`, `composer test`, `phpunit`)
+# and (b) the language servers that power post-write validation.
+# This mirrors docker/Dockerfile.implementation-agent.
+#
+# Installed toolchains:   go, node/npm, python, rust, clang, php, openjdk17,
+#                         dotnet8-sdk (for `dotnet test` + csharp-ls runtime)
+# Installed servers:      tsserver, gopls, pyright, rust-analyzer, clangd,
+#                         phpactor, vscode-html-language-server,
+#                         vscode-css-language-server, jdtls, asm-lsp,
+#                         csharp-ls
+#
+# C# (csharp-ls): installed via `dotnet tool install --global` against the
+# Alpine-native `dotnet8-sdk` package. Unlike Dockerfile.agent-lsp we keep
+# the full SDK here (not just the runtime) because `dotnet test` — the
+# command testdetect.Detect returns for *.sln / *.csproj repos — requires
+# it. Pin csharp-ls@0.14.0: newer releases on NuGet ship an invalid
+# DotnetToolSettings.xml that breaks `dotnet tool install` on Alpine.
+FROM golang:1.22-alpine
+RUN apk --no-cache add \
+    ca-certificates git \
+    nodejs npm \
+    python3 py3-pip \
+    rust-analyzer \
+    clang clang-extra-tools \
+    php83 php83-phar php83-tokenizer php83-mbstring php83-dom php83-ctype \
+    php83-json php83-simplexml php83-xml php83-xmlwriter php83-pcntl \
+    composer \
+    openjdk17-jre-headless \
+    dotnet8-sdk
+
+RUN npm install -g \
+      typescript@5.4.5 \
+      typescript-language-server@4.3.3 \
+      pyright@1.1.367 \
+      vscode-langservers-extracted@4.10.0 \
+    && npm cache clean --force
+
+# phpactor uses date-based versions (not semver). Its dependency tree
+# pulls jetbrains/phpstorm-stubs which is dev-master, so the global
+# composer config must allow dev stability before the require.
+RUN composer global config minimum-stability dev --no-interaction \
+    && composer global config prefer-stable true --no-interaction \
+    && composer global require phpactor/phpactor:2025.12.21.1 --no-interaction \
+    && ln -s /root/.composer/vendor/bin/phpactor /usr/local/bin/phpactor
+
+# Java language server (Eclipse JDT LS). See docker/Dockerfile.agent-lsp
+# for the full rationale — same install recipe mirrored here so the
+# QA agent can run post-write validation against Java files.
+# Pin the version + sha256 together; do not float.
+ENV JDTLS_VERSION=1.58.0-202604151538 \
+    JDTLS_SHA256=2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9 \
+    JDTLS_HOME=/opt/jdtls
+RUN wget -q -O /tmp/jdtls.tar.gz \
+        "https://download.eclipse.org/jdtls/milestones/1.58.0/jdt-language-server-${JDTLS_VERSION}.tar.gz" \
+    && echo "${JDTLS_SHA256}  /tmp/jdtls.tar.gz" | sha256sum -c - \
+    && mkdir -p "${JDTLS_HOME}" \
+    && tar -xzf /tmp/jdtls.tar.gz -C "${JDTLS_HOME}" \
+    && rm /tmp/jdtls.tar.gz \
+    && ln -s "${JDTLS_HOME}/bin/jdtls" /usr/local/bin/jdtls
+
+# C# language server. `dotnet tool install --global` drops the launcher
+# at /root/.dotnet/tools/csharp-ls; symlink onto PATH so `which csharp-ls`
+# and the LSP manager's spawn both resolve it. Clear the NuGet HTTP-
+# cache/download-cache afterwards — `dotnet tool install` leaves ~150 MB
+# of temp .nupkg files under /root/.nuget and /tmp that we don't need at
+# runtime (the extracted tool lives under /root/.dotnet/tools/.store).
+RUN dotnet tool install --global csharp-ls --version 0.14.0 \
+    && ln -s /root/.dotnet/tools/csharp-ls /usr/local/bin/csharp-ls \
+    && rm -rf /root/.nuget /tmp/NuGetScratch /tmp/*.log
+
+COPY --from=builder /service /service
+COPY --from=builder /go/bin/gopls /usr/local/bin/gopls
+COPY --from=asm-lsp-builder /out/bin/asm-lsp /usr/local/bin/asm-lsp
+COPY migrations/ /migrations/
+ENTRYPOINT ["/service"]

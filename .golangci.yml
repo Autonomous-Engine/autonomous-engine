@@ -1,0 +1,80 @@
+version: "2"
+
+# Goal: prevent the `_ = err` / unchecked-error regression class that the
+# 2026-04-18 audit surfaced. Errcheck is the primary linter. govet stays
+# on for the usual shadow / printf / copylocks gotchas.
+#
+# `check-blank: false` is deliberate — catching literal `_ = err` is done
+# by the reviewer (who spots the underscore), and the blank form is a
+# valid signal of "I intentionally dropped this". What we DO catch is
+# the sneakier bare-expression form (`foo.Close()` without any assignment
+# or check) that slips past review.
+#
+# If you need to intentionally drop an error, write:
+#     _, _ = fn()        // reviewers see the explicit drop
+# and (if CI trips because of future tightening) add the function to the
+# exclude-functions list below with a justifying comment.
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+      exclude-functions:
+        # Deferred cleanup of response bodies, LDAP/Kafka connections, etc.
+        - (io.Closer).Close
+        - (*net/http.Response).Body.Close
+        # Best-effort writes to an http.ResponseWriter / stringer — the
+        # response is already in flight and the write-error path is not
+        # actionable from handler code.
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Sscanf
+        # JSON encode/decode against already-validated shapes.
+        - (*encoding/json.Encoder).Encode
+        - (*encoding/json.Decoder).Decode
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # pg_notify failures are best-effort; a flaky NOTIFY should not
+      # fail the SetConfig that already committed at the SQL level.
+      - path: internal/configstore/configstore\.go
+        text: pg_notify
+      # Test files — testing.T.Fatal handles err paths; no need to
+      # gate os.Setenv / json.Encode / t.TempDir cleanup.
+      - path: _test\.go
+        linters:
+          - errcheck
+      # audit log writes are best-effort after the primary op succeeded.
+      - text: logAudit
+        linters:
+          - errcheck
+      # pgx Row.Scan in admin_handlers.go where ErrNoRows is handled via
+      # LEFT JOIN returning NULL columns (documented at call sites).
+      - path: cmd/dashboard-backend/admin_handlers\.go
+        text: Row..Scan
+        linters:
+          - errcheck
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

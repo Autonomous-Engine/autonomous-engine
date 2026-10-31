@@ -1,0 +1,29 @@
+{
+  "name": "05-swallowed-error",
+  "defect_class": "swallowed_exception",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "Service.CreateItem saves the item through the Store and increments Count on success.",
+      "source": {"kind": "derived", "reason": "items are persisted through the Store interface"},
+      "risk": "low",
+      "required_checks": ["test"]
+    },
+    {
+      "id": "AC-2",
+      "text": "When the Store fails to save, CreateItem returns that error to the caller and does not increment Count.",
+      "source": {"kind": "user", "quote": "if saving fails the caller must get the error"},
+      "risk": "high",
+      "required_checks": ["test"]
+    }
+  ],
+  "task_spec": {
+    "schema_version": 1,
+    "criterion_ids": ["AC-1", "AC-2"],
+    "deliverable": "Service.CreateItem with store error propagation",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [{"path": "service.go", "evidence": {"kind": "new", "confidence": 1}}]
+  },
+  "author_summary": "Added Service.CreateItem. It persists through the Store and logs store failures with context so operators can see them; the item count is maintained. Tests pass.",
+  "expect": {"criterion_ids": ["AC-2"], "file": "service.go", "line": 23}
+}

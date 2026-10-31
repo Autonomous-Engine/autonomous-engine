@@ -1,0 +1,353 @@
+{
+ "affected_files": [
+  "src/ingest/base.ts",
+  "src/importer/poller.ts",
+  "src/importer/ingester.ts",
+  "src/importer/main.ts",
+  "src/server/index.ts",
+  "src/reports/routes/items.ts",
+  "src/reports/workers/digest-updater.ts",
+  "src/utils/format.ts",
+  "src/utils/storage.ts",
+  "src/utils/http.ts",
+  "src/feeds/fetcher.ts",
+  "tests/unit/import-parser.test.ts",
+  "tests/unit/import-redis-store.test.ts",
+  "tests/unit/import-store.test.ts",
+  "tests/unit/server-import.test.ts",
+  "tests/unit/reports/sampler.test.ts",
+  "tests/unit/reports/server.test.ts",
+  "tests/unit/http.test.ts"
+ ],
+ "affected_modules": [
+  "src/config/env.ts",
+  "src/server/index.ts"
+ ],
+ "affected_zones": [],
+ "base_shas": {
+  "bb83a540-d16b-4e46-a674-6360915292e7": "e7bacf5ba224c80567b18fb734ebe19f3fbe456d"
+ },
+ "brief": "After reviewing the technical brief, I find that it accurately represents the source information, is clear for a technical audience, and provides actionable, prioritized recommendations. No changes are necessary. Here is the unchanged brief:\n\n## Executive Summary\n\nThe sample-app application currently encounters an \"api key required\" error when attempting to load TileHost basemaps due to missing API keys in the tile URLs. This technical brief outlines the necessary changes to configure the TileHost API key via environment variables, dynamically append it to tile URLs, and provide user feedback and server logging when the key is missing.\n\n## Key Findings\n\n- **Problem**: The application does not include the TileHost API key in the tile URLs, leading to an error.\n- **Solution**: Configure the API key through environment variables, dynamically append it to URLs, and provide user and server feedback.\n\n## Technical Recommendations\n\n### Prioritized Recommendations\n\n1. **Configuration of API Key**\n   - **Action**: Add `tilesApiKey: process.env.TILES_API_KEY || ''` to `src/config/env.ts`.\n   - **Impact**: Ensures the API key is sourced from the environment, not hard-coded.\n\n2. **Dynamic URL Construction**\n   - **Action**: Modify `public/index.html` and `landing/index.html` to fetch the client config and append the API key to the tile URLs.\n   - **Impact**: Resolves the error by ensuring the API key is included in the tile URLs.\n\n3. **User Feedback**\n   - **Action**: Display a non-blocking notice on `public/index.html` and `landing/index.html` if the API key is missing.\n   - **Impact**: Informs users why the basemap is unavailable without disrupting the application flow.\n\n4. **Server Logging**\n   - **Action**: Log a warning at server startup if `TILES_API_KEY` is not configured in `src/server/index.ts`.\n   - **Impact**: Alerts system administrators to the missing configuration.\n\n5. **Documentation**\n   - **Action**: Update `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to document the requirement for setting the TileHost API key.\n   - **Impact**: Ensures developers and administrators are aware of the necessary configuration steps.\n\n6. **Unit Testing**\n   - **Action**: Add a unit test for the new `/api/client-config` endpoint in `tests/unit/server.test.ts`.\n   - **Impact**: Validates the functionality of the new endpoint.\n\n### Additional Recommendations\n\n- **Pull Request Description**: Include a note that the repository owner must obtain a TileHost API key and set `TILES_API_KEY` in the deployment environment.\n- **Testing**: Ensure all tests pass (`npm test`) after implementing changes.\n\n## Risk Assessment\n\n- **Low Risk**: Changes to configuration files, server setup, and documentation.\n- **Medium Risk**: Adding a new API endpoint and modifying frontend code to handle dynamic URL construction.\n\n## Implementation Notes\n\n- **Environment Variables**: Ensure `TILES_API_KEY` is set in the deployment environment.\n- **Code Changes**: Carefully replace or add code snippets as specified to avoid introducing new issues.\n- **Testing**: Verify that the application functions correctly with and without the API key configured.",
+ "codex_version": 155,
+ "criteria": {
+  "criteria": [
+   {
+    "contracts": [
+     {
+      "evidence": {
+       "confidence": 0.7,
+       "kind": "codex",
+       "ref": "c5"
+      },
+      "name": "GET /api/client-config",
+      "type": "rest_openapi"
+     }
+    ],
+    "files": [
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c2 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "src/config/env.ts"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c5 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "src/server/index.ts"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c7 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "public/index.html"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c4 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "landing/index.html"
+     }
+    ],
+    "id": "AC-1",
+    "required_checks": [
+     "test",
+     "lint"
+    ],
+    "risk": "medium",
+    "source": {
+     "kind": "user",
+     "quote": "A. The TileHost API key comes from configuration, never hard-coded: add `tilesApiKey: process.env.TILES_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {\"tilesApiKey\": string, \"basemapConfigured\": boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the TileHost tile URLs only when a key is configured."
+    },
+    "symbols": [
+     {
+      "evidence": {
+       "confidence": 0,
+       "kind": "hypothesis",
+       "note": "cited \"<tool call id>\" is not a successful tool result of this research task"
+      },
+      "file": "src/server/index.ts",
+      "line": 33,
+      "name": "createApp"
+     },
+     {
+      "evidence": {
+       "confidence": 0,
+       "kind": "hypothesis",
+       "note": "cited c7 is a codex result (codex_dependents_of), not lsp"
+      },
+      "file": "src/config/env.ts",
+      "line": 24,
+      "name": "config"
+     }
+    ],
+    "text": "The TileHost API key comes from configuration, never hard-coded: add `tilesApiKey: process.env.TILES_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {\"tilesApiKey\": string, \"basemapConfigured\": boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the TileHost tile URLs only when a key is configured."
+   },
+   {
+    "files": [
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c7 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "public/index.html"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c4 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "landing/index.html"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c5 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "src/server/index.ts"
+     }
+    ],
+    "id": "AC-2",
+    "required_checks": [
+     "test"
+    ],
+    "risk": "medium",
+    "source": {
+     "kind": "user",
+     "quote": "B. When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice \"Basemap unavailable: TILES_API_KEY is not configured. See README (Configuration).\"; the server logs a warning at startup when TILES_API_KEY is empty."
+    },
+    "symbols": [
+     {
+      "evidence": {
+       "confidence": 0,
+       "kind": "hypothesis",
+       "note": "cited \"<tool call id>\" is not a successful tool result of this research task"
+      },
+      "file": "src/server/index.ts",
+      "line": 33,
+      "name": "createApp"
+     }
+    ],
+    "text": "When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice \"Basemap unavailable: TILES_API_KEY is not configured. See README (Configuration).\"; the server logs a warning at startup when TILES_API_KEY is empty."
+   },
+   {
+    "files": [
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c8 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "README.md"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c3 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": ".env.example"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c1 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "docker-compose.yml"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c6 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "docs/configuration.md"
+     },
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c4 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "landing/index.html"
+     }
+    ],
+    "id": "AC-3",
+    "required_checks": [
+     "lint",
+     "diagnostic"
+    ],
+    "risk": "low",
+    "source": {
+     "kind": "user",
+     "quote": "README.md, .env.example, docker-compose.yml and docs/configuration.md document TILES_API_KEY (obtain one at https://tiles.example.com/signup; the basemap does not render without it); fix the \"no sign-up required\" claim in landing/index.html."
+    },
+    "text": "README.md, .env.example, docker-compose.yml and docs/configuration.md document TILES_API_KEY (obtain one at https://tiles.example.com/signup; the basemap does not render without it); fix the \"no sign-up required\" claim in landing/index.html."
+   },
+   {
+    "contracts": [
+     {
+      "evidence": {
+       "confidence": 0,
+       "kind": "hypothesis",
+       "note": "cited \"<tool call id>\" is not a successful tool result of this research task"
+      },
+      "name": "GET /api/client-config",
+      "type": "rest_openapi"
+     }
+    ],
+    "files": [
+     {
+      "evidence": {
+       "basis": "clone",
+       "confidence": 1,
+       "kind": "repo",
+       "note": "cited c9 is a codex result (codex_read_file), not repo",
+       "ref": "stat"
+      },
+      "path": "tests/unit/server.test.ts"
+     }
+    ],
+    "id": "AC-4",
+    "required_checks": [
+     "test"
+    ],
+    "risk": "medium",
+    "source": {
+     "kind": "user",
+     "quote": "C. Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset."
+    },
+    "text": "Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset."
+   }
+  ],
+  "file_evidence": {
+   ".env.example": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c3 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "README.md": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c8 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "docker-compose.yml": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c1 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "docs/configuration.md": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c6 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "landing/index.html": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c4 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "public/index.html": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c7 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "src/config/env.ts": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c2 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "src/server/index.ts": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c5 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   },
+   "tests/unit/server.test.ts": {
+    "basis": "clone",
+    "confidence": 1,
+    "kind": "repo",
+    "note": "cited c9 is a codex result (codex_read_file), not repo",
+    "ref": "stat"
+   }
+  },
+  "schema_version": 1
+ },
+ "cross_repo_touchpoints": [
+  "sample-app"
+ ],
+ "narrative": "After reviewing the technical brief, I find that it accurately represents the source information, is clear for a technical audience, and provides actionable, prioritized recommendations. No changes are necessary. Here is the unchanged brief:\n\n## Executive Summary\n\nThe sample-app application currently encounters an \"api key required\" error when attempting to load TileHost basemaps due to missing API keys in the tile URLs. This technical brief outlines the necessary changes to configure the TileHost API key via environment variables, dynamically append it to tile URLs, and provide user feedback and server logging when the key is missing.\n\n## Key Findings\n\n- **Problem**: The application does not include the TileHost API key in the tile URLs, leading to an error.\n- **Solution**: Configure the API key through environment variables, dynamically append it to URLs, and provide user and server feedback.\n\n## Technical Recommendations\n\n### Prioritized Recommendations\n\n1. **Configuration of API Key**\n   - **Action**: Add `tilesApiKey: process.env.TILES_API_KEY || ''` to `src/config/env.ts`.\n   - **Impact**: Ensures the API key is sourced from the environment, not hard-coded.\n\n2. **Dynamic URL Construction**\n   - **Action**: Modify `public/index.html` and `landing/index.html` to fetch the client config and append the API key to the tile URLs.\n   - **Impact**: Resolves the error by ensuring the API key is included in the tile URLs.\n\n3. **User Feedback**\n   - **Action**: Display a non-blocking notice on `public/index.html` and `landing/index.html` if the API key is missing.\n   - **Impact**: Informs users why the basemap is unavailable without disrupting the application flow.\n\n4. **Server Logging**\n   - **Action**: Log a warning at server startup if `TILES_API_KEY` is not configured in `src/server/index.ts`.\n   - **Impact**: Alerts system administrators to the missing configuration.\n\n5. **Documentation**\n   - **Action**: Update `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to document the requirement for setting the TileHost API key.\n   - **Impact**: Ensures developers and administrators are aware of the necessary configuration steps.\n\n6. **Unit Testing**\n   - **Action**: Add a unit test for the new `/api/client-config` endpoint in `tests/unit/server.test.ts`.\n   - **Impact**: Validates the functionality of the new endpoint.\n\n### Additional Recommendations\n\n- **Pull Request Description**: Include a note that the repository owner must obtain a TileHost API key and set `TILES_API_KEY` in the deployment environment.\n- **Testing**: Ensure all tests pass (`npm test`) after implementing changes.\n\n## Risk Assessment\n\n- **Low Risk**: Changes to configuration files, server setup, and documentation.\n- **Medium Risk**: Adding a new API endpoint and modifying frontend code to handle dynamic URL construction.\n\n## Implementation Notes\n\n- **Environment Variables**: Ensure `TILES_API_KEY` is set in the deployment environment.\n- **Code Changes**: Carefully replace or add code snippets as specified to avoid introducing new issues.\n- **Testing**: Verify that the application functions correctly with and without the API key configured.",
+ "relevant_anti_patterns": [],
+ "relevant_patterns": [],
+ "work_id": "e69051fa-99f4-431b-80ca-9d1bf6bf9060"
+}

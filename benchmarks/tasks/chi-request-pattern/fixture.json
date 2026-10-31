@@ -1,0 +1,38 @@
+{
+  "id": "chi-request-pattern",
+  "summary": "Set net/http.Request.Pattern (Go 1.23+) to the matched chi route pattern, with a build-tagged fallback for older Go and TinyGo.",
+  "repo": "https://github.com/go-chi/chi",
+  "base_sha": "1c2d011f59c4b2fc2127f308f2b4171db2567f19",
+  "language": "go",
+  "task_class": "small_feature",
+  "difficulty": "easy",
+  "size_stratum": "medium",
+  "test_command": "go test ./... || go test -count=1 ./...",
+  "test_command_note": "The base revision predates upstream 9040e95 (\"Fix flaky Throttle middleware test by synchronizing token usage\"), so the middleware package's own suite carries a known timing flake (not observed in 6 local runs). One retry absorbs it; the held-out tests use httptest.NewRecorder and are deterministic, so a retry cannot turn a wrong implementation into a pass. The middleware suite takes about 25s.",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream feature commit; that commit is never reachable from the sealed clone.",
+    "upstream_feature_commit": "d12cc49622f31a01c6cceea7cdb62f647660102c",
+    "upstream_pr": "https://github.com/go-chi/chi/pull/986",
+    "reference_patch": "git diff --binary 1c2d011..d12cc49 (verbatim)",
+    "scope_note": "Upstream initially set r.Pattern from the per-router routePattern; nested subrouters were fixed later (818fdcf, #1089). The prompt therefore scopes the ticket to routes registered directly on the router, and the hidden tests do not exercise Mount/Route.",
+    "fail_mode_note": "Request.Pattern exists in the Go 1.27 toolchain, so the hidden tests (build tag go1.23, like upstream's own test) compile at base and fail because the field stays empty.",
+    "size_note": "about 5.4k non-test Go lines at base (including middleware)"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "d12cc49622f31a01c6cceea7cdb62f647660102c",
+        "paths": [
+          "mux.go",
+          "pattern.go",
+          "pattern_fallback.go",
+          "pattern_test.go"
+        ]
+      }
+    ]
+  }
+}

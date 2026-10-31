@@ -1,0 +1,70 @@
+name: sample-app
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sample-app-api
+    command: ["node", "dist/server/index.js"]
+    restart: unless-stopped
+    volumes:
+      - sample-data:/data
+    environment:
+      - DATA_DIR=/data
+      - PORT=8700
+      - STORE_URL=file:///data/books.db
+      - LOG_LEVEL=info
+      - SEARCH_ENABLED=true
+      - SEARCH_INDEX=books
+      - SEARCH_PAGE_SIZE=20
+    ports:
+      - "8700:8700"
+    depends_on:
+      - indexer
+
+  indexer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sample-app-indexer
+    command: ["node", "dist/indexer/main.js"]
+    restart: unless-stopped
+    volumes:
+      - sample-data:/data
+    environment:
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - REINDEX_INTERVAL_MS=60000
+
+  covers:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sample-app-covers
+    command: ["node", "dist/covers/main.js"]
+    restart: unless-stopped
+    volumes:
+      - sample-data:/data
+    environment:
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - COVER_SIZES=s,m,l
+
+  cleanup:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: sample-app-cleanup
+    command: ["node", "dist/jobs/cleanup.js"]
+    restart: unless-stopped
+    volumes:
+      - sample-data:/data
+    environment:
+      - DATA_DIR=/data
+      - RETENTION_DAYS=30
+      - LOG_LEVEL=info
+
+volumes:
+  sample-data:
+    driver: local

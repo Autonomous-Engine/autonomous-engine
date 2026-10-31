@@ -1,0 +1,25 @@
+{
+  "name": "01-off-by-one",
+  "defect_class": "off_by_one",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "Page(items, p, size) returns exactly size items for every full page (p is 1-based) and the remaining items on the last page.",
+      "source": {"kind": "user", "quote": "pages must hold exactly page-size items, the last page whatever is left"},
+      "risk": "medium",
+      "required_checks": ["test"]
+    }
+  ],
+  "task_spec": {
+    "schema_version": 1,
+    "criterion_ids": ["AC-1"],
+    "deliverable": "Page slices a list into 1-based pages of the requested size",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [
+      {"path": "pager.go", "evidence": {"kind": "repo", "ref": "stat", "confidence": 1, "basis": "snapshot"}},
+      {"path": "pager_test.go", "evidence": {"kind": "new", "confidence": 1}}
+    ]
+  },
+  "author_summary": "Implemented 1-based pagination in Page with bounds checks for invalid page numbers and sizes and for pages past the end. Added unit tests covering the first page; all tests pass. Ready to merge.",
+  "expect": {"criterion_ids": ["AC-1"], "file": "pager.go", "line": 13}
+}

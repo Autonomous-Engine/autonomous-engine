@@ -1,0 +1,23 @@
+[
+ {
+  "path": "public/index.html",
+  "line_start": 836,
+  "line_end": 853,
+  "snippet": "836:     const map = L.map('map', { zoomControl: false }).setView([CITY.lat, CITY.lon], CITY.zoom);\n837:     L.control.zoom({ position: 'topright' }).addTo(map);\n840:     L.tileLayer('https://{s}.tiles.mapforgecdn.example/night_base/{z}/{x}/{y}.png', {\n841:       attribution: '\u0026copy; OpenStreetMap contributors \u0026copy; Mapforge',\n842:       subdomains: 'abc',\n843:       maxZoom: 19,\n844:     }).addTo(map);\n848:     const labelsLayer = L.tileLayer('https://{s}.tiles.mapforgecdn.example/night_labels/{z}/{x}/{y}.png', {\n849:       attribution: '',\n850:       subdomains: 'abc',\n851:       maxZoom: 19,\n852:       pane: 'overlayPane',",
+  "verified": true
+ },
+ {
+  "path": "src/server/index.ts",
+  "line_start": 33,
+  "line_end": 60,
+  "snippet": "33: export function createApp(\n60:   const publicDir = path.join(process.cwd(), 'public');",
+  "verified": true
+ },
+ {
+  "path": "landing/index.html",
+  "line_start": 855,
+  "line_end": 855,
+  "snippet": "855:     L.tileLayer('https://{s}.tiles.mapforgecdn.example/night_full/{z}/{x}/{y}.png', {",
+  "verified": true
+ }
+]

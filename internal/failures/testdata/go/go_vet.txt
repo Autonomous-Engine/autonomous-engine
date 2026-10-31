@@ -1,0 +1,2 @@
+# example.com/app/calc
+calc/calc.go:5:34: fmt.Sprintf format %s has arg n of wrong type int

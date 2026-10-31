@@ -1,0 +1,153 @@
+# Dockerfile for agents that invoke the codex LSP-backed tools
+# (codex_find_references, codex_goto_definition, codex_workspace_symbols,
+# codex_document_symbols, codex_type_info, codex_diagnostics) — i.e.
+# research-agent, review-agent, knowledge-indexer.
+#
+# Language servers installed at runtime (all launched via `command` +
+# `args[]` from internal/llm/tools/lsp/manager.go defaultDetectLanguage):
+#   - typescript-language-server  (TypeScript / JavaScript)
+#   - gopls                       (Go) — copied from the Go builder stage
+#   - pyright-langserver          (Python)
+#   - rust-analyzer               (Rust)
+#   - clangd                      (C, C++)
+#   - phpactor                    (PHP)
+#   - vscode-html-language-server (HTML)
+#   - vscode-css-language-server  (CSS / SCSS / Sass / Less)
+#   - asm-lsp                     (Assembly — x86_64, ARM, RISC-V, etc.)
+#   - csharp-ls                   (C#) — installed below via dotnet tool
+#
+# Java (jdtls) is installed below — OpenJDK 17 JRE + Eclipse JDT LS.
+# The tarball ships a bin/jdtls python wrapper; we symlink it onto PATH.
+#
+# C# (csharp-ls) is installed by the .NET 8 SDK's `dotnet tool install`.
+# We picked csharp-ls over OmniSharp because Alpine 3.21 ships a native
+# `dotnet8-sdk` package, so the install layers cleanly on top of apk
+# without OmniSharp's tarball-plus-separate-.NET-runtime dance. Multi-
+# stage: install the SDK in a builder to produce
+# /root/.dotnet/tools/csharp-ls, then copy the tools dir plus
+# `dotnet8-runtime` into the final stage. Read-only agents never run
+# `dotnet build`/`dotnet test`, so dropping the SDK keeps the image
+# ~140 MB smaller. Pin version 0.14.0: newer releases on NuGet ship an
+# invalid DotnetToolSettings.xml that makes `dotnet tool install` fail
+# on Alpine — see razzmatazz/csharp-language-server issue tracker.
+#
+# asm-lsp is compiled from source in a Rust builder stage because the
+# upstream v0.10.1 release ships only linux-gnu binaries, no linux-musl
+# artifact — and Alpine is musl. Pinned version: v0.10.1.
+
+FROM golang:1.22-alpine AS builder
+ARG SERVICE
+RUN apk add --no-cache git
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /service ./cmd/${SERVICE}
+
+# gopls is built here so the runtime stage stays small (it copies just the
+# binary, no Go toolchain). Pin to a release tag so the agent image is
+# reproducible across rebuilds.
+RUN go install golang.org/x/tools/gopls@v0.16.1
+
+# ─── asm-lsp builder ─────────────────────────────────────────────────────────
+# asm-lsp upstream releases include a linux-gnu binary but no linux-musl
+# artifact, so on Alpine we must compile from source. `rust:1.95-alpine3.21`
+# pins both the Rust toolchain and the libc to match the runtime image.
+FROM rust:1.95-alpine3.21 AS asm-lsp-builder
+# g++ is needed by cc-rs while building asm-lsp's symbolic-demangle
+# transitive dependency. cmake is pulled in by some tree-sitter crates.
+RUN apk add --no-cache musl-dev pkgconf openssl-dev openssl-libs-static \
+    gcc g++ make cmake
+RUN cargo install asm-lsp --version 0.10.1 --locked --root /out
+
+# ─── csharp-ls builder ───────────────────────────────────────────────────────
+# dotnet8-sdk is only needed at install time to place the csharp-ls binary
+# under /root/.dotnet/tools; the runtime stage copies the tool dir and
+# installs dotnet8-runtime (much smaller than the SDK) to execute it.
+FROM alpine:3.21 AS csharp-ls-builder
+RUN apk --no-cache add dotnet8-sdk
+# Pin csharp-ls@0.14.0: newer versions on NuGet fail `dotnet tool install`
+# on Alpine with "Settings file 'DotnetToolSettings.xml' was not found in
+# the package". 0.14.0 installs cleanly and covers current LSP spec needs.
+RUN dotnet tool install --global csharp-ls --version 0.14.0
+
+# ─── Runtime ─────────────────────────────────────────────────────────────────
+# Alpine 3.21 is pinned to match the golang:1.22-alpine builder's base so
+# that composer (which binds to whatever PHP the alpine repo ships) picks
+# up the same php83-* extensions installed below. Mixing alpine versions
+# between builder and runtime caused a silent php82/php83 mismatch that
+# broke the phpactor install on 2026-04-23.
+FROM alpine:3.21
+
+# System packages:
+#   - nodejs/npm: hosts typescript-language-server, pyright,
+#                 vscode-langservers-extracted
+#   - rust-analyzer: Alpine's community repo ships the binary directly
+#   - clang/clang-extra-tools: clang + clangd for C/C++
+#   - php83/composer: runs phpactor for PHP
+#   - openjdk17-jre-headless: runtime for jdtls (installed below)
+#   - python3: bin/jdtls is a python wrapper script
+#   - dotnet8-runtime: runtime for csharp-ls (tool binary copied from
+#                      csharp-ls-builder stage)
+#   - git, ca-certificates: already required for repo access
+RUN apk --no-cache add \
+    ca-certificates git \
+    nodejs npm \
+    python3 \
+    rust-analyzer \
+    clang clang-extra-tools \
+    php83 php83-phar php83-tokenizer php83-mbstring php83-dom php83-ctype \
+    php83-json php83-simplexml php83-xml php83-xmlwriter php83-pcntl \
+    composer \
+    openjdk17-jre-headless \
+    dotnet8-runtime
+
+# Node-hosted language servers.
+RUN npm install -g \
+      typescript@5.4.5 \
+      typescript-language-server@4.3.3 \
+      pyright@1.1.367 \
+      vscode-langservers-extracted@4.10.0 \
+    && npm cache clean --force
+
+# PHP language server. Installing phpactor globally; symlink for PATH.
+# phpactor uses date-based versions (not semver). Its dependency tree
+# pulls jetbrains/phpstorm-stubs which is dev-master, so the global
+# composer config must allow dev stability before the require.
+RUN composer global config minimum-stability dev --no-interaction \
+    && composer global config prefer-stable true --no-interaction \
+    && composer global require phpactor/phpactor:2025.12.21.1 --no-interaction \
+    && ln -s /root/.composer/vendor/bin/phpactor /usr/local/bin/phpactor
+
+# Java language server (Eclipse JDT LS).
+# jdtls is not in Alpine's package repo; download the pinned milestone
+# tarball from download.eclipse.org and verify its sha256. The archive
+# ships plugins/features/config_* directories plus a bin/jdtls python
+# wrapper that builds the correct `java -Declipse.* -jar …/launcher_…jar
+# -configuration … -data …` invocation at runtime. Symlinking the wrapper
+# onto PATH lets `which jdtls` / `jdtls --stdio` work for the LSP manager.
+# Pin versions here — do not float to "latest" without also updating the
+# sha256 below. (Current pin: 1.58.0, released 2026-04-15.)
+ENV JDTLS_VERSION=1.58.0-202604151538 \
+    JDTLS_SHA256=2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9 \
+    JDTLS_HOME=/opt/jdtls
+RUN wget -q -O /tmp/jdtls.tar.gz \
+        "https://download.eclipse.org/jdtls/milestones/1.58.0/jdt-language-server-${JDTLS_VERSION}.tar.gz" \
+    && echo "${JDTLS_SHA256}  /tmp/jdtls.tar.gz" | sha256sum -c - \
+    && mkdir -p "${JDTLS_HOME}" \
+    && tar -xzf /tmp/jdtls.tar.gz -C "${JDTLS_HOME}" \
+    && rm /tmp/jdtls.tar.gz \
+    && ln -s "${JDTLS_HOME}/bin/jdtls" /usr/local/bin/jdtls
+
+COPY --from=builder /service /service
+COPY --from=builder /go/bin/gopls /usr/local/bin/gopls
+COPY --from=asm-lsp-builder /out/bin/asm-lsp /usr/local/bin/asm-lsp
+
+# csharp-ls: copy the whole tools dir (includes .store/ with the tool's
+# managed dependencies) and symlink the launcher onto PATH. The launcher
+# is a small shim that resolves `dotnet` and invokes the .dll underneath.
+COPY --from=csharp-ls-builder /root/.dotnet/tools /root/.dotnet/tools
+RUN ln -s /root/.dotnet/tools/csharp-ls /usr/local/bin/csharp-ls
+
+COPY migrations/ /migrations/
+ENTRYPOINT ["/service"]

@@ -1,0 +1,34 @@
+{
+  "id": "jsonc-parser-remove-last-array-item",
+  "summary": "modify() removing the last array element leaves an off-by-one edit that merges the neighbouring element.",
+  "repo": "https://github.com/microsoft/node-jsonc-parser",
+  "base_sha": "5f6bd18a519ef031ee101ade48ea6e52c368955a",
+  "language": "typescript",
+  "task_class": "historical_defect",
+  "difficulty": "easy",
+  "size_stratum": "medium",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { ( npx tsc -p ./src && node --enable-source-maps --test ./lib/esm/test/*.test.js ) 2>&1 | tee node_modules/.bench-out.txt; rc=${PIPESTATUS[0]}; if [ $rc -ne 0 ]; then if grep -qE \"TSError|error TS[0-9]+|Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError:\" node_modules/.bench-out.txt; then echo \"[setup failed] a test file failed to load\"; elif grep -qE \"AssertionError|[0-9]+ failing|^# fail [1-9]|ℹ fail [1-9]\" node_modules/.bench-out.txt; then echo \"--- FAIL: assertion failures\"; fi; elif { [ -e src/test/bench_remove_last_item.test.ts ]; } && ! grep -q \"bench:\" node_modules/.bench-out.txt; then echo \"[setup failed] hidden tests did not run\"; rc=1; fi; exit $rc; }",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "babb17a9129c899a3bbcd14fcb313101f3a1fa8b",
+    "upstream_pr": "https://github.com/microsoft/node-jsonc-parser/pull/120",
+    "upstream_issue": "https://github.com/microsoft/node-jsonc-parser/issues/108",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "node:test (built in) over the tsc output in lib/esm/test, the repository's own test script minus eslint; hidden tests live in src/test and are compiled with the rest. Failure classification greps the captured output (a tsc error in a test file counts as a load failure). Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "babb17a9129c899a3bbcd14fcb313101f3a1fa8b",
+        "paths": [
+          "src/impl/edit.ts",
+          "src/test/edit.test.ts"
+        ]
+      }
+    ]
+  }
+}

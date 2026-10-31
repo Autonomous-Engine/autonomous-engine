@@ -1,0 +1,34 @@
+{
+  "id": "godotenv-go-module",
+  "summary": "Repository predates Go modules; add go.mod so it builds and tests in module mode.",
+  "repo": "https://github.com/joho/godotenv",
+  "base_sha": "aa035a1808759a133b9e01922487197e2c70c782",
+  "language": "go",
+  "task_class": "dependency_or_config",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "GO111MODULE=off go test . && go test ./...",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "base_test_status": "fail",
+  "base_test_status_reason": "There is no go.mod at base_sha, so the module-mode step `go test ./...` cannot run before the change (the GOPATH-mode first step passes at base on the repository's own tests).",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream commit that added go.mod; that commit is never reachable from the sealed clone.",
+    "upstream_config_commit": "65218afbaa9b8e90c3e550b3a30da9b213e27a3b",
+    "upstream_pr": "https://github.com/joho/godotenv/pull/123",
+    "fail_mode_note": "Replaced the build-mode fixture in M4-04. With no go.mod at base nothing compiles in module mode, so the hidden test (which shells out to `go list -m`, `go env GOMOD`, `go list ./...` and `go build ./...` with GO111MODULE=on) is first run in GOPATH mode where it compiles and fails on assertions. Prompt unchanged."
+  },
+  "test_command_note": "Step 1 runs the root package in GOPATH mode (GO111MODULE=off; still supported by Go 1.27 but deprecated) so the held-out test compiles without a go.mod and fails on its assertions (`go list -m` in module mode errors). Step 2 is the real acceptance check in module mode. If a future Go release drops GOPATH mode, revert this fixture to fail_mode build with test_command `go test ./...`.",
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "65218afbaa9b8e90c3e550b3a30da9b213e27a3b",
+        "paths": [
+          "go.mod"
+        ]
+      }
+    ]
+  }
+}

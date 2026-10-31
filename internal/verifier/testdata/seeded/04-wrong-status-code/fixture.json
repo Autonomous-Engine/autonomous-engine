@@ -1,0 +1,29 @@
+{
+  "name": "04-wrong-status-code",
+  "defect_class": "wrong_status_code",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "POST /items with a JSON body {\"name\": \"...\"} stores the item and responds 201 Created.",
+      "source": {"kind": "user", "quote": "add an endpoint to create items"},
+      "risk": "medium",
+      "required_checks": ["test"]
+    },
+    {
+      "id": "AC-2",
+      "text": "POST /items with an empty or blank name responds 400 Bad Request and stores nothing.",
+      "source": {"kind": "user", "quote": "a blank name is a client error (400)"},
+      "risk": "medium",
+      "required_checks": ["test"]
+    }
+  ],
+  "task_spec": {
+    "schema_version": 1,
+    "criterion_ids": ["AC-1", "AC-2"],
+    "deliverable": "Server.CreateItem handler for POST /items",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [{"path": "server.go", "evidence": {"kind": "repo", "ref": "stat", "confidence": 1, "basis": "snapshot"}}]
+  },
+  "author_summary": "Added the POST /items handler. Valid names are stored with 201 Created; invalid input (bad JSON or a blank name) is rejected with a clear error message, as the ticket asks. Tests cover the happy path.",
+  "expect": {"criterion_ids": ["AC-2"], "file": "server.go", "line": 30}
+}

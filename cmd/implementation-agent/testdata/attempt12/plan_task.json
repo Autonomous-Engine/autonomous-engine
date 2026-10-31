@@ -1,0 +1,773 @@
+{
+    "title": "Implement in demo-app: Add Tiler API Key to Configuration (+6 more steps)",
+    "task_id": "eba1a067-06a7-4ce7-b79f-69961f28b4eb",
+    "work_id": "d402ace4-15ec-4290-b801-dad9ff12f4b4",
+    "base_ref": "main",
+    "base_sha": "5d0c9e7a41b2f3e8a6c1d9047be2a3f5c8d61e09",
+    "criteria": [
+        {
+            "id": "AC-1",
+            "risk": "medium",
+            "text": "The Tiler API key is added to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.",
+            "files": [
+                {
+                    "path": "src/config/env.ts",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c4 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "The `tilerApiKey` should be added to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`."
+            },
+            "symbols": [
+                {
+                    "file": "src/config/env.ts",
+                    "line": 10,
+                    "name": "tilerApiKey",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-8",
+            "risk": "medium",
+            "text": "The Tiler API key comes from configuration, never hard-coded: add `tilerApiKey: process.env.TILER_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {'tilerApiKey': string, 'basemapConfigured': boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only when a key is configured.",
+            "files": [
+                {
+                    "path": "src/config/env.ts",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c6 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "src/server/index.ts",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c3 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "public/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c1 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "landing/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c4 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "A. The Tiler API key comes from configuration, never hard-coded: add `tilerApiKey: process.env.TILER_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {'tilerApiKey': string, 'basemapConfigured': boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only when a key is configured."
+            },
+            "symbols": [
+                {
+                    "file": "src/server/index.ts",
+                    "line": 33,
+                    "name": "createApp",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited c3 is a codex result (codex_read_file), not lsp",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "contracts": [
+                {
+                    "name": "GET /api/client-config",
+                    "type": "rest_openapi",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-2",
+            "risk": "medium",
+            "text": "A new GET `/api/client-config` route is added to `src/server/index.ts` that returns a JSON object with the `tilerApiKey` and a `basemapConfigured` boolean indicating whether the key is set.",
+            "files": [
+                {
+                    "path": "src/server/index.ts",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c5 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "A new GET `/api/client-config` route should be added to `src/server/index.ts` that returns a JSON object with the `tilerApiKey` and a `basemapConfigured` boolean indicating whether the key is set."
+            },
+            "contracts": [
+                {
+                    "name": "GET /api/client-config",
+                    "type": "rest_openapi",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-7",
+            "risk": "medium",
+            "text": "A vitest unit test is added to `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilerApiKey` and `basemapConfigured` values based on the environment configuration.",
+            "files": [
+                {
+                    "path": "tests/unit/server.test.ts",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c2 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "A vitest unit test should be added to `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilerApiKey` and `basemapConfigured` values based on the environment configuration."
+            },
+            "contracts": [
+                {
+                    "name": "GET /api/client-config",
+                    "type": "rest_openapi",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-10",
+            "risk": "low",
+            "text": "Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset.",
+            "files": [
+                {
+                    "path": "tests/unit/server.test.ts",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c2 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "C. Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset."
+            },
+            "symbols": [
+                {
+                    "file": "src/server/index.ts",
+                    "line": 33,
+                    "name": "createApp",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited c3 is a codex result (codex_read_file), not lsp",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "contracts": [
+                {
+                    "name": "GET /api/client-config",
+                    "type": "rest_openapi",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-3",
+            "risk": "medium",
+            "text": "Both `public/index.html` and `landing/index.html` fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only if a key is configured.",
+            "files": [
+                {
+                    "path": "public/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c1 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "landing/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c3 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "Both `public/index.html` and `landing/index.html` should fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only if a key is configured."
+            },
+            "symbols": [
+                {
+                    "file": "public/index.html",
+                    "line": 837,
+                    "name": "fetch('/api/client-config')",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                },
+                {
+                    "file": "landing/index.html",
+                    "line": 855,
+                    "name": "fetch('/api/client-config')",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-4",
+            "risk": "medium",
+            "text": "Both `public/index.html` and `landing/index.html` display a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' when the API key is missing.",
+            "files": [
+                {
+                    "path": "public/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c1 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "landing/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c3 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "Both `public/index.html` and `landing/index.html` should display a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' when the API key is missing."
+            },
+            "symbols": [
+                {
+                    "file": "public/index.html",
+                    "line": 840,
+                    "name": "notice",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                },
+                {
+                    "file": "landing/index.html",
+                    "line": 857,
+                    "name": "notice",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-9",
+            "risk": "low",
+            "text": "When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).'; the server logs a warning at startup when TILER_API_KEY is empty; README.md, .env.example, docker-compose.yml and docs/configuration.md document TILER_API_KEY (obtain one at https://tiler.test/basemaps; the basemap does not render without it); fix the 'no API keys' claim in landing/index.html.",
+            "files": [
+                {
+                    "path": "public/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c1 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "landing/index.html",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c4 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "README.md",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": ".env.example",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "docker-compose.yml",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "docs/configuration.md",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c5 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "B. When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).'; the server logs a warning at startup when TILER_API_KEY is empty; README.md, .env.example, docker-compose.yml and docs/configuration.md document TILER_API_KEY (obtain one at https://tiler.test/basemaps; the basemap does not render without it); fix the 'no API keys' claim in landing/index.html."
+            },
+            "symbols": [
+                {
+                    "file": "src/server/index.ts",
+                    "line": 33,
+                    "name": "createApp",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited c3 is a codex result (codex_read_file), not lsp",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "contracts": [
+                {
+                    "name": "GET /api/client-config",
+                    "type": "rest_openapi",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-5",
+            "risk": "medium",
+            "text": "The server logs a warning at startup if the `TILER_API_KEY` environment variable is empty.",
+            "files": [
+                {
+                    "path": "src/server/index.ts",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c5 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "The server should log a warning at startup if the `TILER_API_KEY` environment variable is empty."
+            },
+            "symbols": [
+                {
+                    "file": "src/server/index.ts",
+                    "line": 40,
+                    "name": "console.warn",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "test"
+            ]
+        },
+        {
+            "id": "AC-6",
+            "risk": "low",
+            "text": "README.md, .env.example, docker-compose.yml, and docs/configuration.md document the requirement for a Tiler API key, including instructions on how to obtain one from https://tiler.test/basemaps.",
+            "files": [
+                {
+                    "path": "README.md",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c2 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": ".env.example",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "docker-compose.yml",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                },
+                {
+                    "path": "docs/configuration.md",
+                    "evidence": {
+                        "ref": "stat",
+                        "kind": "repo",
+                        "note": "cited c6 is a codex result (codex_read_file), not repo",
+                        "basis": "clone",
+                        "confidence": 1
+                    }
+                }
+            ],
+            "source": {
+                "kind": "user",
+                "quote": "README.md, .env.example, docker-compose.yml, and docs/configuration.md should document the requirement for a Tiler API key, including instructions on how to obtain one from https://tiler.test/basemaps."
+            },
+            "symbols": [
+                {
+                    "file": "README.md",
+                    "line": 10,
+                    "name": "TILER_API_KEY",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                },
+                {
+                    "file": ".env.example",
+                    "line": 1,
+                    "name": "TILER_API_KEY",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                },
+                {
+                    "file": "docker-compose.yml",
+                    "line": 20,
+                    "name": "TILER_API_KEY",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                },
+                {
+                    "file": "docs/configuration.md",
+                    "line": 10,
+                    "name": "TILER_API_KEY",
+                    "evidence": {
+                        "kind": "hypothesis",
+                        "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                        "confidence": 0
+                    }
+                }
+            ],
+            "required_checks": [
+                "lint"
+            ]
+        }
+    ],
+    "task_spec": {
+        "files": [
+            {
+                "path": "src/config/env.ts",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited c4 is a codex result (codex_read_file), not repo",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": "src/server/index.ts",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited c5 is a codex result (codex_read_file), not repo",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": "public/index.html",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited c1 is a codex result (codex_read_file), not repo",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": "landing/index.html",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited c3 is a codex result (codex_read_file), not repo",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": "README.md",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited c2 is a codex result (codex_read_file), not repo",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": ".env.example",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": "docker-compose.yml",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited \"<tool call id>\" is not a successful tool result of this research task",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": "docs/configuration.md",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited c6 is a codex result (codex_read_file), not repo",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            },
+            {
+                "path": "tests/unit/server.test.ts",
+                "evidence": {
+                    "ref": "stat",
+                    "kind": "repo",
+                    "note": "cited c2 is a codex result (codex_read_file), not repo",
+                    "basis": "clone",
+                    "confidence": 1
+                }
+            }
+        ],
+        "deliverable": "Step 1 (Add Tiler API Key to Configuration): The `tilerApiKey` is added to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\nStep 2 (Create API Client Config Route): A new GET `/api/client-config` route is added to `src/server/index.ts` that returns a JSON object with the `tilerApiKey` and a `basemapConfigured` boolean indicating whether the key is set.\nStep 3 (Modify HTML Pages to Fetch API Key): Both `public/index.html` and `landing/index.html` fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only if a key is configured.\nStep 4 (Add User Feedback for Missing API Key): Both `public/index.html` and `landing/index.html` display a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' when the API key is missing.\nStep 5 (Add Server Logging for Missing API Key): The server logs a warning at startup if the `TILER_API_KEY` environment variable is empty.\nStep 6 (Update Documentation for Tiler API Key): README.md, .env.example, docker-compose.yml, and docs/configuration.md document the requirement for a Tiler API key, including instructions on how to obtain one from https://tiler.test/basemaps.\nStep 7 (Add Unit Test for API Client Config): A vitest unit test is added to `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilerApiKey` and `basemapConfigured` values based on the environment configuration.",
+        "verification": [
+            {
+                "command": "npm run lint",
+                "check_kind": "lint"
+            },
+            {
+                "command": "npm test",
+                "check_kind": "test",
+                "attached_by": "planner"
+            },
+            {
+                "command": "npm test",
+                "check_kind": "test"
+            },
+            {
+                "check_kind": "diagnostic",
+                "description": "Start the server and check logs for the warning message."
+            }
+        ],
+        "criterion_ids": [
+            "AC-1",
+            "AC-8",
+            "AC-2",
+            "AC-7",
+            "AC-10",
+            "AC-3",
+            "AC-4",
+            "AC-9",
+            "AC-5",
+            "AC-6"
+        ],
+        "schema_version": 1
+    },
+    "line_seeds": [
+        {
+            "path": "public/index.html",
+            "snippet": "837:     L.control.zoom({ position: 'topleft' }).addTo(map);",
+            "line_end": 853,
+            "verified": true,
+            "line_start": 836
+        },
+        {
+            "path": "src/server/index.ts",
+            "snippet": "33: export function createApp(",
+            "line_end": 60,
+            "verified": true,
+            "line_start": 33
+        },
+        {
+            "path": "landing/index.html",
+            "snippet": "855:     L.tileLayer('https://{s}.basemaps.example.com/dark_all/{z}/{x}/{y}{r}.png', {",
+            "line_end": 855,
+            "verified": true,
+            "line_start": 855
+        }
+    ],
+    "product_id": "2ffc5a02-0427-4c8e-b0ef-49e73d7b2a78",
+    "description": "Implement the following 7 coordinated steps in repository demo-app on a single branch. All changes land in one commit sequence on one branch — you are the single implementer for this repo.\n\n## Step 1: Add Tiler API Key to Configuration\n\nAdd `tilerApiKey` to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\nFiles: [src/config/env.ts]\nCriteria: AC-1, AC-8\nDeliverable: The `tilerApiKey` is added to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\nVerification: [lint] `npm run lint`; [test] `npm test` (attached by the planner: the repository's whole suite, not a check of any one criterion)\n\n## Step 2: Create API Client Config Route\n\nCreate a new GET `/api/client-config` route in `src/server/index.ts` that returns the API key and a boolean indicating if it's configured.\nFiles: [src/server/index.ts]\nDepends on (within this repo): [Add Tiler API Key to Configuration]\nCriteria: AC-2, AC-7, AC-10\nDeliverable: A new GET `/api/client-config` route is added to `src/server/index.ts` that returns a JSON object with the `tilerApiKey` and a `basemapConfigured` boolean indicating whether the key is set.\nVerification: [test] `npm test`\n\n## Step 3: Modify HTML Pages to Fetch API Key\n\nModify `public/index.html` and `landing/index.html` to fetch the `/api/client-config` endpoint and append the API key to the tile URLs if configured.\nFiles: [public/index.html landing/index.html]\nDepends on (within this repo): [Create API Client Config Route]\nCriteria: AC-3, AC-8\nDeliverable: Both `public/index.html` and `landing/index.html` fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only if a key is configured.\nVerification: [test] `npm test`\n\n## Step 4: Add User Feedback for Missing API Key\n\nDisplay a notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' in `public/index.html` and `landing/index.html` when the API key is missing.\nFiles: [public/index.html landing/index.html]\nDepends on (within this repo): [Modify HTML Pages to Fetch API Key]\nCriteria: AC-4, AC-9\nDeliverable: Both `public/index.html` and `landing/index.html` display a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' when the API key is missing.\nVerification: [test] `npm test`\n\n## Step 5: Add Server Logging for Missing API Key\n\nAdd a warning log in `src/server/index.ts` if the `TILER_API_KEY` environment variable is empty.\nFiles: [src/server/index.ts]\nDepends on (within this repo): [Create API Client Config Route]\nCriteria: AC-5, AC-9\nDeliverable: The server logs a warning at startup if the `TILER_API_KEY` environment variable is empty.\nVerification: [diagnostic] Start the server and check logs for the warning message.; [test] `npm test` (attached by the planner: the repository's whole suite, not a check of any one criterion)\n\n## Step 6: Update Documentation for Tiler API Key\n\nUpdate `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to document the requirement for a Tiler API key and provide instructions on obtaining one.\nFiles: [README.md .env.example docker-compose.yml docs/configuration.md]\nCriteria: AC-6, AC-9\nDeliverable: README.md, .env.example, docker-compose.yml, and docs/configuration.md document the requirement for a Tiler API key, including instructions on how to obtain one from https://tiler.test/basemaps.\nVerification: [lint] `npm run lint`\n\n## Step 7: Add Unit Test for API Client Config\n\nAdd a unit test in `tests/unit/server.test.ts` to verify the functionality of the new `/api/client-config` endpoint.\nFiles: [tests/unit/server.test.ts]\nDepends on (within this repo): [Create API Client Config Route]\nCriteria: AC-7, AC-10\nDeliverable: A vitest unit test is added to `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilerApiKey` and `basemapConfigured` values based on the environment configuration.\nVerification: [test] `npm test`\n\n\n## Acceptance criteria\n\n- AC-1 [risk: medium; checks: test]: The Tiler API key is added to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\n  Source: user — \"The `tilerApiKey` should be added to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\"\n- AC-8 [risk: medium; checks: test]: The Tiler API key comes from configuration, never hard-coded: add `tilerApiKey: process.env.TILER_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {'tilerApiKey': string, 'basemapConfigured': boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only when a key is configured.\n  Source: user — \"A. The Tiler API key comes from configuration, never hard-coded: add `tilerApiKey: process.env.TILER_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {'tilerApiKey': string, 'basemapConfigured': boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only when a key is configured.\"\n- AC-2 [risk: medium; checks: test]: A new GET `/api/client-config` route is added to `src/server/index.ts` that returns a JSON object with the `tilerApiKey` and a `basemapConfigured` boolean indicating whether the key is set.\n  Source: user — \"A new GET `/api/client-config` route should be added to `src/server/index.ts` that returns a JSON object with the `tilerApiKey` and a `basemapConfigured` boolean indicating whether the key is set.\"\n- AC-7 [risk: medium; checks: test]: A vitest unit test is added to `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilerApiKey` and `basemapConfigured` values based on the environment configuration.\n  Source: user — \"A vitest unit test should be added to `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilerApiKey` and `basemapConfigured` values based on the environment configuration.\"\n- AC-10 [risk: low; checks: test]: Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset.\n  Source: user — \"C. Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset.\"\n- AC-3 [risk: medium; checks: test]: Both `public/index.html` and `landing/index.html` fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only if a key is configured.\n  Source: user — \"Both `public/index.html` and `landing/index.html` should fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only if a key is configured.\"\n- AC-4 [risk: medium; checks: test]: Both `public/index.html` and `landing/index.html` display a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' when the API key is missing.\n  Source: user — \"Both `public/index.html` and `landing/index.html` should display a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' when the API key is missing.\"\n- AC-9 [risk: low; checks: test]: When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).'; the server logs a warning at startup when TILER_API_KEY is empty; README.md, .env.example, docker-compose.yml and docs/configuration.md document TILER_API_KEY (obtain one at https://tiler.test/basemaps; the basemap does not render without it); fix the 'no API keys' claim in landing/index.html.\n  Source: user — \"B. When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).'; the server logs a warning at startup when TILER_API_KEY is empty; README.md, .env.example, docker-compose.yml and docs/configuration.md document TILER_API_KEY (obtain one at https://tiler.test/basemaps; the basemap does not render without it); fix the 'no API keys' claim in landing/index.html.\"\n- AC-5 [risk: medium; checks: test]: The server logs a warning at startup if the `TILER_API_KEY` environment variable is empty.\n  Source: user — \"The server should log a warning at startup if the `TILER_API_KEY` environment variable is empty.\"\n- AC-6 [risk: low; checks: lint]: README.md, .env.example, docker-compose.yml, and docs/configuration.md document the requirement for a Tiler API key, including instructions on how to obtain one from https://tiler.test/basemaps.\n  Source: user — \"README.md, .env.example, docker-compose.yml, and docs/configuration.md should document the requirement for a Tiler API key, including instructions on how to obtain one from https://tiler.test/basemaps.\"\n\n## Deliverable\n\nStep 1 (Add Tiler API Key to Configuration): The `tilerApiKey` is added to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\nStep 2 (Create API Client Config Route): A new GET `/api/client-config` route is added to `src/server/index.ts` that returns a JSON object with the `tilerApiKey` and a `basemapConfigured` boolean indicating whether the key is set.\nStep 3 (Modify HTML Pages to Fetch API Key): Both `public/index.html` and `landing/index.html` fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the Tiler tile URLs only if a key is configured.\nStep 4 (Add User Feedback for Missing API Key): Both `public/index.html` and `landing/index.html` display a visible, non-blocking notice 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).' when the API key is missing.\nStep 5 (Add Server Logging for Missing API Key): The server logs a warning at startup if the `TILER_API_KEY` environment variable is empty.\nStep 6 (Update Documentation for Tiler API Key): README.md, .env.example, docker-compose.yml, and docs/configuration.md document the requirement for a Tiler API key, including instructions on how to obtain one from https://tiler.test/basemaps.\nStep 7 (Add Unit Test for API Client Config): A vitest unit test is added to `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilerApiKey` and `basemapConfigured` values based on the environment configuration.\n\n## Verification\n\n- [lint] `npm run lint`\n- [test] `npm test` (attached by the planner: the repository's whole suite, not a check of any one criterion)\n- [test] `npm test`\n- [diagnostic] Start the server and check logs for the warning message.\n\n## File evidence\n\n- src/config/env.ts — repo stat (clone) — cited c4 is a codex result (codex_read_file), not repo\n- src/server/index.ts — repo stat (clone) — cited c5 is a codex result (codex_read_file), not repo\n- public/index.html — repo stat (clone) — cited c1 is a codex result (codex_read_file), not repo\n- landing/index.html — repo stat (clone) — cited c3 is a codex result (codex_read_file), not repo\n- README.md — repo stat (clone) — cited c2 is a codex result (codex_read_file), not repo\n- .env.example — repo stat (clone) — cited \"<tool call id>\" is not a successful tool result of this research task\n- docker-compose.yml — repo stat (clone) — cited \"<tool call id>\" is not a successful tool result of this research task\n- docs/configuration.md — repo stat (clone) — cited c6 is a codex result (codex_read_file), not repo\n- tests/unit/server.test.ts — repo stat (clone) — cited c2 is a codex result (codex_read_file), not repo\n\n## Grounding note — orphan files\n\nThese files exist but are NOT imported anywhere in the repository: [README.md docker-compose.yml docs/configuration.md tests/unit/server.test.ts]\n\nEditing them has NO EFFECT on the live site — they ship as dead code. Before editing, use `codex_find_references` or `search_code` to locate the file that is actually rendered on the affected page (for Next.js projects: start from `app/**/page.tsx` and follow the `use client` component it renders, or from `app/api/**/route.ts` for API endpoints). Edit THAT file, not this one. If you conclude an orphan file should genuinely be wired up, do it explicitly by editing the importing file as well.\n\n## Planner-attached verification\n\n- AC-1 required a test check that step \"Add Tiler API Key to Configuration\" did not plan; the planner attached `npm test`, the one test command the repository's steps run: it is a whole-suite run, not evidence that AC-1 is met.\n- AC-5 required a test check that step \"Add Server Logging for Missing API Key\" did not plan; the planner attached `npm test`, the one test command the repository's steps run: it is a whole-suite run, not evidence that AC-5 is met.\n",
+    "dependencies": null,
+    "codex_version": 1,
+    "repository_id": "bb83a540-d16b-4e46-a674-6360915292e7",
+    "codex_patterns": "",
+    "attached_checks": [
+        {
+            "command": "npm test",
+            "check_kind": "test",
+            "task_index": 1,
+            "task_title": "Add Tiler API Key to Configuration",
+            "criterion_id": "AC-1"
+        },
+        {
+            "command": "npm test",
+            "check_kind": "test",
+            "task_index": 5,
+            "task_title": "Add Server Logging for Missing API Key",
+            "criterion_id": "AC-5"
+        }
+    ],
+    "files_to_change": [
+        "src/config/env.ts",
+        "src/server/index.ts",
+        "public/index.html",
+        "landing/index.html",
+        "README.md",
+        ".env.example",
+        "docker-compose.yml",
+        "docs/configuration.md",
+        "tests/unit/server.test.ts"
+    ],
+    "technical_brief": "### Technical Brief: Fixing Tiler Basemap API Key Configuration in Demo App\n\n#### Executive Summary\nThe Demo App application's map functionality is broken due to a missing Tiler API key. This brief outlines the necessary changes to dynamically fetch the API key from the environment, update the tile URLs, and provide user feedback when the key is missing. The goal is to ensure the basemap displays correctly and to improve the application's robustness and user experience.\n\n#### Key Findings\n- **Dynamic API Key Configuration**: The Tiler API key should be fetched from the environment and used in the tile URLs.\n- **User Feedback**: A clear notice should be displayed when the API key is missing.\n- **Server Logging**: The server should log a warning if the API key is not configured.\n- **Documentation Update**: Relevant documentation files should be updated to reflect the requirement for a Tiler API key.\n- **Unit Testing**: A unit test should be added to verify the new `/api/client-config` endpoint.\n\n#### Technical Recommendations\n\n##### Prioritized Recommendations\n\n1. **Dynamic API Key Configuration**\n   - **Action**: Add `tilerApiKey` to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\n   - **Action**: Create a new GET `/api/client-config` route in `src/server/index.ts` to return the API key and a boolean indicating if it's configured.\n   - **Action**: Modify `public/index.html` and `landing/index.html` to fetch the `/api/client-config` endpoint and append the API key to the tile URLs if configured.\n\n2. **User Feedback**\n   - **Action**: Display a notice \"Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).\" in `public/index.html` and `landing/index.html` when the API key is missing.\n   - **Action**: Remove or correct the \"no API keys\" claim in `landing/index.html`.\n\n3. **Server Logging**\n   - **Action**: Add a warning log in `src/server/index.ts` if the `TILER_API_KEY` environment variable is empty.\n\n4. **Documentation Update**\n   - **Action**: Update `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to document the requirement for a Tiler API key and provide instructions on obtaining one.\n\n5. **Unit Testing**\n   - **Action**: Add a unit test in `tests/unit/server.test.ts` to verify the functionality of the new `/api/client-config` endpoint.\n\n#### Risk Assessment\n\n- **Dynamic API Key Configuration**: Low risk, involves straightforward additions and modifications.\n- **User Feedback**: Low risk, involves adding a simple notice.\n- **Server Logging**: Low risk, involves adding a log statement.\n- **Documentation Update**: Low risk, involves updating documentation.\n- **Unit Testing**: Low risk, involves adding a test.\n\n#### Implementation Notes\n\n- **Testing**: Ensure `npm test` passes without any new failures.\n- **Deployment**: The repository owner must obtain a Tiler API key and set `TILER_API_KEY` in the deployment environment for the basemap to function correctly.\n- **Communication**: Inform developers and users about the new requirement for the Tiler API key through the updated documentation and user notices.\n\n### Review\n\n1. **Accuracy**: The brief correctly represents the source information, covering all key points from the Product Requirements Document.\n2. **Clarity**: The brief is understandable to a technical audience, providing clear and detailed actions.\n3. **Actionability**: The recommendations are concrete and prioritized, making it easy to follow the steps for implementation.\n\n### Conclusion\n\nThe brief is accurate, clear, and actionable. No revisions are necessary.\n\n### Technical Brief: Fixing Tiler Basemap API Key Configuration in Demo App\n\n#### Executive Summary\nThe Demo App application's map functionality is broken due to a missing Tiler API key. This brief outlines the necessary changes to dynamically fetch the API key from the environment, update the tile URLs, and provide user feedback when the key is missing. The goal is to ensure the basemap displays correctly and to improve the application's robustness and user experience.\n\n#### Key Findings\n- **Dynamic API Key Configuration**: The Tiler API key should be fetched from the environment and used in the tile URLs.\n- **User Feedback**: A clear notice should be displayed when the API key is missing.\n- **Server Logging**: The server should log a warning if the API key is not configured.\n- **Documentation Update**: Relevant documentation files should be updated to reflect the requirement for a Tiler API key.\n- **Unit Testing**: A unit test should be added to verify the new `/api/client-config` endpoint.\n\n#### Technical Recommendations\n\n##### Prioritized Recommendations\n\n1. **Dynamic API Key Configuration**\n   - **Action**: Add `tilerApiKey` to `src/config/env.ts` with a default value of `process.env.TILER_API_KEY || ''`.\n   - **Action**: Create a new GET `/api/client-config` route in `src/server/index.ts` to return the API key and a boolean indicating if it's configured.\n   - **Action**: Modify `public/index.html` and `landing/index.html` to fetch the `/api/client-config` endpoint and append the API key to the tile URLs if configured.\n\n2. **User Feedback**\n   - **Action**: Display a notice \"Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).\" in `public/index.html` and `landing/index.html` when the API key is missing.\n   - **Action**: Remove or correct the \"no API keys\" claim in `landing/index.html`.\n\n3. **Server Logging**\n   - **Action**: Add a warning log in `src/server/index.ts` if the `TILER_API_KEY` environment variable is empty.\n\n4. **Documentation Update**\n   - **Action**: Update `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to document the requirement for a Tiler API key and provide instructions on obtaining one.\n\n5. **Unit Testing**\n   - **Action**: Add a unit test in `tests/unit/server.test.ts` to verify the functionality of the new `/api/client-config` endpoint.\n\n#### Risk Assessment\n\n- **Dynamic API Key Configuration**: Low risk, involves straightforward additions and modifications.\n- **User Feedback**: Low risk, involves adding a simple notice.\n- **Server Logging**: Low risk, involves adding a log statement.\n- **Documentation Update**: Low risk, involves updating documentation.\n- **Unit Testing**: Low risk, involves adding a test.\n\n#### Implementation Notes\n\n- **Testing**: Ensure `npm test` passes without any new failures.\n- **Deployment**: The repository owner must obtain a Tiler API key and set `TILER_API_KEY` in the deployment environment for the basemap to function correctly.\n- **Communication**: Inform developers and users about the new requirement for the Tiler API key through the updated documentation and user notices.",
+    "affected_modules": [
+        "config",
+        "server",
+        "src/config",
+        "src/server",
+        "src/situation/config",
+        "src/situation/workers",
+        "src/utils"
+    ],
+    "cross_repo_touchpoints": [
+        "demo-app"
+    ]
+}

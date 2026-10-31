@@ -1,0 +1,40 @@
+[
+  {
+    "title": "Report API Key Status in Config",
+    "description": "Teach the config loader to report whether the API key is set and log a missing key once.",
+    "criterion_ids": ["AC-1", "AC-2"],
+    "deliverable": "config exposes apiKeyConfigured and logs a missing key at startup",
+    "verification": [{"check_kind": "test", "command": "npm test -- config"}],
+    "files": [{"path": "src/config.js", "evidence_ref": "hypothesis"}]
+  },
+  {
+    "title": "Expose API Key Flag on Status Endpoint",
+    "description": "Add api_key_configured to /api/status without returning the key.",
+    "criterion_ids": ["AC-3", "AC-4"],
+    "deliverable": "/api/status returns api_key_configured and never the key",
+    "verification": [{"check_kind": "test", "command": "npm test -- status"}],
+    "files": [{"path": "src/routes/status.js", "evidence_ref": "hypothesis"}],
+    "depends_on": ["Report API Key Status in Config"]
+  },
+  {
+    "title": "Fetch Status Flag on Page Load",
+    "description": "Both pages fetch /api/status on load.",
+    "criterion_ids": ["AC-5", "AC-6"],
+    "deliverable": "public and landing pages read api_key_configured on load",
+    "verification": [{"check_kind": "test", "command": "npm test -- pages"}],
+    "files": [{"path": "public/index.html", "evidence_ref": "hypothesis"}, {"path": "landing/index.html", "evidence_ref": "hypothesis"}],
+    "depends_on": ["Expose API Key Flag on Status Endpoint"]
+  },
+  {
+    "title": "Display Notice for Missing API Key",
+    "description": "Render a notice explaining how to set the key when the flag is false.",
+    "criterion_ids": ["AC-7", "AC-8"],
+    "deliverable": "a visible notice on both pages when the key is missing, hidden otherwise",
+    "verification": [{"check_kind": "test", "command": "npm test -- notice"}],
+    "files": [{"path": "public/index.html", "evidence_ref": "hypothesis"}, {"path": "landing/index.html", "evidence_ref": "hypothesis"}],
+    "depends_on": ["Fetch Status Flag on Page Load"],
+    "derived_criteria": [
+      {"id": "AC-9", "text": "Both public/index.html and landing/index.html display a visible notice when the API key is missing", "reason": "the user asked for the notice on both pages", "risk": "medium"}
+    ]
+  }
+]

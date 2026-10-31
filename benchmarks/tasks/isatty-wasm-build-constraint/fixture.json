@@ -1,0 +1,34 @@
+{
+  "id": "isatty-wasm-build-constraint",
+  "summary": "Build constraints select no implementation for GOOS=wasip1/GOARCH=wasm; route every wasm target to the stub implementation.",
+  "repo": "https://github.com/mattn/go-isatty",
+  "base_sha": "7b513a986450394f7bbf1476909911b3aa3a55ce",
+  "language": "go",
+  "task_class": "dependency_or_config",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream commit; that commit is never reachable from the sealed clone.",
+    "upstream_commit": "dc81b0f7b365ad88a82f9f7838eb002b82d8bdc3 (add wasm target to others)",
+    "reference_patch": "git diff --binary 7b513a9..dc81b0f (one build-constraint line, verbatim)",
+    "historical_note": "Upstream added the wasm tag in 2020, before GOOS=wasip1 existed; at the base the js/wasm target already builds and the observable failure on a current toolchain is GOOS=wasip1. The prompt describes that observable failure.",
+    "fail_mode_note": "The hidden test cross-compiles with `go vet` (GOOS=js and GOOS=wasip1, GOARCH=wasm) and `go build` for three native targets via os/exec; at base the wasip1 vet fails, which the test reports as an assertion failure.",
+    "dependency_cache": "The module requires golang.org/x/sys v0.0.0-20200116001909-b77594299b42. Runs need the Go module proxy or a warm module cache; the cross-compiles also need the standard library build cache for wasm (first run about 20-40s).",
+    "size_note": "about 220 non-test Go lines at base"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "dc81b0f7b365ad88a82f9f7838eb002b82d8bdc3",
+        "paths": [
+          "isatty_others.go"
+        ]
+      }
+    ]
+  }
+}

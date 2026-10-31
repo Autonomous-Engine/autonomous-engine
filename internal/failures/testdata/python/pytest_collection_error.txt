@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-9.1.1, pluggy-1.6.0
+rootdir: /tmp/py
+collected 2 items / 1 error
+
+==================================== ERRORS ====================================
+____________________ ERROR collecting tests/test_imports.py ____________________
+ImportError while importing test module '/tmp/py/tests/test_imports.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_imports.py:1: in <module>
+    import missing_lib_zz
+E   ModuleNotFoundError: No module named 'missing_lib_zz'
+=========================== short test summary info ============================
+ERROR tests/test_imports.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 0.10s ===============================

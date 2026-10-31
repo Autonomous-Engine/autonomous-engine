@@ -1,0 +1,52 @@
+FAIL ./sum.test.js
+  ● Test suite failed to run
+
+    Cannot find module './nope' from 'sum.test.js'
+
+      1 | const { sum } = require('./sum')
+    > 2 | const { missing } = require('./nope')
+        |                     ^
+      3 |
+      4 | test('adds numbers', () => {
+      5 |   expect(sum(1, 2)).toBe(3)
+
+      at Resolver._throwModNotFoundError (../ts/node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.require (sum.test.js:2:21)
+
+FAIL ./other.test.js
+  ● sum › adds numbers
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 3
+    Received: -1
+
+      3 | describe('sum', () => {
+      4 |   test('adds numbers', () => {
+    > 5 |     expect(sum(1, 2)).toBe(3)
+        |                       ^
+      6 |   })
+      7 |   test('reads a property', () => {
+      8 |     const o = undefined
+
+      at Object.toBe (other.test.js:5:23)
+
+  ● sum › reads a property
+
+    TypeError: Cannot read properties of undefined (reading 'value')
+
+       7 |   test('reads a property', () => {
+       8 |     const o = undefined
+    >  9 |     expect(o.value).toBe(1)
+         |              ^
+      10 |   })
+      11 | })
+      12 |
+
+      at Object.value (other.test.js:9:14)
+
+Test Suites: 2 failed, 2 total
+Tests:       2 failed, 2 total
+Snapshots:   0 total
+Time:        0.513 s
+Ran all test suites.

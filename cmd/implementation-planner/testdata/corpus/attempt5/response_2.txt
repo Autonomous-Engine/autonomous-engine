@@ -1,0 +1,231 @@
+[
+  {
+    "title": "Add TileHost API Key to Configuration",
+    "description": "Add `tilesApiKey: process.env.TILES_API_KEY || ''` to `src/config/env.ts` to dynamically fetch the API key from environment variables.",
+    "files": [
+      {
+        "path": "src/config/env.ts",
+        "evidence_ref": "repo:stat"
+      }
+    ],
+    "depends_on": null,
+    "repository_id": "sample-app",
+    "criterion_ids": [
+      "AC-1",
+      "AC-4"
+    ],
+    "deliverable": "TileHost API key is fetched from environment variables in `src/config/env.ts`.",
+    "verification": [
+      {
+        "check_kind": "build",
+        "command": "npm run build"
+      },
+      {
+        "check_kind": "lint",
+        "command": "npm run lint"
+      }
+    ]
+  },
+  {
+    "title": "Create API Client Config Route",
+    "description": "Add a GET `/api/client-config` route in `src/server/index.ts` returning JSON with `tilesApiKey` and `basemapConfigured`.",
+    "files": [
+      {
+        "path": "src/server/index.ts",
+        "evidence_ref": "repo:stat"
+      }
+    ],
+    "depends_on": [
+      "Add TileHost API Key to Configuration"
+    ],
+    "repository_id": "sample-app",
+    "criterion_ids": [
+      "AC-1",
+      "AC-4"
+    ],
+    "deliverable": "A new route `/api/client-config` is added to `src/server/index.ts`.",
+    "verification": [
+      {
+        "check_kind": "test",
+        "command": "npm test"
+      },
+      {
+        "check_kind": "build",
+        "command": "npm run build"
+      },
+      {
+        "check_kind": "lint",
+        "command": "npm run lint"
+      }
+    ]
+  },
+  {
+    "title": "Update HTML Pages to Fetch API Key",
+    "description": "Modify `public/index.html` and `landing/index.html` to fetch `/api/client-config` and append the API key to the tile URLs.",
+    "files": [
+      {
+        "path": "public/index.html",
+        "evidence_ref": "repo:stat"
+      },
+      {
+        "path": "landing/index.html",
+        "evidence_ref": "repo:stat"
+      }
+    ],
+    "depends_on": [
+      "Create API Client Config Route"
+    ],
+    "repository_id": "sample-app",
+    "criterion_ids": [
+      "AC-1",
+      "AC-4"
+    ],
+    "deliverable": "Both HTML pages fetch the API key and append it to the tile URLs.",
+    "verification": [
+      {
+        "check_kind": "build",
+        "command": "npm run build"
+      },
+      {
+        "check_kind": "lint",
+        "command": "npm run lint"
+      }
+    ]
+  },
+  {
+    "title": "Add User Notification for Missing API Key",
+    "description": "Update `public/index.html` and `landing/index.html` to show a non-blocking notice when the API key is missing.",
+    "files": [
+      {
+        "path": "public/index.html",
+        "evidence_ref": "repo:stat"
+      },
+      {
+        "path": "landing/index.html",
+        "evidence_ref": "repo:stat"
+      }
+    ],
+    "depends_on": null,
+    "repository_id": "sample-app",
+    "criterion_ids": [
+      "AC-2",
+      "AC-5"
+    ],
+    "deliverable": "Non-blocking notice is displayed on both HTML pages when the API key is missing.",
+    "verification": [
+      {
+        "check_kind": "test",
+        "command": "npm test"
+      },
+      {
+        "check_kind": "build",
+        "command": "npm run build"
+      },
+      {
+        "check_kind": "lint",
+        "command": "npm run lint"
+      }
+    ]
+  },
+  {
+    "title": "Add Server Logging for Missing API Key",
+    "description": "Log a warning at server startup if `TILES_API_KEY` is not configured.",
+    "files": [
+      {
+        "path": "src/server/index.ts",
+        "evidence_ref": "repo:stat"
+      }
+    ],
+    "depends_on": [
+      "Add TileHost API Key to Configuration"
+    ],
+    "repository_id": "sample-app",
+    "criterion_ids": [
+      "AC-2",
+      "AC-6"
+    ],
+    "deliverable": "Server logs a warning at startup when `TILES_API_KEY` is empty.",
+    "verification": [
+      {
+        "check_kind": "test",
+        "command": "npm test"
+      },
+      {
+        "check_kind": "build",
+        "command": "npm run build"
+      },
+      {
+        "check_kind": "lint",
+        "command": "npm run lint"
+      },
+      {
+        "check_kind": "diagnostic",
+        "description": "Check server logs after startup with empty `TILES_API_KEY`."
+      }
+    ]
+  },
+  {
+    "title": "Update Documentation for TileHost API Key",
+    "description": "Update `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to document the requirement for obtaining and setting the TileHost API key.",
+    "files": [
+      {
+        "path": "README.md",
+        "evidence_ref": "repo:stat"
+      },
+      {
+        "path": ".env.example",
+        "evidence_ref": "repo:stat"
+      },
+      {
+        "path": "docker-compose.yml",
+        "evidence_ref": "repo:stat"
+      },
+      {
+        "path": "docs/configuration.md",
+        "evidence_ref": "repo:stat"
+      }
+    ],
+    "depends_on": null,
+    "repository_id": "sample-app",
+    "criterion_ids": [
+      "AC-2",
+      "AC-7"
+    ],
+    "deliverable": "Documentation is updated to reflect the requirement for obtaining and setting the TileHost API key.",
+    "verification": [
+      {
+        "check_kind": "build",
+        "command": "npm run build"
+      },
+      {
+        "check_kind": "lint",
+        "command": "npm run lint"
+      }
+    ]
+  },
+  {
+    "title": "Add Unit Test for API Client Config",
+    "description": "Add a unit test to verify the behavior of the `/api/client-config` endpoint.",
+    "files": [
+      {
+        "path": "tests/unit/server.test.ts",
+        "evidence_ref": "repo:stat"
+      }
+    ],
+    "depends_on": [
+      "Create API Client Config Route"
+    ],
+    "repository_id": "sample-app",
+    "criterion_ids": [
+      "AC-3",
+      "AC-8"
+    ],
+    "deliverable": "A unit test is added for the `/api/client-config` endpoint.",
+    "verification": [
+      {
+        "check_kind": "test",
+        "command": "npm test"
+      }
+    ]
+  }
+]

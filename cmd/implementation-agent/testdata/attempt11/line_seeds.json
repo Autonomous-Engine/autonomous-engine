@@ -1,0 +1,23 @@
+[
+ {
+  "path": "public/index.html",
+  "line_start": 836,
+  "line_end": 853,
+  "snippet": "836:     const map = L.map('map', { zoomControl: false }).setView([40, -100], 4);\n837:     L.control.zoom({ position: 'topleft' }).addTo(map);\n840:     L.tileLayer('https://{s}.basemaps.example.com/dark_nolabels/{z}/{x}/{y}{r}.png', {\n841:       attribution: '&copy; OSM &copy; Tiler',\n842:       subdomains: 'abcd',\n843:       maxZoom: 19,\n844:     }).addTo(map);\n848:     const labelsLayer = L.tileLayer('https://{s}.basemaps.example.com/dark_only_labels/{z}/{x}/{y}{r}.png', {\n849:       attribution: '',\n850:       subdomains: 'abcd',\n851:       maxZoom: 19,\n852:       pane: 'overlayPane',",
+  "verified": true
+ },
+ {
+  "path": "src/server/index.ts",
+  "line_start": 33,
+  "line_end": 60,
+  "snippet": "33: export function createApp(\n60:   const publicDir = path.join(process.cwd(), 'public');",
+  "verified": true
+ },
+ {
+  "path": "landing/index.html",
+  "line_start": 855,
+  "line_end": 855,
+  "snippet": "855:     L.tileLayer('https://{s}.basemaps.example.com/dark_all/{z}/{x}/{y}{r}.png', {",
+  "verified": true
+ }
+]

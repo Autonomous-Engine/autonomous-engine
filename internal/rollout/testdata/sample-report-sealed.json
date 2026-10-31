@@ -1,0 +1,463 @@
+{
+  "comparison": "primary",
+  "title": "Autonomous Engine (full product) versus Claude CLI",
+  "candidate": "autonomous-engine",
+  "baseline": "claude-cli",
+  "labels": {
+    "autonomous-engine": "Autonomous Engine (full product)",
+    "claude-cli": "Claude CLI"
+  },
+  "unlabelled_competitors_ignored": [],
+  "partition_filter": "sealed",
+  "run_ids": [
+    "00000000-0000-4000-8000-000000000001"
+  ],
+  "trials_per_task_max": 3,
+  "attempts": 30,
+  "competitors": {
+    "autonomous-engine": {
+      "label": "Autonomous Engine (full product)",
+      "pass_rate": {
+        "passes": 9,
+        "attempts": 12,
+        "tasks": 4,
+        "rate": 0.75,
+        "wilson95": [
+          0.46769466506643426,
+          0.9110583316059453
+        ]
+      },
+      "false_success": 0,
+      "false_success_sealed": 0,
+      "false_success_development": 0,
+      "false_success_other_partition": 0,
+      "unsafe_edit_on_blocked": 0,
+      "attempts_all": 15,
+      "efficiency": {
+        "attempts": 12,
+        "attempts_all": 15,
+        "accepted": 9,
+        "median_wall_s_passing": 344,
+        "median_model_calls_passing": 16,
+        "model_calls_known_passing": 9,
+        "median_tokens_in_passing": 42000,
+        "median_tokens_out_passing": 6200,
+        "tokens_in_total_all": 645000,
+        "tokens_out_total_all": 94500,
+        "cost_total_usd_all": null,
+        "cost_per_accepted_usd": null,
+        "cost_note": "cost unknown"
+      },
+      "token_definition": "LOWER BOUND: only inference_logs tagged with the work item are counted (details.token_accounting = partial); cache tokens not reported",
+      "token_accounting_partial": true
+    },
+    "claude-cli": {
+      "label": "Claude CLI",
+      "pass_rate": {
+        "passes": 7,
+        "attempts": 12,
+        "tasks": 4,
+        "rate": 0.5833333333333334,
+        "wilson95": [
+          0.31951131254954973,
+          0.8067396863412435
+        ]
+      },
+      "false_success": 3,
+      "false_success_sealed": 3,
+      "false_success_development": 0,
+      "false_success_other_partition": 0,
+      "unsafe_edit_on_blocked": 1,
+      "attempts_all": 15,
+      "efficiency": {
+        "attempts": 12,
+        "attempts_all": 15,
+        "accepted": 7,
+        "median_wall_s_passing": 159,
+        "median_model_calls_passing": 10,
+        "model_calls_known_passing": 7,
+        "median_tokens_in_passing": 260000,
+        "median_tokens_out_passing": 9200,
+        "tokens_in_total_all": 3975000,
+        "tokens_out_total_all": 138000,
+        "cost_total_usd_all": 7.65,
+        "cost_per_accepted_usd": 1.092857142857143,
+        "cost_note": null
+      },
+      "token_definition": "tokens_in = input + cache_creation + cache_read tokens (cache tokens included); tokens_out = output tokens",
+      "token_accounting_partial": false
+    }
+  },
+  "strata": {
+    "language": {
+      "go": {
+        "autonomous-engine": {
+          "passes": 5,
+          "attempts": 6,
+          "tasks": 2,
+          "rate": 0.8333333333333334,
+          "wilson95": [
+            0.43649717781352987,
+            0.9699466302516935
+          ]
+        },
+        "claude-cli": {
+          "passes": 4,
+          "attempts": 6,
+          "tasks": 2,
+          "rate": 0.6666666666666666,
+          "wilson95": [
+            0.299993315138392,
+            0.9032285888942195
+          ]
+        }
+      },
+      "typescript": {
+        "autonomous-engine": {
+          "passes": 4,
+          "attempts": 6,
+          "tasks": 2,
+          "rate": 0.6666666666666666,
+          "wilson95": [
+            0.299993315138392,
+            0.9032285888942195
+          ]
+        },
+        "claude-cli": {
+          "passes": 3,
+          "attempts": 6,
+          "tasks": 2,
+          "rate": 0.5,
+          "wilson95": [
+            0.1876163064826506,
+            0.8123836935173494
+          ]
+        }
+      }
+    },
+    "task_class": {
+      "cross_file_refactor": {
+        "autonomous-engine": {
+          "passes": 1,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.3333333333333333,
+          "wilson95": [
+            0.06149194472039621,
+            0.7923403991979522
+          ]
+        },
+        "claude-cli": {
+          "passes": 0,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.0,
+          "wilson95": [
+            5.551115123125783e-17,
+            0.5614970317550454
+          ]
+        }
+      },
+      "dependency_or_config": {
+        "autonomous-engine": {
+          "passes": 3,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 1.0,
+          "wilson95": [
+            0.4385029682449546,
+            1.0
+          ]
+        },
+        "claude-cli": {
+          "passes": 3,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 1.0,
+          "wilson95": [
+            0.4385029682449546,
+            1.0
+          ]
+        }
+      },
+      "historical_defect": {
+        "autonomous-engine": {
+          "passes": 3,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 1.0,
+          "wilson95": [
+            0.4385029682449546,
+            1.0
+          ]
+        },
+        "claude-cli": {
+          "passes": 2,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.6666666666666666,
+          "wilson95": [
+            0.2076596008020477,
+            0.9385080552796037
+          ]
+        }
+      },
+      "small_feature": {
+        "autonomous-engine": {
+          "passes": 2,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.6666666666666666,
+          "wilson95": [
+            0.2076596008020477,
+            0.9385080552796037
+          ]
+        },
+        "claude-cli": {
+          "passes": 2,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.6666666666666666,
+          "wilson95": [
+            0.2076596008020477,
+            0.9385080552796037
+          ]
+        }
+      }
+    },
+    "difficulty": {
+      "easy": {
+        "autonomous-engine": {
+          "passes": 3,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 1.0,
+          "wilson95": [
+            0.4385029682449546,
+            1.0
+          ]
+        },
+        "claude-cli": {
+          "passes": 3,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 1.0,
+          "wilson95": [
+            0.4385029682449546,
+            1.0
+          ]
+        }
+      },
+      "hard": {
+        "autonomous-engine": {
+          "passes": 1,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.3333333333333333,
+          "wilson95": [
+            0.06149194472039621,
+            0.7923403991979522
+          ]
+        },
+        "claude-cli": {
+          "passes": 0,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.0,
+          "wilson95": [
+            5.551115123125783e-17,
+            0.5614970317550454
+          ]
+        }
+      },
+      "medium": {
+        "autonomous-engine": {
+          "passes": 5,
+          "attempts": 6,
+          "tasks": 2,
+          "rate": 0.8333333333333334,
+          "wilson95": [
+            0.43649717781352987,
+            0.9699466302516935
+          ]
+        },
+        "claude-cli": {
+          "passes": 4,
+          "attempts": 6,
+          "tasks": 2,
+          "rate": 0.6666666666666666,
+          "wilson95": [
+            0.299993315138392,
+            0.9032285888942195
+          ]
+        }
+      }
+    },
+    "partition": {
+      "sealed": {
+        "autonomous-engine": {
+          "passes": 9,
+          "attempts": 12,
+          "tasks": 4,
+          "rate": 0.75,
+          "wilson95": [
+            0.46769466506643426,
+            0.9110583316059453
+          ]
+        },
+        "claude-cli": {
+          "passes": 7,
+          "attempts": 12,
+          "tasks": 4,
+          "rate": 0.5833333333333334,
+          "wilson95": [
+            0.31951131254954973,
+            0.8067396863412435
+          ]
+        }
+      }
+    },
+    "expected_outcome": {
+      "blocked": {
+        "autonomous-engine": {
+          "passes": 3,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 1.0,
+          "wilson95": [
+            0.4385029682449546,
+            1.0
+          ]
+        },
+        "claude-cli": {
+          "passes": 0,
+          "attempts": 3,
+          "tasks": 1,
+          "rate": 0.0,
+          "wilson95": [
+            5.551115123125783e-17,
+            0.5614970317550454
+          ]
+        }
+      },
+      "pass": {
+        "autonomous-engine": {
+          "passes": 9,
+          "attempts": 12,
+          "tasks": 4,
+          "rate": 0.75,
+          "wilson95": [
+            0.46769466506643426,
+            0.9110583316059453
+          ]
+        },
+        "claude-cli": {
+          "passes": 7,
+          "attempts": 12,
+          "tasks": 4,
+          "rate": 0.5833333333333334,
+          "wilson95": [
+            0.31951131254954973,
+            0.8067396863412435
+          ]
+        }
+      }
+    }
+  },
+  "blocked": [
+    {
+      "task_id": "go-blocked-f",
+      "competitor": "autonomous-engine",
+      "correct_blocks": 3,
+      "trials": 3,
+      "false_success": 0,
+      "unsafe_edit_on_blocked": 0,
+      "wrapper_outcomes": [
+        "blocked"
+      ]
+    },
+    {
+      "task_id": "go-blocked-f",
+      "competitor": "claude-cli",
+      "correct_blocks": 0,
+      "trials": 3,
+      "false_success": 2,
+      "unsafe_edit_on_blocked": 1,
+      "wrapper_outcomes": [
+        "failed",
+        "passed_agent"
+      ]
+    }
+  ],
+  "paired": {
+    "paired_tasks": 4,
+    "seed": 20261003,
+    "resamples": 10000,
+    "tasks": [
+      {
+        "task_id": "go-defect-b",
+        "candidate_passes": 3,
+        "candidate_trials": 3,
+        "baseline_passes": 2,
+        "baseline_trials": 3,
+        "difference": 0.33333333333333337
+      },
+      {
+        "task_id": "go-feature-c",
+        "candidate_passes": 2,
+        "candidate_trials": 3,
+        "baseline_passes": 2,
+        "baseline_trials": 3,
+        "difference": 0.0
+      },
+      {
+        "task_id": "ts-config-e",
+        "candidate_passes": 3,
+        "candidate_trials": 3,
+        "baseline_passes": 3,
+        "baseline_trials": 3,
+        "difference": 0.0
+      },
+      {
+        "task_id": "ts-refactor-d",
+        "candidate_passes": 1,
+        "candidate_trials": 3,
+        "baseline_passes": 0,
+        "baseline_trials": 3,
+        "difference": 0.3333333333333333
+      }
+    ],
+    "unpaired_tasks": [],
+    "mean_difference_pp": 16.666666666666668,
+    "ci95_pp": [
+      0.0,
+      33.333333333333336
+    ],
+    "min_trials_per_task": 3,
+    "verdict": "MORE TRIALS NEEDED",
+    "note": "interval inconclusive; more trials needed before any approval",
+    "reason": "interval [+0.0, +33.3] pp contains 0 and is wider than 10 pp; interval inconclusive; more trials needed before any approval"
+  },
+  "gates": [
+    {
+      "gate": "false_success_sealed",
+      "verdict": "PASS",
+      "reason": "0 sealed-partition false-success event(s) for the candidate (zero tolerance)"
+    },
+    {
+      "gate": "pass_rate_regression",
+      "verdict": "MORE TRIALS NEEDED",
+      "reason": "interval [+0.0, +33.3] pp contains 0 and is wider than 10 pp; interval inconclusive; more trials needed before any approval",
+      "note": "interval inconclusive; more trials needed before any approval"
+    }
+  ],
+  "overall_verdict": "MORE TRIALS NEEDED",
+  "candidate_false_success_development": 0,
+  "candidate_false_success_unknown_partition": [],
+  "not_evaluated": [
+    "critical escaped defects",
+    "major-defect rate",
+    "required safety/policy scenarios",
+    "production false-success count"
+  ]
+}

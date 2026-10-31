@@ -1,0 +1,12 @@
+-- 023_base_branch_required: repositories.base_branch must be resolved from
+-- the git remote at onboarding time; "main" is no longer an acceptable
+-- default. Dropping the DEFAULT 'main' clause makes the omission visible
+-- instead of silently landing every repo on a branch that may not exist.
+--
+-- We intentionally do NOT add a NOT NULL / check-non-empty constraint in
+-- this migration: the column is already NOT NULL per migration 009, and
+-- any pre-existing rows with base_branch = '' (none observed in the
+-- currently-deployed schema) would need a data-repair pass before a
+-- check constraint would succeed. The application-level contract is now
+-- "fail loud" via ResolveDefaultBranch — that's the enforcement point.
+ALTER TABLE repositories ALTER COLUMN base_branch DROP DEFAULT;

@@ -1,0 +1,606 @@
+{{- $fullname := include "autonomous-engine.fullname" . }}
+
+# ── Product Agent ─────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "product-agent") | nindent 4 }}
+spec:
+  replicas: {{ .Values.productAgent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "product-agent") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "product-agent") | nindent 8 }}
+    spec:
+      containers:
+        - name: product-agent
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "product-agent") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.productAgent.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.productAgent.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.productAgent.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.productAgent.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "product-agent") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "product-agent") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.productAgent.port }}
+      targetPort: {{ .Values.productAgent.port }}
+
+# ── Research Coordinator ──────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: research-coordinator
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "research-coordinator") | nindent 4 }}
+spec:
+  replicas: {{ .Values.researchCoordinator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "research-coordinator") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "research-coordinator") | nindent 8 }}
+    spec:
+      containers:
+        - name: research-coordinator
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "research-coordinator") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.researchCoordinator.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.researchCoordinator.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.researchCoordinator.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.researchCoordinator.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: research-coordinator
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "research-coordinator") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "research-coordinator") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.researchCoordinator.port }}
+      targetPort: {{ .Values.researchCoordinator.port }}
+
+# ── Research Agent (pool with HPA) ───────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: research-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "research-agent") | nindent 4 }}
+spec:
+  replicas: {{ .Values.researchAgent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "research-agent") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "research-agent") | nindent 8 }}
+    spec:
+      containers:
+        - name: research-agent
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "research-agent") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.researchAgent.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.researchAgent.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.researchAgent.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.researchAgent.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: research-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "research-agent") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "research-agent") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.researchAgent.port }}
+      targetPort: {{ .Values.researchAgent.port }}
+{{- if .Values.researchAgent.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: research-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "research-agent") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: research-agent
+  minReplicas: {{ .Values.researchAgent.hpa.minReplicas }}
+  maxReplicas: {{ .Values.researchAgent.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.researchAgent.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
+
+# ── Implementation Planner ────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: implementation-planner
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "implementation-planner") | nindent 4 }}
+spec:
+  replicas: {{ .Values.implementationPlanner.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "implementation-planner") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "implementation-planner") | nindent 8 }}
+    spec:
+      containers:
+        - name: implementation-planner
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "implementation-planner") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.implementationPlanner.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.implementationPlanner.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.implementationPlanner.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.implementationPlanner.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: implementation-planner
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "implementation-planner") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "implementation-planner") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.implementationPlanner.port }}
+      targetPort: {{ .Values.implementationPlanner.port }}
+
+# ── Implementation Agent (pool with HPA) ─────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: implementation-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "implementation-agent") | nindent 4 }}
+spec:
+  replicas: {{ .Values.implementationAgent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "implementation-agent") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "implementation-agent") | nindent 8 }}
+    spec:
+      containers:
+        - name: implementation-agent
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "implementation-agent") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.implementationAgent.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.implementationAgent.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.implementationAgent.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.implementationAgent.resources | nindent 12 }}
+          volumeMounts:
+            - name: repo-cache
+              mountPath: /repo-cache
+      volumes:
+        - name: repo-cache
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-repo-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: implementation-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "implementation-agent") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "implementation-agent") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.implementationAgent.port }}
+      targetPort: {{ .Values.implementationAgent.port }}
+{{- if .Values.implementationAgent.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: implementation-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "implementation-agent") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: implementation-agent
+  minReplicas: {{ .Values.implementationAgent.hpa.minReplicas }}
+  maxReplicas: {{ .Values.implementationAgent.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.implementationAgent.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
+
+# ── PR Coordinator ────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pr-coordinator
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "pr-coordinator") | nindent 4 }}
+spec:
+  replicas: {{ .Values.prCoordinator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "pr-coordinator") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "pr-coordinator") | nindent 8 }}
+    spec:
+      containers:
+        - name: pr-coordinator
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "pr-coordinator") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.prCoordinator.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.prCoordinator.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.prCoordinator.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.prCoordinator.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pr-coordinator
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "pr-coordinator") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "pr-coordinator") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.prCoordinator.port }}
+      targetPort: {{ .Values.prCoordinator.port }}
+
+# ── Review Agent ──────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "review-agent") | nindent 4 }}
+spec:
+  replicas: {{ .Values.reviewAgent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "review-agent") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "review-agent") | nindent 8 }}
+    spec:
+      containers:
+        - name: review-agent
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "review-agent") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.reviewAgent.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.reviewAgent.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.reviewAgent.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.reviewAgent.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "review-agent") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "review-agent") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.reviewAgent.port }}
+      targetPort: {{ .Values.reviewAgent.port }}
+
+# ── QA Agent (pool with HPA) ──────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qa-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "qa-agent") | nindent 4 }}
+spec:
+  replicas: {{ .Values.qaAgent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "qa-agent") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "qa-agent") | nindent 8 }}
+    spec:
+      containers:
+        - name: qa-agent
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "qa-agent") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.qaAgent.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.qaAgent.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.qaAgent.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.qaAgent.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qa-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "qa-agent") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "qa-agent") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.qaAgent.port }}
+      targetPort: {{ .Values.qaAgent.port }}
+{{- if .Values.qaAgent.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: qa-agent
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "qa-agent") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: qa-agent
+  minReplicas: {{ .Values.qaAgent.hpa.minReplicas }}
+  maxReplicas: {{ .Values.qaAgent.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.qaAgent.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
+
+# ── Shared PVC for repo-cache ─────────────────────────────────────────────────
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-repo-cache
+  labels:
+    {{- include "autonomous-engine.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteMany"]
+  {{- if .Values.persistence.repoCache.storageClass }}
+  storageClassName: {{ .Values.persistence.repoCache.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.repoCache.size }}

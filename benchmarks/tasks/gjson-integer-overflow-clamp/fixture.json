@@ -1,0 +1,35 @@
+{
+  "id": "gjson-integer-overflow-clamp",
+  "summary": "Result.Int()/Uint() wrap around instead of clamping when the JSON number or numeric string is out of range.",
+  "repo": "https://github.com/tidwall/gjson",
+  "base_sha": "6ac9851f5247bff94b0df2262ea60096fc0afb83",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "hard",
+  "size_stratum": "medium",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "eaae8c63338d6d71ea606b788243ca1c5b39a068",
+    "upstream_issue": "https://github.com/tidwall/gjson/issues/394",
+    "reference_patch_note": "Upstream's added TestIntOverflow asserts Go float->int conversion results that are implementation-defined (it fails on windows/amd64 with Go 1.27), so that hunk is omitted from the reference patch; the source change and the update of the pre-existing wrap-around expectations are kept verbatim."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "eaae8c63338d6d71ea606b788243ca1c5b39a068",
+        "paths": [
+          "gjson.go",
+          "gjson_test.go"
+        ],
+        "drop_hunks_containing": [
+          "TestIntOverflow"
+        ]
+      }
+    ]
+  }
+}

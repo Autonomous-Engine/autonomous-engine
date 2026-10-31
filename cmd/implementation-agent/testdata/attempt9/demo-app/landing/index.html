@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Demo App: community places - parks, libraries and cafes on one page. Open map, no API keys.">
+  <title>Demo App - Places near you</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Demo App">
+  <meta property="og:description" content="Find parks, libraries and cafes on one map, with opening hours and search.">
+  <meta property="og:image" content="/screenshot.png">
+  <meta name="theme-color" content="#1d2733">
+  <meta name="color-scheme" content="dark light">
+  <meta name="robots" content="index, follow">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Demo App">
+  <meta name="twitter:image" content="/screenshot.png">
+  <meta name="application-name" content="Demo App">
+  <meta name="twitter:description" content="An open map of community places. No API keys.">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://a.basemaps.example.com">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <style>
+    :root {
+      --bg: #11161c;
+      --panel: #1d2733;
+      --border: #2c3a4a;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #4fb3a9;
+    }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .lp-toolbar {
+      display: flex; /* parks */
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-search {
+      align-items: center; /* parks */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-chip {
+      gap: 8px; /* parks */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-card {
+      padding: 6px 10px; /* parks */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-legend {
+      border-radius: 6px; /* parks */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-drawer {
+      font-size: 13px; /* parks */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-badge {
+      color: var(--text); /* parks */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-list {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-row {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-tab {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-hours {
+      cursor: pointer; /* parks */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-filter {
+      margin: 0 0 6px; /* parks */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-popup {
+      display: flex; /* parks */
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-cluster {
+      align-items: center; /* parks */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-toast {
+      gap: 8px; /* parks */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-footer {
+      padding: 6px 10px; /* parks */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-menu {
+      border-radius: 6px; /* parks */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-pager {
+      font-size: 13px; /* parks */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-toolbar.libraries {
+      color: var(--text); /* libraries */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-search.libraries {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-chip.libraries {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-card.libraries {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-legend.libraries {
+      cursor: pointer; /* libraries */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-drawer.libraries {
+      margin: 0 0 6px; /* libraries */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-badge.libraries {
+      display: flex; /* libraries */
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-list.libraries {
+      align-items: center; /* libraries */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-row.libraries {
+      gap: 8px; /* libraries */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-tab.libraries {
+      padding: 6px 10px; /* libraries */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-hours.libraries {
+      border-radius: 6px; /* libraries */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-filter.libraries {
+      font-size: 13px; /* libraries */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-popup.libraries {
+      color: var(--text); /* libraries */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-cluster.libraries {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-toast.libraries {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-footer.libraries {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-menu.libraries {
+      cursor: pointer; /* libraries */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-pager.libraries {
+      margin: 0 0 6px; /* libraries */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-toolbar.cafes {
+      display: flex; /* cafes */
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-search.cafes {
+      align-items: center; /* cafes */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-chip.cafes {
+      gap: 8px; /* cafes */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-card.cafes {
+      padding: 6px 10px; /* cafes */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-legend.cafes {
+      border-radius: 6px; /* cafes */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-drawer.cafes {
+      font-size: 13px; /* cafes */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-badge.cafes {
+      color: var(--text); /* cafes */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-list.cafes {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-row.cafes {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-tab.cafes {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-hours.cafes {
+      cursor: pointer; /* cafes */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-filter.cafes {
+      margin: 0 0 6px; /* cafes */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-popup.cafes {
+      display: flex; /* cafes */
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-cluster.cafes {
+      align-items: center; /* cafes */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-toast.cafes {
+      gap: 8px; /* cafes */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-footer.cafes {
+      padding: 6px 10px; /* cafes */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-menu.cafes {
+      border-radius: 6px; /* cafes */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-pager.cafes {
+      font-size: 13px; /* cafes */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-toolbar.museums {
+      color: var(--text); /* museums */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-search.museums {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-chip.museums {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-card.museums {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-legend.museums {
+      cursor: pointer; /* museums */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-drawer.museums {
+      margin: 0 0 6px; /* museums */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-badge.museums {
+      display: flex; /* museums */
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-list.museums {
+      align-items: center; /* museums */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-row.museums {
+      gap: 8px; /* museums */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-tab.museums {
+      padding: 6px 10px; /* museums */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-hours.museums {
+      border-radius: 6px; /* museums */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-filter.museums {
+      font-size: 13px; /* museums */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-popup.museums {
+      color: var(--text); /* museums */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-cluster.museums {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-toast.museums {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-footer.museums {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-menu.museums {
+      cursor: pointer; /* museums */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-pager.museums {
+      margin: 0 0 6px; /* museums */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-toolbar.markets {
+      display: flex; /* markets */
+      align-items: center;
+      gap: 8px;
+    }
+    .lp-search.markets {
+      align-items: center; /* markets */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .lp-chip.markets {
+      gap: 8px; /* markets */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-card.markets {
+      padding: 6px 10px; /* markets */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-legend.markets {
+      border-radius: 6px; /* markets */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .lp-drawer.markets {
+      font-size: 13px; /* markets */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .lp-badge.markets {
+      color: var(--text); /* markets */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-list.markets {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-row.markets {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .lp-tab.markets {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .lp-hours.markets {
+      cursor: pointer; /* markets */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <h1>Demo App</h1>
+    <p class="tagline">
+      <strong>Open data. Open source. No API keys. No sign-up.</strong>
+    </p>
+  </header>
+  <section class="panel" id="p-parks-0">
+    <h2>Parks</h2>
+    <p><span id="count-parks">0</span> in view</p>
+    <ul id="list-parks"></ul>
+  </section>
+  <section class="panel" id="p-libraries-0">
+    <h2>Libraries</h2>
+    <p><span id="count-libraries">0</span> in view</p>
+    <ul id="list-libraries"></ul>
+  </section>
+  <section class="panel" id="p-cafes-0">
+    <h2>Cafes</h2>
+    <p><span id="count-cafes">0</span> in view</p>
+    <ul id="list-cafes"></ul>
+  </section>
+  <section class="panel" id="p-museums-0">
+    <h2>Museums</h2>
+    <p><span id="count-museums">0</span> in view</p>
+    <ul id="list-museums"></ul>
+  </section>
+  <section class="panel" id="p-markets-0">
+    <h2>Markets</h2>
+    <p><span id="count-markets">0</span> in view</p>
+    <ul id="list-markets"></ul>
+  </section>
+  <section class="panel" id="p-pools-0">
+    <h2>Pools</h2>
+    <p><span id="count-pools">0</span> in view</p>
+    <ul id="list-pools"></ul>
+  </section>
+  <section class="panel" id="p-gardens-0">
+    <h2>Gardens</h2>
+    <p><span id="count-gardens">0</span> in view</p>
+    <ul id="list-gardens"></ul>
+  </section>
+  <section class="panel" id="p-theatres-0">
+    <h2>Theatres</h2>
+    <p><span id="count-theatres">0</span> in view</p>
+    <ul id="list-theatres"></ul>
+  </section>
+  <section class="panel" id="p-bakeries-0">
+    <h2>Bakeries</h2>
+    <p><span id="count-bakeries">0</span> in view</p>
+    <ul id="list-bakeries"></ul>
+  </section>
+  <section class="panel" id="p-bookshops-0">
+    <h2>Bookshops</h2>
+    <p><span id="count-bookshops">0</span> in view</p>
+    <ul id="list-bookshops"></ul>
+  </section>
+  <section class="panel" id="p-playgrounds-0">
+    <h2>Playgrounds</h2>
+    <p><span id="count-playgrounds">0</span> in view</p>
+    <ul id="list-playgrounds"></ul>
+  </section>
+  <section class="panel" id="p-galleries-0">
+    <h2>Galleries</h2>
+    <p><span id="count-galleries">0</span> in view</p>
+    <ul id="list-galleries"></ul>
+  </section>
+  <section class="panel" id="p-halls-0">
+    <h2>Halls</h2>
+    <p><span id="count-halls">0</span> in view</p>
+    <ul id="list-halls"></ul>
+  </section>
+  <section class="panel" id="p-studios-0">
+    <h2>Studios</h2>
+    <p><span id="count-studios">0</span> in view</p>
+    <ul id="list-studios"></ul>
+  </section>
+  <section class="panel" id="p-clinics-0">
+    <h2>Clinics</h2>
+    <p><span id="count-clinics">0</span> in view</p>
+    <ul id="list-clinics"></ul>
+  </section>
+  <section class="panel" id="p-trails-0">
+    <h2>Trails</h2>
+    <p><span id="count-trails">0</span> in view</p>
+    <ul id="list-trails"></ul>
+  </section>
+  <section class="panel" id="p-parks-1">
+    <h2>Parks</h2>
+    <p><span id="count-parks">0</span> in view</p>
+    <ul id="list-parks"></ul>
+  </section>
+  <section class="panel" id="p-libraries-1">
+    <h2>Libraries</h2>
+    <p><span id="count-libraries">0</span> in view</p>
+    <ul id="list-libraries"></ul>
+  </section>
+  <section class="panel" id="p-cafes-1">
+    <h2>Cafes</h2>
+    <p><span id="count-cafes">0</span> in view</p>
+    <ul id="list-cafes"></ul>
+  </section>
+  <section class="panel" id="p-museums-1">
+    <h2>Museums</h2>
+    <p><span id="count-museums">0</span> in view</p>
+    <ul id="list-museums"></ul>
+  </section>
+  <section class="panel" id="p-markets-1">
+    <h2>Markets</h2>
+    <p><span id="count-markets">0</span> in view</p>
+    <ul id="list-markets"></ul>
+  </section>
+  <section class="panel" id="p-pools-1">
+    <h2>Pools</h2>
+    <p><span id="count-pools">0</span> in view</p>
+    <ul id="list-pools"></ul>
+  </section>
+  <section class="panel" id="p-gardens-1">
+    <h2>Gardens</h2>
+    <p><span id="count-gardens">0</span> in view</p>
+    <ul id="list-gardens"></ul>
+  </section>
+  <section class="panel" id="p-theatres-1">
+    <h2>Theatres</h2>
+    <p><span id="count-theatres">0</span> in view</p>
+    <ul id="list-theatres"></ul>
+  </section>
+  <section class="panel" id="p-bakeries-1">
+    <h2>Bakeries</h2>
+    <p><span id="count-bakeries">0</span> in view</p>
+    <ul id="list-bakeries"></ul>
+  </section>
+  <section class="panel" id="p-bookshops-1">
+    <h2>Bookshops</h2>
+    <p><span id="count-bookshops">0</span> in view</p>
+    <ul id="list-bookshops"></ul>
+  </section>
+  <section class="panel" id="p-playgrounds-1">
+    <h2>Playgrounds</h2>
+    <p><span id="count-playgrounds">0</span> in view</p>
+    <ul id="list-playgrounds"></ul>
+  </section>
+  <section class="panel" id="p-galleries-1">
+    <h2>Galleries</h2>
+    <p><span id="count-galleries">0</span> in view</p>
+    <ul id="list-galleries"></ul>
+  </section>
+  <section class="panel" id="p-halls-1">
+    <h2>Halls</h2>
+    <p><span id="count-halls">0</span> in view</p>
+    <ul id="list-halls"></ul>
+  </section>
+  <section class="panel" id="p-studios-1">
+    <h2>Studios</h2>
+    <p><span id="count-studios">0</span> in view</p>
+    <ul id="list-studios"></ul>
+  </section>
+  <section class="panel" id="p-clinics-1">
+    <h2>Clinics</h2>
+    <p><span id="count-clinics">0</span> in view</p>
+    <ul id="list-clinics"></ul>
+  </section>
+  <section class="panel" id="p-trails-1">
+    <h2>Trails</h2>
+    <p><span id="count-trails">0</span> in view</p>
+    <ul id="list-trails"></ul>
+  </section>
+  <section class="panel" id="p-parks-2">
+    <h2>Parks</h2>
+    <p><span id="count-parks">0</span> in view</p>
+    <ul id="list-parks"></ul>
+  </section>
+  <section class="panel" id="p-libraries-2">
+    <h2>Libraries</h2>
+    <p><span id="count-libraries">0</span> in view</p>
+    <ul id="list-libraries"></ul>
+  </section>
+  <section class="panel" id="p-cafes-2">
+    <h2>Cafes</h2>
+    <p><span id="count-cafes">0</span> in view</p>
+    <ul id="list-cafes"></ul>
+  </section>
+  <section class="panel" id="p-museums-2">
+    <h2>Museums</h2>
+    <p><span id="count-museums">0</span> in view</p>
+    <ul id="list-museums"></ul>
+  </section>
+  <section class="panel" id="p-markets-2">
+    <h2>Markets</h2>
+    <p><span id="count-markets">0</span> in view</p>
+    <ul id="list-markets"></ul>
+  </section>
+  <section class="panel" id="p-pools-2">
+    <h2>Pools</h2>
+    <p><span id="count-pools">0</span> in view</p>
+    <ul id="list-pools"></ul>
+  </section>
+  <section class="panel" id="p-gardens-2">
+    <h2>Gardens</h2>
+    <p><span id="count-gardens">0</span> in view</p>
+    <ul id="list-gardens"></ul>
+  </section>
+  <section class="panel" id="p-theatres-2">
+    <h2>Theatres</h2>
+    <p><span id="count-theatres">0</span> in view</p>
+    <ul id="list-theatres"></ul>
+  </section>
+  <section class="panel" id="p-bakeries-2">
+    <h2>Bakeries</h2>
+    <p><span id="count-bakeries">0</span> in view</p>
+    <ul id="list-bakeries"></ul>
+  </section>
+  <section class="panel" id="p-bookshops-2">
+    <h2>Bookshops</h2>
+    <p><span id="count-bookshops">0</span> in view</p>
+    <ul id="list-bookshops"></ul>
+  </section>
+  <section class="panel" id="p-playgrounds-2">
+    <h2>Playgrounds</h2>
+    <p><span id="count-playgrounds">0</span> in view</p>
+    <ul id="list-playgrounds"></ul>
+  </section>
+  <section class="panel" id="p-galleries-2">
+    <h2>Galleries</h2>
+    <p><span id="count-galleries">0</span> in view</p>
+    <ul id="list-galleries"></ul>
+  </section>
+  <section class="panel" id="p-halls-2">
+    <h2>Halls</h2>
+    <p><span id="count-halls">0</span> in view</p>
+    <ul id="list-halls"></ul>
+  </section>
+  <section class="panel" id="p-studios-2">
+    <h2>Studios</h2>
+    <p><span id="count-studios">0</span> in view</p>
+    <ul id="list-studios"></ul>
+  </section>
+  <section class="panel" id="p-clinics-2">
+    <h2>Clinics</h2>
+    <p><span id="count-clinics">0</span> in view</p>
+    <ul id="list-clinics"></ul>
+  </section>
+  <section class="panel" id="p-trails-2">
+    <h2>Trails</h2>
+    <p><span id="count-trails">0</span> in view</p>
+    <ul id="list-trails"></ul>
+  </section>
+  <section class="panel" id="p-parks-3">
+    <h2>Parks</h2>
+    <p><span id="count-parks">0</span> in view</p>
+    <ul id="list-parks"></ul>
+  </section>
+  <section class="panel" id="p-libraries-3">
+    <h2>Libraries</h2>
+    <p><span id="count-libraries">0</span> in view</p>
+    <ul id="list-libraries"></ul>
+  </section>
+  <div id="demo-map" class="map"></div>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    'use strict';
+    const DEMO_API = '';
+    const DEMO_CATEGORIES = ['parks', 'libraries', 'cafes'];
+    const SAMPLE_PLACES = [
+      { name: 'Sample place 4', category: 'libraries', lat: 34.5, lon: -84.25 },
+      { name: 'Sample place 5', category: 'cafes', lat: 35.5, lon: -85.25 },
+      { name: 'Sample place 6', category: 'parks', lat: 36.5, lon: -86.25 },
+      { name: 'Sample place 7', category: 'libraries', lat: 37.5, lon: -87.25 },
+      { name: 'Sample place 8', category: 'cafes', lat: 38.5, lon: -88.25 },
+      { name: 'Sample place 9', category: 'parks', lat: 39.5, lon: -89.25 },
+      { name: 'Sample place 10', category: 'libraries', lat: 40.5, lon: -90.25 },
+    ];
+    const map = L.map('demo-map', { zoomControl: false, scrollWheelZoom: false })
+      .setView([40, -100], 4);
+
+    // Base map
+    L.tileLayer('https://{s}.basemaps.example.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OSM &copy; Tiler',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(map);
+
+
+    // Parks panel (1)
+    async function loadParks0(bounds) {
+      const q = new URLSearchParams({ category: 'parks', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load parks right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'parks' }));
+    }
+
+    function renderParks0(places) {
+      const list = document.getElementById('list-parks');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row parks';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-parks').textContent = String(places.length);
+    }
+
+    // Libraries panel (1)
+    async function loadLibraries0(bounds) {
+      const q = new URLSearchParams({ category: 'libraries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load libraries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'libraries' }));
+    }
+
+    function renderLibraries0(places) {
+      const list = document.getElementById('list-libraries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row libraries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-libraries').textContent = String(places.length);
+    }
+
+    // Cafes panel (1)
+    async function loadCafes0(bounds) {
+      const q = new URLSearchParams({ category: 'cafes', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load cafes right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'cafes' }));
+    }
+
+    function renderCafes0(places) {
+      const list = document.getElementById('list-cafes');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row cafes';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-cafes').textContent = String(places.length);
+    }
+
+    // Museums panel (1)
+    async function loadMuseums0(bounds) {
+      const q = new URLSearchParams({ category: 'museums', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load museums right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'museums' }));
+    }
+
+    function renderMuseums0(places) {
+      const list = document.getElementById('list-museums');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row museums';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-museums').textContent = String(places.length);
+    }
+
+    // Markets panel (1)
+    async function loadMarkets0(bounds) {
+      const q = new URLSearchParams({ category: 'markets', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load markets right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'markets' }));
+    }
+
+    function renderMarkets0(places) {
+      const list = document.getElementById('list-markets');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row markets';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-markets').textContent = String(places.length);
+    }
+
+    // Pools panel (1)
+    async function loadPools0(bounds) {
+      const q = new URLSearchParams({ category: 'pools', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load pools right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'pools' }));
+    }
+
+    function renderPools0(places) {
+      const list = document.getElementById('list-pools');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row pools';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-pools').textContent = String(places.length);
+    }
+
+    // Gardens panel (1)
+    async function loadGardens0(bounds) {
+      const q = new URLSearchParams({ category: 'gardens', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load gardens right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'gardens' }));
+    }
+
+    function renderGardens0(places) {
+      const list = document.getElementById('list-gardens');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row gardens';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-gardens').textContent = String(places.length);
+    }
+
+    // Theatres panel (1)
+    async function loadTheatres0(bounds) {
+      const q = new URLSearchParams({ category: 'theatres', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load theatres right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'theatres' }));
+    }
+
+    function renderTheatres0(places) {
+      const list = document.getElementById('list-theatres');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row theatres';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-theatres').textContent = String(places.length);
+    }
+
+    // Bakeries panel (1)
+    async function loadBakeries0(bounds) {
+      const q = new URLSearchParams({ category: 'bakeries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load bakeries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'bakeries' }));
+    }
+
+    function renderBakeries0(places) {
+      const list = document.getElementById('list-bakeries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row bakeries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-bakeries').textContent = String(places.length);
+    }
+
+    // Bookshops panel (1)
+    async function loadBookshops0(bounds) {
+      const q = new URLSearchParams({ category: 'bookshops', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load bookshops right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'bookshops' }));
+    }
+
+    function renderBookshops0(places) {
+      const list = document.getElementById('list-bookshops');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row bookshops';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-bookshops').textContent = String(places.length);
+    }
+
+    // Playgrounds panel (1)
+    async function loadPlaygrounds0(bounds) {
+      const q = new URLSearchParams({ category: 'playgrounds', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${DEMO_API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load playgrounds right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'playgrounds' }));
+    }
+
+  </script>
+</body>
+</html>

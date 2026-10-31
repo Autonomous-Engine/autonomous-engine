@@ -1,0 +1,54 @@
+{
+  "$comment": "Corpus-level targets checked by verify-fixtures.py over the whole corpus (skipped with --only). Per language and overall: min_total, min_per_class (task_class -> count), min_blocked (expected_outcome == blocked), min_sealed_fraction (partition == sealed / total), min_per_difficulty (difficulty -> count), min_non_small (size_stratum medium or large). Every language present in the corpus must have an entry here. Target mix (~40% defects, 25% features, 15% refactors, 10% config, 10% blocked; roughly 30% development).",
+  "languages": {
+    "go": {
+      "min_total": 20,
+      "min_per_class": {
+        "historical_defect": 8,
+        "small_feature": 5,
+        "cross_file_refactor": 3,
+        "dependency_or_config": 2,
+        "blocked_or_underspecified": 2
+      },
+      "min_blocked": 2,
+      "min_sealed_fraction": 0.6,
+      "min_per_difficulty": {
+        "hard": 3
+      },
+      "min_non_small": 3
+    },
+    "typescript": {
+      "min_total": 20,
+      "min_per_class": {
+        "historical_defect": 8,
+        "small_feature": 5,
+        "cross_file_refactor": 3,
+        "dependency_or_config": 2,
+        "blocked_or_underspecified": 2
+      },
+      "min_blocked": 2,
+      "min_sealed_fraction": 0.6,
+      "min_per_difficulty": {
+        "hard": 3
+      },
+      "min_non_small": 3
+    }
+  },
+  "overall": {
+    "$comment": "Sum of the Go and TypeScript targets.",
+    "min_total": 40,
+    "min_per_class": {
+      "historical_defect": 16,
+      "small_feature": 10,
+      "cross_file_refactor": 6,
+      "dependency_or_config": 4,
+      "blocked_or_underspecified": 4
+    },
+    "min_blocked": 4,
+    "min_sealed_fraction": 0.6,
+    "min_per_difficulty": {
+      "hard": 6
+    },
+    "min_non_small": 6
+  }
+}

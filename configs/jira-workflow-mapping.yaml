@@ -1,0 +1,85 @@
+# jira-workflow-mapping.yaml — Maps internal work-item states to Jira transitions
+# Override the path with the JIRA_WORKFLOW_MAPPING environment variable.
+
+# ── State mappings ────────────────────────────────────────────────────────────
+# Each entry maps an internal WorkItemState to:
+#   jira_status   – the Jira status name to set (display name)
+#   transition_id – the numeric Jira transition ID (varies per project)
+#   label         – optional label to add to the Jira issue
+
+mappings:
+  # Work item created, not yet triaged.
+  intake:
+    jira_status: "To Do"
+    transition_id: "11"
+    label: "ae:intake"
+
+  # Product agent generating the PRD.
+  prd:
+    jira_status: "In Progress"
+    transition_id: "21"
+    label: "ae:prd"
+
+  # Research coordinator has dispatched research tasks.
+  research:
+    jira_status: "In Progress"
+    transition_id: "21"
+    label: "ae:research"
+
+  # Technical brief produced; implementation planned.
+  planning:
+    jira_status: "In Progress"
+    transition_id: "21"
+    label: "ae:planning"
+
+  # Implementation agent actively writing code.
+  implementation:
+    jira_status: "In Progress"
+    transition_id: "21"
+    label: "ae:implementation"
+
+  # Pull request submitted; awaiting review.
+  review:
+    jira_status: "In Review"
+    transition_id: "31"
+    label: "ae:review"
+
+  # PR merged; QA pipeline running.
+  qa:
+    jira_status: "Testing"
+    transition_id: "41"
+    label: "ae:qa"
+
+  # QA passed; PR merged to base branch.
+  done:
+    jira_status: "Done"
+    transition_id: "51"
+    label: "ae:done"
+
+  # Work item blocked; human review required.
+  blocked:
+    jira_status: "Blocked"
+    transition_id: "61"
+    label: "ae:blocked"
+
+# ── Comment templates ─────────────────────────────────────────────────────────
+# Templates used when the jira-sync service posts comments.
+comments:
+  pr_created: "Autonomous Engine submitted PR: {pr_url}"
+  pr_merged:  "Autonomous Engine merged PR: {pr_url}. QA validation in progress."
+  qa_passed:  "QA validation passed. Work item complete."
+  qa_failed:  "QA validation failed. Escalating for human review. Failures: {failures}"
+  blocked:    "Work item blocked by autonomous engine: {reason}"
+
+# ── Field mappings ────────────────────────────────────────────────────────────
+# Custom field IDs used when updating Jira issues.
+fields:
+  # Jira custom field for storing the internal work_item_id (UUID).
+  # Set to empty string to skip this field update.
+  internal_id_field: ""
+
+  # Story points field (e.g. customfield_10016 for Jira Software cloud)
+  story_points_field: "customfield_10016"
+
+  # Sprint field
+  sprint_field: "customfield_10020"

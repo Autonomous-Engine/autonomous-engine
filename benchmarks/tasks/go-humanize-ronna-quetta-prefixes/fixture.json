@@ -1,0 +1,35 @@
+{
+  "id": "go-humanize-ronna-quetta-prefixes",
+  "summary": "Add the ronna/quetta/ronto/quecto SI prefixes to SI formatting, SI parsing and big byte sizes.",
+  "repo": "https://github.com/dustin/go-humanize",
+  "base_sha": "bd075d4544f088461bb2f008c051897fdfae9ff2",
+  "language": "go",
+  "task_class": "small_feature",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "go test . && go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream feature commit; that commit is never reachable from the sealed clone.",
+    "upstream_feature_commit": "463a09566eca98da70446f23ce610d3ae8b8ba51",
+    "upstream_followup_commit": "269a86360bcf4032f437f78f7b7844e0aa4de882",
+    "reference_patch_range": "bd075d4..269a863 (the feature commit plus the follow-up that updated TestVeryVeryBigBytes, which the feature commit had broken)",
+    "fail_mode_note": "Replaced the build-mode fixture in M4-04. The root-package hidden tests use only API that exists at base (SI, ComputeSI, ParseSI, BigBytes, BigIBytes, ParseBigBytes with sizes computed via big.Int.Exp), so they compile at base and fail on behaviour (assert mode). The new exported BigRByte/BigQByte/BigRiByte/BigQiByte cannot be referenced without a compile error at base, so they are checked in a separate hidden package bench_bigsizes (external test package importing the module). The test command runs the root package first (`go test .`), so the base failure is the behavioural one; `go test ./...` then requires the constants as well. Prompt unchanged."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "269a86360bcf4032f437f78f7b7844e0aa4de882",
+        "paths": [
+          "bigbytes.go",
+          "bigbytes_test.go",
+          "si.go",
+          "si_test.go"
+        ]
+      }
+    ]
+  }
+}

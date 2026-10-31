@@ -1,0 +1,29 @@
+{
+  "name": "02-missing-error-path",
+  "defect_class": "missing_error_path",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "Load returns the parsed configuration from the JSON file at path.",
+      "source": {"kind": "derived", "reason": "the service reads its port from a JSON file"},
+      "risk": "low",
+      "required_checks": ["test"]
+    },
+    {
+      "id": "AC-2",
+      "text": "Load returns an error when the configuration file cannot be read (for example it does not exist); it never silently falls back to defaults.",
+      "source": {"kind": "user", "quote": "a missing config file must fail startup, not run with defaults"},
+      "risk": "high",
+      "required_checks": ["test"]
+    }
+  ],
+  "task_spec": {
+    "schema_version": 1,
+    "criterion_ids": ["AC-1", "AC-2"],
+    "deliverable": "config.Load reads and validates the JSON configuration",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [{"path": "config.go", "evidence": {"kind": "repo", "ref": "stat", "confidence": 1, "basis": "snapshot"}}]
+  },
+  "author_summary": "Added config.Load: reads the JSON file, returns parse errors for malformed JSON, and applies a sensible default port for an empty file. Every error path is handled and returned to the caller. Tests pass.",
+  "expect": {"criterion_ids": ["AC-2"], "file": "config.go", "line": 16}
+}

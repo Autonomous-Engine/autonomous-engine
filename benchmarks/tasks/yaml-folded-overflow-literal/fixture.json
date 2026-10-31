@@ -1,0 +1,33 @@
+{
+  "id": "yaml-folded-overflow-literal",
+  "summary": "stringify() emits folded block scalars whose unbreakable lines still exceed lineWidth; it should fall back to a literal block.",
+  "repo": "https://github.com/eemeli/yaml",
+  "base_sha": "108f699cf20354221df0fc6ac059a9ad39e70d6e",
+  "language": "typescript",
+  "task_class": "historical_defect",
+  "difficulty": "hard",
+  "size_stratum": "large",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { rm -f node_modules/.bench-result.json; npx jest --config config/jest.config.js tests/doc/foldFlowLines tests/doc/stringify tests/bench_ --json --outputFile=node_modules/.bench-result.json; rc=$?; node -e \"const fs=require('fs');const [rc,...h]=process.argv.slice(1);const on=h.some(p=>fs.existsSync(p));let r=null;try{r=JSON.parse(fs.readFileSync('node_modules/.bench-result.json','utf8'))}catch(e){}if(!r){if(rc==='0'){console.log('[setup failed] hidden tests did not run (no test report)');process.exit(1)}process.exit(+rc)}const t=r.testResults||[];const as=x=>x.assertionResults||[];const f=t.filter(x=>x.status==='failed'&&!as(x).some(a=>a.status==='failed'));if(f.length)console.log('[setup failed] '+f.length+' test file(s) failed to load');else if(r.numFailedTests>0)console.log('--- FAIL: '+r.numFailedTests+' test(s) failed');if(rc==='0'&&on&&!t.some(x=>/bench[-_]/.test(x.name.replace(/.*[\\x5c/]/,''))&&as(x).some(a=>a.status==='passed')&&!as(x).some(a=>a.status==='failed'))){console.log('[setup failed] hidden tests did not run');process.exit(1)}process.exit(+rc)\" \"$rc\" tests/bench_folded_overflow.ts; }",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "6be0a9136dca077864782d1ad3b53a2cbb35748e",
+    "upstream_issue": "https://github.com/eemeli/yaml/issues/585",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "jest 29 (babel-jest) via the repository's config/jest.config.js; runs the hidden tests plus tests/doc/foldFlowLines.ts and tests/doc/stringify.ts. The yaml-test-suite git submodule is not fetched by the sealed clone and its suite is not run. Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "6be0a9136dca077864782d1ad3b53a2cbb35748e",
+        "paths": [
+          "src/stringify/stringifyString.ts",
+          "tests/doc/foldFlowLines.ts"
+        ]
+      }
+    ]
+  }
+}

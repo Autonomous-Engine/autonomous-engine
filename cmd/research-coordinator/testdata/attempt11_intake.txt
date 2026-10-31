@@ -1,0 +1,19 @@
+Narrow, file-specific bug fix. Research may SKIP repository-wide exploration, history archaeology and pattern surveys: every file involved is listed below. Read only these files.
+
+Symptom: the Station Finder map shows the Mapforge tile error "api key required mapforge.example/keys" instead of the night basemap, because the Mapforge basemap tile URLs carry no API key.
+
+Files (repository sample-app, branch main):
+1. public/index.html, section "── Map ──" (around line 836-853): two Leaflet tile layers, 'https://{s}.tiles.mapforgecdn.example/night_base/{z}/{x}/{y}.png' and labelsLayer 'https://{s}.tiles.mapforgecdn.example/night_labels/{z}/{x}/{y}.png'. Served at /app by express.static in src/server/index.ts (line ~60).
+2. landing/index.html (around line 855): Leaflet tile layer 'https://{s}.tiles.mapforgecdn.example/night_full/{z}/{x}/{y}.png'; meta description (line 13) says "Open source, no API keys."
+3. src/config/env.ts: `export const config = {...}` of process.env reads.
+4. src/server/index.ts: `export function createApp(...)` (line 33) builds the Express app (static mounts, routers); tests import createApp.
+5. .env.example, docker-compose.yml (server `environment:` list), docs/configuration.md, README.md.
+6. Tests live in tests/unit/*.test.ts (vitest; tests/unit/server.test.ts uses supertest).
+
+Goals (acceptance criteria):
+A. The Mapforge API key comes from configuration, never hard-coded: add `mapforgeApiKey: process.env.MAPFORGE_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {"mapforgeApiKey": string, "basemapConfigured": boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the Mapforge tile URLs only when a key is configured.
+B. When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice "Basemap unavailable: MAPFORGE_API_KEY is not configured. See README (Configuration)."; the server logs a warning at startup when MAPFORGE_API_KEY is empty; README.md, .env.example, docker-compose.yml and docs/configuration.md document MAPFORGE_API_KEY (obtain one at https://mapforge.example/keys; the basemap does not render without it); fix the "no API keys" claim in landing/index.html.
+C. Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset.
+
+Hard constraints: never invent, guess or hard-code a Mapforge API key or a realistic-looking placeholder. This change cannot fully resolve the error by itself: the pull request description MUST state explicitly that the repository owner must obtain a Mapforge API key and set MAPFORGE_API_KEY in the deployment environment (.env / docker-compose) for the basemap error to go away. Do not touch the station feed importer. `npm test` must keep passing.
+

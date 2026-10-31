@@ -1,0 +1,47 @@
+
+ RUN  v1.6.1 /tmp/ts
+
+ ❯ src/sum.test.ts  (2 tests | 2 failed) 6ms
+   ❯ src/sum.test.ts > sum > adds numbers
+     → expected -1 to be 3 // Object.is equality
+   ❯ src/sum.test.ts > sum > throws on bad input
+     → Cannot read properties of undefined (reading 'value')
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/sum.test.ts > sum > adds numbers
+AssertionError: expected -1 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ -1
+
+ ❯ src/sum.test.ts:6:23
+      4| describe('sum', () => {
+      5|   it('adds numbers', () => {
+      6|     expect(sum(1, 2)).toBe(3)
+       |                       ^
+      7|   })
+      8|   it('throws on bad input', () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/sum.test.ts > sum > throws on bad input
+TypeError: Cannot read properties of undefined (reading 'value')
+ ❯ src/sum.test.ts:10:14
+      8|   it('throws on bad input', () => {
+      9|     const o: any = undefined
+     10|     expect(o.value).toBe(1)
+       |              ^
+     11|   })
+     12| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  22:26:36
+   Duration  1.15s (transform 74ms, setup 0ms, collect 39ms, tests 6ms, environment 0ms, prepare 381ms)
+

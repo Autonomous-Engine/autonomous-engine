@@ -1,0 +1,382 @@
+# Default values for autonomous-engine Helm chart.
+
+# Every service runs its own image, as published by
+# .github/workflows/publish-images.yml:
+#   <registry>/<repositoryPrefix><service>:<tag>
+#   e.g. ghcr.io/autonomous-engine/ae-gateway:v0.1.0
+image:
+  registry: ghcr.io
+  repositoryPrefix: autonomous-engine/ae-
+  # Empty = the release this chart belongs to ("v" + appVersion, e.g. v0.1.0).
+  # "stable" follows the newest release; any other published tag pins one.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Global replica defaults (override per-service below)
+replicaCount: 1
+
+# ── Infrastructure ────────────────────────────────────────────────────────────
+
+kafka:
+  enabled: true
+  image: apache/kafka:3.7.0
+  replicas: 1
+  port: 9092
+  storage:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  config:
+    offsetsTopicReplicationFactor: "1"
+    transactionStateLogReplicationFactor: "1"
+    transactionStateLogMinISR: "1"
+    autoCreateTopicsEnable: "true"
+    clusterId: autonomous-engine-cluster
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  replicas: 1
+  port: 5432
+  storage:
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  database: autonomous_engine
+  username: ae_user
+  # password set via secret
+
+qdrant:
+  enabled: true
+  image: qdrant/qdrant:latest
+  replicas: 1
+  port: 6333
+  storage:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Optional Redis for state shared between replicas: the dashboard WebSocket
+# fan-out and the portal / LLM-router rate limits. Off by default; a single
+# replica of every service needs nothing from it. dashboardBackend.replicas
+# above 1 requires it (the chart and the dashboard both refuse otherwise).
+# Set url to use an external Redis instead of the in-chart one.
+redis:
+  enabled: false
+  image: redis:7.4-alpine
+  port: 6379
+  url: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# ── Core Services ─────────────────────────────────────────────────────────────
+
+gateway:
+  replicas: 1
+  port: 8082
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+statusOrchestrator:
+  replicas: 1
+  port: 8089
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+webhookListener:
+  replicas: 1
+  port: 8081
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Agent Pool ────────────────────────────────────────────────────────────────
+
+productAgent:
+  replicas: 1
+  port: 8091
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+researchCoordinator:
+  replicas: 1
+  port: 8092
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+researchAgent:
+  replicas: 5
+  port: 8093
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+implementationPlanner:
+  replicas: 1
+  port: 8094
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+implementationAgent:
+  replicas: 3
+  port: 8095
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 1Gi
+
+prCoordinator:
+  replicas: 1
+  port: 8096
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+reviewAgent:
+  replicas: 1
+  port: 8097
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+qaAgent:
+  replicas: 2
+  port: 8098
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 750m
+      memory: 512Mi
+
+# ── Integration Services ──────────────────────────────────────────────────────
+
+githubService:
+  replicas: 1
+  port: 8083
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+jiraSync:
+  replicas: 1
+  port: 8084
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+changeReconciler:
+  replicas: 1
+  port: 8085
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+knowledgeIndexer:
+  replicas: 1
+  port: 8087
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+onboarding:
+  replicas: 1
+  port: 8086
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+dashboardBackend:
+  replicas: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+dashboardFrontend:
+  replicas: 1
+  port: 3000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── Customer Portal ───────────────────────────────────────────────────────────
+
+portal:
+  replicas: 1
+  port: 3100
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    gateway: gateway.autonomous-engine.local
+    webhook: webhook.autonomous-engine.local
+    dashboard: dashboard.autonomous-engine.local
+    portal: portal.autonomous-engine.local
+  tls: []
+
+# ── Config (non-secret) ───────────────────────────────────────────────────────
+
+config:
+  researchPoolSize: "5"
+  implPoolSize: "3"
+  qaPoolSize: "2"
+  gatewayPort: "8082"
+  webhookPort: "8081"
+  statusOrchestratorPort: "8089"
+  dashboardPort: "8080"
+  portalPort: "3100"
+  logLevel: "info"
+  featureFlags:
+    enableHumanReview: "true"
+    enableJiraSync: "true"
+
+# ── Secrets (set at deploy time) ──────────────────────────────────────────────
+
+secrets:
+  databaseURL: ""
+  kafkaBrokers: ""
+  masterEncryptionKey: ""
+  jwtSecret: ""
+  githubToken: ""
+  # Fallback for the GitHub webhook secret saved on the dashboard
+  # (Admin -> Integrations). With neither set, webhook-listener refuses
+  # every GitHub delivery.
+  githubWebhookSecret: ""
+  jiraAPIToken: ""
+  openAIAPIKey: ""
+  anthropicAPIKey: ""
+
+# ── Persistence ───────────────────────────────────────────────────────────────
+
+persistence:
+  repoCache:
+    size: 50Gi
+    storageClass: ""
+  backups:
+    size: 100Gi
+    storageClass: ""

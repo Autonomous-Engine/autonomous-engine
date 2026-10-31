@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/tmp/py/script.py", line 3, in <module>
+    print(div(1, 0))
+          ^^^^^^^^^
+  File "/tmp/py/calc.py", line 6, in div
+    return a / b
+           ~~^~~
+ZeroDivisionError: division by zero

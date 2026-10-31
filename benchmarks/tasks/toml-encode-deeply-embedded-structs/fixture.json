@@ -1,0 +1,34 @@
+{
+  "id": "toml-encode-deeply-embedded-structs",
+  "summary": "Encoder corrupts promoted fields of structs embedded three or more levels deep (shared backing array of the field-index path is overwritten by append).",
+  "repo": "https://github.com/BurntSushi/toml",
+  "base_sha": "702f5a6d00def72eaea44c3179fa22e050e208f7",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "hard",
+  "size_stratum": "medium",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "75a4f17a6da92eb899b599eafc43a2e7ddd76fc2",
+    "upstream_issue": "https://github.com/BurntSushi/toml/issues/430",
+    "reference_patch": "git diff --binary 702f5a6..75a4f17 (encode.go fix plus the upstream regression case, unchanged)",
+    "difficulty_note": "The symptom (repeated keys) is far from the cause: eStruct builds per-field index paths with append on a slice that shares its backing array across siblings; upstream only copied it on 32-bit platforms. The upstream author's own commit message says the cause was not fully understood.",
+    "size_note": "about 5.9k non-test Go lines at base"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "75a4f17a6da92eb899b599eafc43a2e7ddd76fc2",
+        "paths": [
+          "encode.go",
+          "encode_test.go"
+        ]
+      }
+    ]
+  }
+}

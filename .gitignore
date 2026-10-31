@@ -1,0 +1,61 @@
+.env
+bin/
+coverage.out
+node_modules/
+dashboard/dist/
+portal/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+/github-service
+/dashboard-backend
+/knowledge-indexer
+/credential-monitor
+/research-agent
+/implementation-agent
+/implementation-planner
+/review-agent
+/onboarding
+/product-agent
+/qa-agent
+/research-coordinator
+/pr-coordinator
+/change-reconciler
+/gateway
+/webhook-listener
+/jira-sync
+/status-orchestrator
+/portal
+/benchmark-probe-linux
+
+# Linux cross-builds produced by agents for docker cp live next to their main.go
+cmd/*/*-linux
+cmd/benchmark-probe/benchmark-probe
+
+# Ad-hoc diagnostic scripts from LSP/infra debugging
+scripts/lsp_probe.*
+
+# Agent backup / workspace leftovers
+*.bck.yml
+
+# Benchmark output
+benchmark-results/
+
+# Debug logs from pipeline test runs
+DEBUG_LOG*.md
+PASSING_CRITERIA*.md
+/docs
+verifier-eval.md
+
+# Local tooling, session notes and private planning documents (never published)
+.claude/
+.superpowers/
+__pycache__/
+RESUME.md
+ROADMAP_DECISIONS.md
+LICENSE_INTEGRATION.md
+IMPLEMENTATION_ROADMAP.md
+PERFORMANCE_BENCHMARKING.md
+SOFTWARE_AUDIT.md
+*;C/

@@ -1,0 +1,29 @@
+{
+  "name": "07-unvalidated-security-path",
+  "defect_class": "security_path_without_validation",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "Service accounts can authenticate with a service token (prefix svc_) that is present in the token store; Authorize returns \"service:<name>\" for it.",
+      "source": {"kind": "user", "quote": "let our cron jobs authenticate with service tokens"},
+      "risk": "high",
+      "required_checks": ["test"]
+    },
+    {
+      "id": "AC-2",
+      "text": "Any bearer token that is not in the token store, service tokens included, is rejected with ErrUnauthorized.",
+      "source": {"kind": "derived", "reason": "authentication must not accept unknown credentials"},
+      "risk": "high",
+      "required_checks": ["test"]
+    }
+  ],
+  "task_spec": {
+    "schema_version": 1,
+    "criterion_ids": ["AC-1", "AC-2"],
+    "deliverable": "Tokens.Authorize accepts store-issued service tokens",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [{"path": "auth.go", "evidence": {"kind": "repo", "ref": "stat", "confidence": 1, "basis": "snapshot"}}]
+  },
+  "author_summary": "Added service-token support to Authorize: tokens with the svc_ prefix are recognised as service accounts and mapped to service:<name>. Existing user-token validation is unchanged, so unknown user tokens are still rejected. Tests pass.",
+  "expect": {"criterion_ids": ["AC-2", "AC-1"], "file": "auth.go", "line": 22}
+}

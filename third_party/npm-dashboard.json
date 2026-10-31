@@ -1,0 +1,394 @@
+{
+  "@babel/runtime@7.29.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/babel/babel"
+  },
+  "@dagrejs/dagre@1.1.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/dagrejs/dagre"
+  },
+  "@dagrejs/graphlib@2.2.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/dagrejs/graphlib"
+  },
+  "@monaco-editor/loader@1.7.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/suren-atoyan/monaco-loader"
+  },
+  "@monaco-editor/react@4.7.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/suren-atoyan/monaco-react"
+  },
+  "@reactflow/background@11.3.14": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow"
+  },
+  "@reactflow/controls@11.2.14": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow"
+  },
+  "@reactflow/core@11.11.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow"
+  },
+  "@reactflow/minimap@11.7.14": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow"
+  },
+  "@reactflow/node-resizer@2.2.14": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow"
+  },
+  "@reactflow/node-toolbar@1.3.14": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow"
+  },
+  "@remix-run/router@1.23.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remix-run/react-router"
+  },
+  "@types/d3-array@3.2.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-axis@3.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-brush@3.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-chord@3.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-color@3.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-contour@3.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-delaunay@6.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-dispatch@3.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-drag@3.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-dsv@3.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-ease@3.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-fetch@3.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-force@3.0.10": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-format@3.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-geo@3.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-hierarchy@3.1.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-interpolate@3.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-path@3.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-polygon@3.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-quadtree@3.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-random@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-scale-chromatic@3.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-scale@4.0.9": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-selection@3.0.11": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-shape@3.1.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-time-format@4.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-time@3.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-timer@3.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-transition@3.0.9": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3-zoom@3.0.8": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/d3@7.4.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/dompurify@3.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/geojson@7946.0.16": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/prop-types@15.7.15": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/react@18.3.28": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "@types/trusted-types@2.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped"
+  },
+  "classcat@5.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jorgebucaran/classcat"
+  },
+  "clsx@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lukeed/clsx"
+  },
+  "csstype@3.2.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/frenic/csstype"
+  },
+  "d3-array@3.2.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-array"
+  },
+  "d3-color@3.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-color"
+  },
+  "d3-dispatch@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-dispatch"
+  },
+  "d3-drag@3.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-drag"
+  },
+  "d3-ease@3.0.1": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/d3/d3-ease"
+  },
+  "d3-format@3.1.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-format"
+  },
+  "d3-interpolate@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-interpolate"
+  },
+  "d3-path@3.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-path"
+  },
+  "d3-scale@4.0.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-scale"
+  },
+  "d3-selection@3.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-selection"
+  },
+  "d3-shape@3.2.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-shape"
+  },
+  "d3-time-format@4.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-time-format"
+  },
+  "d3-time@3.1.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-time"
+  },
+  "d3-timer@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-timer"
+  },
+  "d3-transition@3.0.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-transition"
+  },
+  "d3-zoom@3.0.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/d3/d3-zoom"
+  },
+  "decimal.js-light@2.5.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/MikeMcl/decimal.js-light"
+  },
+  "dom-helpers@5.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/react-bootstrap/dom-helpers"
+  },
+  "dompurify@3.2.7": {
+    "licenses": "(MPL-2.0 OR Apache-2.0)",
+    "repository": "https://github.com/cure53/DOMPurify"
+  },
+  "dompurify@3.4.1": {
+    "licenses": "(MPL-2.0 OR Apache-2.0)",
+    "repository": "https://github.com/cure53/DOMPurify"
+  },
+  "eventemitter3@4.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/primus/eventemitter3"
+  },
+  "fast-equals@5.4.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/planttheidea/fast-equals"
+  },
+  "internmap@2.0.3": {
+    "licenses": "ISC",
+    "repository": "https://github.com/mbostock/internmap"
+  },
+  "js-tokens@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lydell/js-tokens"
+  },
+  "lodash@4.18.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash"
+  },
+  "loose-envify@1.4.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/zertosh/loose-envify"
+  },
+  "marked@14.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/markedjs/marked"
+  },
+  "monaco-editor@0.55.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/microsoft/monaco-editor"
+  },
+  "object-assign@4.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/object-assign"
+  },
+  "prop-types@15.8.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/prop-types"
+  },
+  "react-dom@18.3.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react"
+  },
+  "react-is@16.13.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react"
+  },
+  "react-is@18.3.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react"
+  },
+  "react-router-dom@6.30.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remix-run/react-router"
+  },
+  "react-router@6.30.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/remix-run/react-router"
+  },
+  "react-smooth@4.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/recharts/react-smooth"
+  },
+  "react-transition-group@4.4.5": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/reactjs/react-transition-group"
+  },
+  "react@18.3.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react"
+  },
+  "reactflow@11.11.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/xyflow/xyflow"
+  },
+  "recharts-scale@0.4.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/recharts/recharts-scale"
+  },
+  "recharts@2.15.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/recharts/recharts"
+  },
+  "scheduler@0.23.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react"
+  },
+  "state-local@1.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/suren-atoyan/state-local"
+  },
+  "tiny-invariant@1.3.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/alexreardon/tiny-invariant"
+  },
+  "use-sync-external-store@1.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/facebook/react"
+  },
+  "victory-vendor@36.9.2": {
+    "licenses": "MIT AND ISC",
+    "repository": "https://github.com/FormidableLabs/victory"
+  },
+  "zustand@4.5.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pmndrs/zustand"
+  }
+}

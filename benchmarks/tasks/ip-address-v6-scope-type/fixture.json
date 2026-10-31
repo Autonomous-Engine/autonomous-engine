@@ -1,0 +1,36 @@
+{
+  "id": "ip-address-v6-scope-type",
+  "summary": "Address6#getScope reads the multicast scope nibble for unicast addresses; getType misses ULA/6to4/documentation/NAT64; isMulticast misses named groups.",
+  "repo": "https://github.com/beaugunderson/ip-address",
+  "base_sha": "ec52105c87179129b9f091e97581e87b007824c7",
+  "language": "typescript",
+  "task_class": "historical_defect",
+  "difficulty": "medium",
+  "size_stratum": "medium",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { ( npx mocha ) 2>&1 | tee node_modules/.bench-out.txt; rc=${PIPESTATUS[0]}; if [ $rc -ne 0 ]; then if grep -qE \"TSError|error TS[0-9]+|Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError:\" node_modules/.bench-out.txt; then echo \"[setup failed] a test file failed to load\"; elif grep -qE \"AssertionError|[0-9]+ failing|^# fail [1-9]|ℹ fail [1-9]\" node_modules/.bench-out.txt; then echo \"--- FAIL: assertion failures\"; fi; elif { [ -e test/bench_scope_type_test.ts ]; } && ! grep -q \"bench:\" node_modules/.bench-out.txt; then echo \"[setup failed] hidden tests did not run\"; rc=1; fi; exit $rc; }",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "a0eb0732d6ac3088daa1106f4933eade41fd364a",
+    "upstream_pr": "https://github.com/beaugunderson/ip-address/pull/200",
+    "upstream_issue": "https://github.com/beaugunderson/ip-address/issues/122",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "mocha 11 with tsx (no type-check) via the repository's .mocharc.yml (spec: test/**/*.ts), i.e. the whole suite, about 10 s. Failure classification greps the captured mocha output. Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "a0eb0732d6ac3088daa1106f4933eade41fd364a",
+        "paths": [
+          "README.md",
+          "src/ipv6.ts",
+          "src/v6/constants.ts",
+          "test/functionality-v6-test.ts"
+        ]
+      }
+    ]
+  }
+}

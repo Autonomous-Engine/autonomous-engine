@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "id": "example-fix",
+      "repo": "/absolute/path/to/fixture-repository",
+      "base_revision": "0123456789abcdef0123456789abcdef01234567",
+      "prompt": "Fix the documented defect without changing public behavior outside the acceptance criteria.",
+      "test_command": "./scripts/run-hidden-tests.sh",
+      "hidden_test_patch": "/absolute/path/to/held-out-tests.patch"
+    }
+  ]
+}

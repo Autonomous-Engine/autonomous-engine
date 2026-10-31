@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Code-implementation benchmark wrapper output (BENCH_OUTPUT_FILE)",
+  "description": "One document per competitor run. Every wrapper writes exactly this shape so a later aggregation step can merge results without vendor-specific parsing. null means 'unknown', never 'zero'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "competitor",
+    "task_id",
+    "outcome",
+    "elapsed_s",
+    "head_sha",
+    "model_calls",
+    "tokens_in",
+    "tokens_out",
+    "cost_usd",
+    "versions",
+    "raw_ref"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Schema revision; bump when a field changes meaning."
+    },
+    "competitor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Competitor name, e.g. autonomous-engine or claude-cli."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "BENCH_TASK_ID as exported by the runner."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["passed_agent", "failed", "blocked", "timeout"],
+      "description": "passed_agent = the agent reports success and produced a checkout (hidden tests decide the real pass); failed = agent/product failure; blocked = the product escalated to a human instead of finishing; timeout = BENCH_TIME_LIMIT_S exceeded."
+    },
+    "elapsed_s": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall-clock seconds from wrapper start to result write."
+    },
+    "head_sha": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Commit checked out in BENCH_REPO when the wrapper returned; null when no commit was produced."
+    },
+    "model_calls": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Number of model invocations; null when unknown."
+    },
+    "tokens_in": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Prompt tokens processed (including cache reads/writes where the vendor reports them); null when unknown."
+    },
+    "tokens_out": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Completion tokens; null when unknown."
+    },
+    "cost_usd": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Billed cost in USD as reported by the vendor; null when unknown."
+    },
+    "versions": {
+      "type": "object",
+      "description": "Free-form provenance: CLI/build versions, model ids, wrapper version."
+    },
+    "raw_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute path to the raw wrapper log for this run (outside BENCH_REPO)."
+    },
+    "details": {
+      "type": "object",
+      "description": "Free-form, competitor-specific diagnostics (state history, reasons, raw file paths)."
+    }
+  }
+}

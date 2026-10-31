@@ -1,0 +1,4 @@
+  File "/tmp/py/bad_syntax.py", line 1
+    def broken(:
+               ^
+SyntaxError: invalid syntax

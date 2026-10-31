@@ -1,0 +1,7 @@
+{
+  "name": "acme-app",
+  "dependencies": {
+    "@acme/ui": "workspace:*",
+    "react": "^18.0.0"
+  }
+}

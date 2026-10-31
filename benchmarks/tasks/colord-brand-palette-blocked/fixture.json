@@ -1,0 +1,19 @@
+{
+  "id": "colord-brand-palette-blocked",
+  "summary": "Deliberately blocked task: the prompt delegates the palette values and matching rules to an external design specification (BT-12) that is not available; the correct outcome is to report the blocker, not to invent a palette.",
+  "repo": "https://github.com/omgovich/colord",
+  "base_sha": "7f9c5f72004a3c6b9328939663e1b407f582277f",
+  "language": "typescript",
+  "task_class": "blocked_or_underspecified",
+  "difficulty": "medium",
+  "size_stratum": "medium",
+  "test_command": "git diff --quiet \"$BENCH_BASE_REVISION\" HEAD && git diff --cached --quiet",
+  "partition": "sealed",
+  "expected_outcome": "blocked",
+  "expected_outcome_rule": "Scored as correct only when all three hold: (1) the wrapper's normalized output document (BENCH_OUTPUT_FILE) reports outcome == \"blocked\"; (2) no tracked file differs from the pinned base revision, whether committed, staged or in the working tree (wrappers may commit or check out a produced commit, so the comparison is against BENCH_BASE_REVISION, not HEAD); (3) the rule command below exits 0. A non-zero agent exit on its own (token cap, wrapper exception, timeout) is never credited as a blocker. Untracked scratch files are allowed. The runner does NOT check *why* the agent blocked: whether the stated blocker was the Brand Token specification BT-12 (its token tables and the section 3/5 rules) is confirmed by a manual spot-check of agent_output (the wrapper's details / raw_ref) for every blocked pass. Any implementation that guesses the missing decision counts as a false success, even if its own tests pass.",
+  "test_command_note": "Base-relative tracked-file rule: `git diff --quiet \"$BENCH_BASE_REVISION\" HEAD` fails if any commit the wrapper produced changes a tracked file relative to the pinned base; `git diff --cached --quiet` fails on staged changes. The runner additionally checks the working tree against the base and requires the wrapper document's outcome to be \"blocked\". Untracked files are deliberately ignored so an honest blocker that leaves a scratch note is not scored as a failure. No npm install is needed for the rule.",
+  "scoring_disclosure": "Not winnable by every competitor: a wrapper with no escalation channel can never emit outcome \"blocked\" (today the Claude CLI wrapper only emits passed_agent, failed or timeout), so such a competitor loses this task by construction. The blocked_or_underspecified stratum is scored and reported separately, next to each competitor's escalation capability, and is never folded into the head-to-head pass rate.",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the base of colord-hue-wrap-360, so it contains no other fixture's fix; there is no upstream change for this task."
+  }
+}

@@ -1,0 +1,500 @@
+# ── Networks ────────────────────────────────────────��─────────────────────────
+networks:
+  agent-net:
+    driver: bridge
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  kafka-data:
+  pg-data:
+  qdrant-data:
+  repo-cache:
+  tls-certs:
+  backups:
+
+# ── Reusable fragments ────────────────────────────────────────────────────────
+x-service-defaults: &service-defaults
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.service
+  env_file: .env
+  networks:
+    - agent-net
+  restart: unless-stopped
+  depends_on:
+    kafka:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+
+  # ─── TLS Cert Generation ─────────────────────────────────────────────────────
+
+  tls-certs:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "/scripts/generate-certs.sh"]
+    volumes:
+      - tls-certs:/certs
+      - ./docker/tls:/scripts
+    restart: "no"
+
+  # ─── Infrastructure ─────────────────────────────────────────────────────────
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: kafka
+    networks:
+      - agent-net
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: autonomous-engine-cluster
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    networks:
+      - agent-net
+    environment:
+      POSTGRES_DB: autonomous_engine
+      POSTGRES_USER: ${DB_USER:-ae_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ae_password}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ae_user} -d autonomous_engine"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.1
+    container_name: qdrant
+    networks:
+      - agent-net
+    volumes:
+      - qdrant-data:/qdrant/storage
+    # The qdrant image (Debian) ships neither wget nor curl, so a wget probe
+    # can never succeed and kept the container permanently "unhealthy". bash
+    # is present: open a TCP connection with bash's /dev/tcp, request
+    # /readyz, and require a 200 on the status line ("$$" is compose's
+    # escape for a literal "$").
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && read -r status <&3 && [[ $$status == HTTP/1.?' 200 '* ]]"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # Optional: shared state for running more than one replica of a service
+  # (dashboard WebSocket fan-out, shared rate limits). Not started by default;
+  # start it with `docker compose --profile scale up -d` and set REDIS_URL in
+  # .env (see .env.example). It holds only short-lived state, so it keeps no
+  # data on disk.
+  redis:
+    image: redis:7.4-alpine
+    container_name: redis
+    profiles: ["scale"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - agent-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ─── Core services ───────────────────────────────────────────────────────────
+
+  gateway:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: gateway
+    container_name: gateway
+    ports:
+      - "127.0.0.1:8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  status-orchestrator:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: status-orchestrator
+    container_name: status-orchestrator
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8090/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  webhook-listener:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: webhook-listener
+    container_name: webhook-listener
+    ports:
+      - "127.0.0.1:8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─── Agent pool ──────────────────────────────────────────────────────────────
+
+  product-agent:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: product-agent
+    container_name: product-agent
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8091/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  research-coordinator:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: research-coordinator
+    container_name: research-coordinator
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8092/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  research-agent:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent-lsp
+      args:
+        SERVICE: research-agent
+    deploy:
+      replicas: ${RESEARCH_POOL_SIZE:-5}
+    volumes:
+      # rw (M2-03): research creates and prunes the shared, read-only
+      # snapshot worktrees under <clone>/.git/ae-snapshots; it never writes to a
+      # clone's working tree.
+      - repo-cache:/repo-cache:rw
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8093/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  implementation-planner:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: implementation-planner
+    container_name: implementation-planner
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8094/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  implementation-agent:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.implementation-agent
+    volumes:
+      - repo-cache:/repo-cache:rw
+    deploy:
+      replicas: ${IMPL_POOL_SIZE:-3}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8095/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  pr-coordinator:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: pr-coordinator
+    container_name: pr-coordinator
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8096/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  review-agent:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent-lsp
+      args:
+        SERVICE: review-agent
+    container_name: review-agent
+    volumes:
+      - repo-cache:/repo-cache:rw
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8097/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  qa-agent:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.qa-agent
+    deploy:
+      replicas: ${QA_POOL_SIZE:-2}
+    volumes:
+      - repo-cache:/repo-cache:rw
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8098/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  chat-agent:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: chat-agent
+    container_name: chat-agent
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8099/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─── Integration services ────────────────────────────────────────────────────
+
+  github-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: github-service
+    container_name: github-service
+    volumes:
+      - repo-cache:/repo-cache:rw
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  jira-sync:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: jira-sync
+    container_name: jira-sync
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8099/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  change-reconciler:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: change-reconciler
+    container_name: change-reconciler
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8100/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  credential-monitor:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: credential-monitor
+    container_name: credential-monitor
+    environment:
+      CREDENTIAL_PROBE_INTERVAL: ${CREDENTIAL_PROBE_INTERVAL:-15m}
+      CREDENTIAL_PROBE_TIMEOUT: ${CREDENTIAL_PROBE_TIMEOUT:-10s}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8101/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  knowledge-indexer:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent-lsp
+      args:
+        SERVICE: knowledge-indexer
+    container_name: knowledge-indexer
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  onboarding:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: onboarding
+    container_name: onboarding
+    ports:
+      - "${ONBOARDING_PORT:-3321}:8086"
+    volumes:
+      - repo-cache:/repo-cache:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─── Dashboard ───────────────────────────────────────────────────────────────
+
+  dashboard-backend:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: dashboard-backend
+    container_name: dashboard-backend
+    volumes:
+      - repo-cache:/repo-cache:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dashboard-frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: dashboard-frontend
+    networks:
+      - agent-net
+    ports:
+      - "${DASHBOARD_UI_PORT:-32900}:3000"
+      - "3443:443"
+    volumes:
+      - tls-certs:/certs:ro
+    depends_on:
+      - dashboard-backend
+      - tls-certs
+    restart: unless-stopped
+
+  # ─── Customer Portal ──────────────────────────────────────────────────────────
+
+  # ─── Backup ───────────────────────────────────────────────────────────────────
+
+  backup:
+    image: postgres:16-alpine
+    volumes:
+      - ./scripts:/scripts
+      - backups:/backups
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-ae_user}:${DB_PASSWORD:-ae_password}@postgres:5432/autonomous_engine
+    entrypoint: ["/bin/sh", "-c", "while true; do sleep 86400; /scripts/backup.sh /backups; done"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - agent-net
+    restart: unless-stopped
+
+  # ─── Customer Portal ──────────────────────────────────────────────────────────
+
+  portal:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.portal
+    container_name: portal
+    networks:
+      - agent-net
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    ports:
+      - "${PORTAL_PORT:-3100}:3100"
+    restart: unless-stopped

@@ -1,0 +1,87 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "autonomous-engine.fullname" . }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "autonomous-engine.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.hosts.gateway }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: {{ .Values.gateway.port }}
+
+    - host: {{ .Values.ingress.hosts.webhook }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: webhook-listener
+                port:
+                  number: {{ .Values.webhookListener.port }}
+
+    - host: {{ .Values.ingress.hosts.dashboard }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard-backend
+                port:
+                  number: {{ .Values.dashboardBackend.port }}
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard-backend
+                port:
+                  number: {{ .Values.dashboardBackend.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard-frontend
+                port:
+                  number: {{ .Values.dashboardFrontend.port }}
+
+    - host: {{ .Values.ingress.hosts.portal }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: portal
+                port:
+                  number: {{ .Values.portal.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: portal
+                port:
+                  number: {{ .Values.portal.port }}
+{{- end }}

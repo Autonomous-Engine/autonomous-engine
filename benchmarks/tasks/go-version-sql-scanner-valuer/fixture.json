@@ -1,0 +1,31 @@
+{
+  "id": "go-version-sql-scanner-valuer",
+  "summary": "Add sql.Scanner and driver.Valuer implementations to *Version with explicit acceptance criteria.",
+  "repo": "https://github.com/hashicorp/go-version",
+  "base_sha": "e04a8660deda04c35f8cbd29be7084224af3c78e",
+  "language": "go",
+  "task_class": "small_feature",
+  "difficulty": "medium",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream feature commit; that commit is never reachable from the sealed clone.",
+    "upstream_feature_commit": "d55f21493f82b092e4869cfeb94b4602252d811e",
+    "upstream_pr": "https://github.com/hashicorp/go-version/pull/133",
+    "fail_mode_note": "Replaced the build-mode fixture in M4-04: the hidden tests assert database/sql.Scanner and driver.Valuer at run time through interface{} type assertions instead of compile-time guards, so they compile against the base package and fail on the missing behaviour (assert mode). Acceptance criteria and prompt are unchanged; one test was added for Scan replacing an already-populated receiver."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "d55f21493f82b092e4869cfeb94b4602252d811e",
+        "paths": [
+          "version.go"
+        ]
+      }
+    ]
+  }
+}

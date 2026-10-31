@@ -1,0 +1,336 @@
+{{- $fullname := include "autonomous-engine.fullname" . }}
+
+# ── GitHub Service ────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-service
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "github-service") | nindent 4 }}
+spec:
+  replicas: {{ .Values.githubService.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "github-service") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "github-service") | nindent 8 }}
+    spec:
+      containers:
+        - name: github-service
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "github-service") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.githubService.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.githubService.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.githubService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.githubService.resources | nindent 12 }}
+          volumeMounts:
+            - name: repo-cache
+              mountPath: /repo-cache
+      volumes:
+        - name: repo-cache
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-repo-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-service
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "github-service") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "github-service") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.githubService.port }}
+      targetPort: {{ .Values.githubService.port }}
+
+# ── Jira Sync ─────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jira-sync
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "jira-sync") | nindent 4 }}
+spec:
+  replicas: {{ .Values.jiraSync.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "jira-sync") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "jira-sync") | nindent 8 }}
+    spec:
+      containers:
+        - name: jira-sync
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "jira-sync") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.jiraSync.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.jiraSync.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.jiraSync.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.jiraSync.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jira-sync
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "jira-sync") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "jira-sync") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.jiraSync.port }}
+      targetPort: {{ .Values.jiraSync.port }}
+
+# ── Change Reconciler ─────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: change-reconciler
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "change-reconciler") | nindent 4 }}
+spec:
+  replicas: {{ .Values.changeReconciler.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "change-reconciler") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "change-reconciler") | nindent 8 }}
+    spec:
+      containers:
+        - name: change-reconciler
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "change-reconciler") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.changeReconciler.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.changeReconciler.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.changeReconciler.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.changeReconciler.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: change-reconciler
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "change-reconciler") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "change-reconciler") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.changeReconciler.port }}
+      targetPort: {{ .Values.changeReconciler.port }}
+
+# ── Knowledge Indexer ─────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-indexer
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "knowledge-indexer") | nindent 4 }}
+spec:
+  replicas: {{ .Values.knowledgeIndexer.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "knowledge-indexer") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "knowledge-indexer") | nindent 8 }}
+    spec:
+      containers:
+        - name: knowledge-indexer
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "knowledge-indexer") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.knowledgeIndexer.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.knowledgeIndexer.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.knowledgeIndexer.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.knowledgeIndexer.resources | nindent 12 }}
+          volumeMounts:
+            - name: repo-cache
+              mountPath: /repo-cache
+              readOnly: true
+      volumes:
+        - name: repo-cache
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-repo-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-indexer
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "knowledge-indexer") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "knowledge-indexer") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.knowledgeIndexer.port }}
+      targetPort: {{ .Values.knowledgeIndexer.port }}
+
+# ── Onboarding ────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onboarding
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "onboarding") | nindent 4 }}
+spec:
+  replicas: {{ .Values.onboarding.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "onboarding") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "onboarding") | nindent 8 }}
+    spec:
+      containers:
+        - name: onboarding
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "onboarding") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.onboarding.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.onboarding.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.onboarding.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.onboarding.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: onboarding
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "onboarding") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "onboarding") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.onboarding.port }}
+      targetPort: {{ .Values.onboarding.port }}

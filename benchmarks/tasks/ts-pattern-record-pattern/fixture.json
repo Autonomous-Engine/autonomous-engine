@@ -1,0 +1,38 @@
+{
+  "id": "ts-pattern-record-pattern",
+  "summary": "Add P.record(keyPattern, valuePattern) matching every own entry of a plain object, with selections and type narrowing.",
+  "repo": "https://github.com/gvergnaud/ts-pattern",
+  "base_sha": "29fbd3aae7313962867a5a5be46373976e9d95bc",
+  "language": "typescript",
+  "task_class": "small_feature",
+  "difficulty": "hard",
+  "size_stratum": "medium",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { rm -f node_modules/.bench-result.json; npx jest tests/bench- tests/objects tests/records tests/maps --json --outputFile=node_modules/.bench-result.json; rc=$?; node -e \"const fs=require('fs');const [rc,...h]=process.argv.slice(1);const on=h.some(p=>fs.existsSync(p));let r=null;try{r=JSON.parse(fs.readFileSync('node_modules/.bench-result.json','utf8'))}catch(e){}if(!r){if(rc==='0'){console.log('[setup failed] hidden tests did not run (no test report)');process.exit(1)}process.exit(+rc)}const t=r.testResults||[];const as=x=>x.assertionResults||[];const f=t.filter(x=>x.status==='failed'&&!as(x).some(a=>a.status==='failed'));if(f.length)console.log('[setup failed] '+f.length+' test file(s) failed to load');else if(r.numFailedTests>0)console.log('--- FAIL: '+r.numFailedTests+' test(s) failed');if(rc==='0'&&on&&!t.some(x=>/bench[-_]/.test(x.name.replace(/.*[\\x5c/]/,''))&&as(x).some(a=>a.status==='passed')&&!as(x).some(a=>a.status==='failed'))){console.log('[setup failed] hidden tests did not run');process.exit(1)}process.exit(+rc)\" \"$rc\" tests/bench-record-pattern.test.ts; }",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream commit that implemented P.record; that commit is never reachable from the sealed clone.",
+    "upstream_feature_commit": "4070733780aa5f732133f989f1314a59bbbd7a0e",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "jest 29 + ts-jest (type-checked) from jest.config.cjs; runs the hidden tests plus tests/objects, tests/records (deleted by the reference change; the pattern then simply matches nothing) and tests/maps. P.record is a new API; the hidden tests reach it through a loosely typed handle so they compile at base and fail on behaviour (assert mode). Type-level narrowing is requested by the prompt but only the runtime behaviour is scored. Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "4070733780aa5f732133f989f1314a59bbbd7a0e",
+        "paths": [
+          "src/patterns.ts",
+          "src/types/FindSelected.ts",
+          "src/types/InvertPattern.ts",
+          "src/types/Pattern.ts",
+          "src/types/helpers.ts",
+          "tests/objects.test.ts",
+          "tests/record.test.ts",
+          "tests/records.test.ts"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+ "source": "Synthetic: written for these tests, shaped like a live implementation run (attempt 10), tool_loop calls 5, 6 and 9. Applied to the made-up testdata/sample-app.",
+ "edits": [
+  {
+   "call": 5,
+   "edit": 0,
+   "name": "edit_file",
+   "arguments": "{\"path\": \"public/index.html\", \"old_string\": \"</body>\\n</html>\", \"new_string\": \"  <script>\\n    fetch('/api/settings')\\n      .then(response => response.json())\\n      .then(settings => {\\n        if (settings.searchApiKey) {\\n          const boxes = document.querySelectorAll('[data-search-endpoint]');\\n          boxes.forEach(box => {\\n            box.dataset.searchEndpoint = `${box.dataset.searchEndpoint}?key=${encodeURIComponent(settings.searchApiKey)}`;\\n          });\\n        }\\n      })\\n      .catch(error => {\\n        console.error('Failed to fetch settings:', error);\\n      });\\n  </script>\\n</body>\\n</html>\"}"
+  },
+  {
+   "call": 6,
+   "edit": 1,
+   "name": "edit_file",
+   "arguments": "{\"path\": \"public/index.html\", \"old_string\": \"  </script>\\n</body>\\n</html>\", \"new_string\": \"  <script>\\n    fetch('/api/settings')\\n      .then(response => response.json())\\n      .then(settings => {\\n        if (settings.searchApiKey) {\\n          const boxes = document.querySelectorAll('[data-search-endpoint]');\\n          boxes.forEach(box => {\\n            box.dataset.searchEndpoint = `${box.dataset.searchEndpoint}?key=${encodeURIComponent(settings.searchApiKey)}`;\\n          });\\n        } else {\\n          document.getElementById('search-notice').style.display = 'block';\\n        }\\n      })\\n      .catch(error => {\\n        console.error('Failed to fetch settings:', error);\\n      });\\n  </script>\\n</body>\\n</html>\"}"
+  },
+  {
+   "call": 9,
+   "edit": 0,
+   "name": "edit_file",
+   "arguments": "{\"path\": \"src/server/index.ts\", \"old_string\": \"httpServer.listen(config.port, () => {\\n    logger.info({ port: config.port }, 'sample-app server listening');\\n  });\\n}\", \"new_string\": \"// Settings endpoint\\napp.get('/api/settings', (req, res) => {\\n  res.json({\\n    searchApiKey: config.searchApiKey,\\n    searchConfigured: !!config.searchApiKey,\\n  });\\n});\\n\\nhttpServer.listen(config.port, () => {\\n  logger.info({ port: config.port }, 'sample-app server listening');\\n});\\n\"}"
+  }
+ ]
+}

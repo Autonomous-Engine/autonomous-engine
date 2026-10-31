@@ -1,0 +1,3 @@
+-- Down migration for awaiting_user state
+-- Note: PostgreSQL doesn't support removing enum values, so this is a no-op.
+-- The value will remain in the enum type even after rollback.

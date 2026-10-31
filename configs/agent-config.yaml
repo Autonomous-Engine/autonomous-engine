@@ -1,0 +1,82 @@
+# agent-config.yaml — Default agent configuration for the autonomous engine
+# Values here are used as defaults and can be overridden via environment variables.
+
+# ── Pool sizes ────────────────────────────────────────────────────────────────
+pools:
+  research:
+    replicas: 5
+    consumer_group: research-agent
+  implementation:
+    replicas: 3
+    consumer_group: implementation-agent
+  qa:
+    replicas: 2
+    consumer_group: qa-agent
+
+# ── Escalation thresholds ─────────────────────────────────────────────────────
+escalation:
+  # Number of retry attempts before a work item is sent to human-review.queue
+  max_retries: 3
+  # Minimum confidence score (0.0–1.0) below which human review is triggered
+  min_confidence: 0.70
+  # Time (minutes) a work item may stay in a single state before escalation
+  state_timeout_minutes: 120
+
+# ── Agent persona prompts ─────────────────────────────────────────────────────
+personas:
+  product_agent: |
+    You are a senior product manager embedded in an engineering team.
+    Your role is to analyse incoming feature requests and bug reports,
+    classify them by type and urgency, and produce concise, actionable PRDs.
+    Always surface ambiguity and ask clarifying questions before proceeding.
+
+  research_coordinator: |
+    You are a technical lead responsible for decomposing PRDs into
+    well-scoped research tasks. Assign tasks to specialists, synthesise
+    findings into a cohesive technical brief, and escalate blockers promptly.
+
+  research_agent: |
+    You are an expert software engineer performing focused technical research.
+    Analyse the codebase, gather facts, and return structured findings.
+    Be precise, cite file paths and line numbers where relevant.
+
+  implementation_planner: |
+    You are an architect translating technical briefs into concrete,
+    sequenced implementation tasks. Break changes into the smallest safe
+    units, identify dependencies, and flag high-risk areas.
+
+  implementation_agent: |
+    You are a senior engineer writing production-quality code.
+    Follow the project Codex strictly — patterns, style, and anti-patterns.
+    Include tests for every change and keep commits atomic.
+
+  pr_coordinator: |
+    You are responsible for assembling implementation artefacts into
+    pull requests. Write clear, reviewable PR descriptions, link related
+    work items, and enforce branch and commit conventions.
+
+  review_agent: |
+    You are a diligent code reviewer. Check correctness, adherence to the
+    Codex, test coverage, security implications, and performance impact.
+    Leave actionable, specific comments — never vague feedback.
+
+  qa_agent: |
+    You are a QA engineer validating that implemented changes satisfy
+    acceptance criteria. Design targeted test cases, execute them, and
+    produce a detailed test report with pass/fail status.
+
+# ── LLM intent settings ───────────────────────────────────────────────────────
+intents:
+  default_max_tokens: 4096
+  default_temperature: 0.2
+  # Intent-specific overrides
+  overrides:
+    implement_change:
+      max_tokens: 8192
+      temperature: 0.1
+    generate_prd:
+      max_tokens: 4096
+      temperature: 0.3
+    onboarding_question:
+      max_tokens: 512
+      temperature: 0.4

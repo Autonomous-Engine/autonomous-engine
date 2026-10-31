@@ -1,0 +1,39 @@
+{
+  "id": "cron-functional-options",
+  "summary": "Move Cron construction to functional options (WithLocation/WithParser/WithPanicLogger) with a per-instance parser and SecondOptional; touches cron.go, option.go, parser.go, docs and tests.",
+  "repo": "https://github.com/robfig/cron",
+  "base_sha": "1e507e218b680e9825b67202663aefce78f9388e",
+  "language": "go",
+  "task_class": "cross_file_refactor",
+  "difficulty": "medium",
+  "size_stratum": "small",
+  "test_command": "{ go test . || go test -count=1 .; } && { go test ./... || go test -count=1 ./...; }",
+  "test_command_note": "robfig/cron's own suite schedules real jobs and waits on wall-clock second boundaries (TestLocalTimezone/TestNonLocalTimezone are known to be timing-sensitive upstream). Each step allows one retry to absorb those flakes; the held-out tests are deterministic, so a retry cannot turn a wrong implementation into a pass. The root package runs first so the base-revision failure is the behavioural one (assert mode); the second step then requires the new option API in the bench_options package.",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream refactor commit; that commit is never reachable from the sealed clone.",
+    "upstream_refactor_commit": "1f8ec97c87338ef2c06af340dcf4289c691c6f95",
+    "fail_mode_note": "Replaced the build-mode fixture in M4-04. The root-package hidden tests use only New(), AddFunc, Entry and Location (all present at base) and assert the new default parser semantics (5-field standard specs, 6-field specs rejected), so they compile at base and fail on behaviour. The option API (Option, WithLocation, WithParser, WithPanicLogger, SecondOptional) cannot be referenced without a compile error at base, so those tests live in a separate hidden external test package bench_options that the second step of the test command runs. Prompt unchanged."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "1f8ec97c87338ef2c06af340dcf4289c691c6f95",
+        "paths": [
+          "README.md",
+          "cron.go",
+          "cron_test.go",
+          "doc.go",
+          "option.go",
+          "option_test.go",
+          "parser.go",
+          "parser_test.go",
+          "spec_test.go"
+        ]
+      }
+    ]
+  }
+}

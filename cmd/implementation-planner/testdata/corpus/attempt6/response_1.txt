@@ -1,0 +1,89 @@
+[
+  {
+    "title": "Configure TileHost API Key in Environment",
+    "description": "Add `tilesApiKey: process.env.TILES_API_KEY || ''` to `src/config/env.ts` to ensure the API key is sourced from the environment, not hard-coded.",
+    "criterion_ids": ["AC-1"],
+    "deliverable": "TileHost API key configuration added to `src/config/env.ts`",
+    "verification": [{"check_kind": "lint", "command": "npm run lint"}],
+    "files": [{"path": "src/config/env.ts", "evidence_ref": "repo:stat"}],
+    "repository_id": "sample-app"
+  },
+  {
+    "title": "Add /api/client-config Endpoint",
+    "description": "Add a GET /api/client-config route in `src/server/index.ts` returning JSON {\"tilesApiKey\": string, \"basemapConfigured\": boolean}.",
+    "criterion_ids": ["AC-1"],
+    "deliverable": "/api/client-config endpoint added to `src/server/index.ts`",
+    "verification": [{"check_kind": "test", "command": "npm test"}],
+    "files": [{"path": "src/server/index.ts", "evidence_ref": "repo:stat"}],
+    "repository_id": "sample-app"
+  },
+  {
+    "title": "Modify HTML Pages to Fetch Client Config",
+    "description": "Modify `public/index.html` and `landing/index.html` to fetch the client config and append the API key to the tile URLs.",
+    "criterion_ids": ["AC-1"],
+    "deliverable": "HTML pages modified to fetch client config and append API key to tile URLs",
+    "verification": [{"check_kind": "test", "command": "npm test"}],
+    "files": [
+      {"path": "public/index.html", "evidence_ref": "repo:stat"},
+      {"path": "landing/index.html", "evidence_ref": "repo:stat"}
+    ],
+    "repository_id": "sample-app",
+    "depends_on": ["Configure TileHost API Key in Environment", "Add /api/client-config Endpoint"]
+  },
+  {
+    "title": "Add User Feedback for Missing API Key",
+    "description": "Display a non-blocking notice on `public/index.html` and `landing/index.html` if the API key is missing.",
+    "criterion_ids": ["AC-2"],
+    "deliverable": "Non-blocking notice added to HTML pages for missing API key",
+    "verification": [{"check_kind": "test", "command": "npm test"}],
+    "files": [
+      {"path": "public/index.html", "evidence_ref": "repo:stat"},
+      {"path": "landing/index.html", "evidence_ref": "repo:stat"}
+    ],
+    "repository_id": "sample-app",
+    "depends_on": ["Modify HTML Pages to Fetch Client Config"]
+  },
+  {
+    "title": "Log Warning for Missing API Key at Server Startup",
+    "description": "Log a warning at server startup in `src/server/index.ts` if `TILES_API_KEY` is not configured.",
+    "criterion_ids": ["AC-2"],
+    "deliverable": "Warning log added to `src/server/index.ts` for missing API key",
+    "verification": [{"check_kind": "diagnostic", "description": "Check server logs for warning when TILES_API_KEY is not set"}],
+    "files": [{"path": "src/server/index.ts", "evidence_ref": "repo:stat"}],
+    "repository_id": "sample-app",
+    "depends_on": ["Add /api/client-config Endpoint"]
+  },
+  {
+    "title": "Document TileHost API Key Requirement",
+    "description": "Update `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to document the requirement for setting the TileHost API key.",
+    "criterion_ids": ["AC-3"],
+    "deliverable": "Documentation updated to include TileHost API key requirement",
+    "verification": [{"check_kind": "lint", "command": "npm run lint"}],
+    "files": [
+      {"path": "README.md", "evidence_ref": "repo:stat"},
+      {"path": ".env.example", "evidence_ref": "repo:stat"},
+      {"path": "docker-compose.yml", "evidence_ref": "repo:stat"},
+      {"path": "docs/configuration.md", "evidence_ref": "repo:stat"}
+    ],
+    "repository_id": "sample-app"
+  },
+  {
+    "title": "Fix 'no sign-up required' Claim in landing/index.html",
+    "description": "Fix the 'no sign-up required' claim in `landing/index.html` to reflect the new configuration method.",
+    "criterion_ids": ["AC-3"],
+    "deliverable": "'no sign-up required' claim fixed in `landing/index.html`",
+    "verification": [{"check_kind": "lint", "command": "npm run lint"}],
+    "files": [{"path": "landing/index.html", "evidence_ref": "repo:stat"}],
+    "repository_id": "sample-app"
+  },
+  {
+    "title": "Add Unit Test for /api/client-config",
+    "description": "Add a vitest unit test for /api/client-config in `tests/unit/server.test.ts` to ensure it returns the env key when set and an empty key with basemapConfigured=false when unset.",
+    "criterion_ids": ["AC-4"],
+    "deliverable": "Unit test added for /api/client-config in `tests/unit/server.test.ts`",
+    "verification": [{"check_kind": "test", "command": "npm test"}],
+    "files": [{"path": "tests/unit/server.test.ts", "evidence_ref": "repo:stat"}],
+    "repository_id": "sample-app",
+    "depends_on": ["Add /api/client-config Endpoint"]
+  }
+]

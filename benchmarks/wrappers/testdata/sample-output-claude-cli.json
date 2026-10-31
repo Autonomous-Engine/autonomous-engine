@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "competitor": "claude-cli",
+  "task_id": "sample-fix",
+  "outcome": "failed",
+  "elapsed_s": 312.044,
+  "head_sha": "4d5e6f708192a3b4c5d6e7f8091a2b3c9f1c2b3a",
+  "model_calls": 14,
+  "tokens_in": 188402,
+  "tokens_out": 6210,
+  "cost_usd": 1.9314,
+  "versions": {
+    "wrapper": "1",
+    "python": "3.13.7",
+    "platform": "Linux-6.8",
+    "git": "git version 2.45.2",
+    "claude_cli": "2.1.267 (Claude Code)",
+    "claude_binary": "/usr/local/bin/claude",
+    "model_requested": "claude-sonnet-4-5",
+    "models": ["claude-sonnet-4-5-20250929"]
+  },
+  "raw_ref": "/tmp/bench-wrappers/claude-cli/sample-fix/20260909T213000Z-4243/wrapper.log",
+  "details": {
+    "exit_code": 1,
+    "claude_exit_code": 2,
+    "reason": "claude exited 2",
+    "max_tokens": 400000,
+    "token_cap": {"limit": 400000, "observed": 194612, "verified": true},
+    "base_sha": "0123456789abcdef0123456789abcdef01234567",
+    "base_is_ancestor": true,
+    "claude": {"is_error": true, "subtype": "error_during_execution", "num_turns": 14, "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "git push origin HEAD"}}]},
+    "status_porcelain": [" M app.py", "?? tests/test_subtract.py"],
+    "changed_files": ["app.py", "tests/test_subtract.py"],
+    "diff_stat": " app.py               |  4 ++++\n tests/test_subtract.py | 11 +++++++++++\n 2 files changed, 15 insertions(+)",
+    "diff_base": "0123456789abcdef0123456789abcdef01234567",
+    "diff_head": "4d5e6f708192a3b4c5d6e7f8091a2b3c9f1c2b3a"
+  }
+}

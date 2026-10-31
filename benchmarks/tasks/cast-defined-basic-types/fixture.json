@@ -1,0 +1,44 @@
+{
+  "id": "cast-defined-basic-types",
+  "summary": "Add one shared resolver for user-defined types over basic kinds and route the bool/string, number and duration conversion families (separate files) through it.",
+  "repo": "https://github.com/spf13/cast",
+  "base_sha": "633e5d09b710eccd12345ae716eeda1d5ba5cc93",
+  "language": "go",
+  "task_class": "cross_file_refactor",
+  "difficulty": "medium",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the first of the two upstream commits that implement this change; neither is reachable from the sealed clone.",
+    "upstream_commits": [
+      "a6d26bd7411fd9ab84c716d810b9bcc525654771 (feat: add alias resolution function)",
+      "9ffddd42bd84b02544a02732956ce53b114ea6e6 (feat: add alias resolution)"
+    ],
+    "reference_patch": "git diff --binary 633e5d0..9ffddd4 (new alias.go helper, wiring in basic.go/number.go/time.go, upstream tests; unchanged)",
+    "class_note": "Upstream calls this 'alias resolution'. It is classified as a cross-file refactor because the prompt asks for a single shared resolver threaded through the default branch of four conversion paths in three files, and the hidden tests check every family.",
+    "dependency_cache": "The module requires github.com/frankban/quicktest (test-only). Runs need the Go module proxy or a warm module cache.",
+    "size_note": "about 1.7k non-test Go lines at base"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "9ffddd42bd84b02544a02732956ce53b114ea6e6",
+        "paths": [
+          "alias.go",
+          "alias_test.go",
+          "basic.go",
+          "basic_test.go",
+          "cast_test.go",
+          "number.go",
+          "number_test.go",
+          "time.go",
+          "time_test.go"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "id": "cron-parser-nth-weekday-or-dom",
+  "summary": "A weekday#n day of week is applied as an extra gate instead of OR-ing with a restricted day of month.",
+  "repo": "https://github.com/harrisiirak/cron-parser",
+  "base_sha": "bc213d2dc462d44fe3ce6fbd907c181f24e07596",
+  "language": "typescript",
+  "task_class": "historical_defect",
+  "difficulty": "hard",
+  "size_stratum": "medium",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { rm -f node_modules/.bench-result.json; TZ=UTC npx jest tests/CronExpression.test.ts tests/CronExpressionParser.test.ts tests/bench_ --json --outputFile=node_modules/.bench-result.json; rc=$?; node -e \"const fs=require('fs');const [rc,...h]=process.argv.slice(1);const on=h.some(p=>fs.existsSync(p));let r=null;try{r=JSON.parse(fs.readFileSync('node_modules/.bench-result.json','utf8'))}catch(e){}if(!r){if(rc==='0'){console.log('[setup failed] hidden tests did not run (no test report)');process.exit(1)}process.exit(+rc)}const t=r.testResults||[];const as=x=>x.assertionResults||[];const f=t.filter(x=>x.status==='failed'&&!as(x).some(a=>a.status==='failed'));if(f.length)console.log('[setup failed] '+f.length+' test file(s) failed to load');else if(r.numFailedTests>0)console.log('--- FAIL: '+r.numFailedTests+' test(s) failed');if(rc==='0'&&on&&!t.some(x=>/bench[-_]/.test(x.name.replace(/.*[\\x5c/]/,''))&&as(x).some(a=>a.status==='passed')&&!as(x).some(a=>a.status==='failed'))){console.log('[setup failed] hidden tests did not run');process.exit(1)}process.exit(+rc)\" \"$rc\" tests/bench_nth_weekday_or.test.ts; }",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "dc51aaa8b3349e7c6806165fe94905f0e3a4ed40",
+    "upstream_pr": "https://github.com/harrisiirak/cron-parser/pull/414",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "jest 30 + ts-jest (type-checked) from jest.config.js with TZ=UTC as the repository's test script sets it; runs the hidden tests plus tests/CronExpression.test.ts and tests/CronExpressionParser.test.ts. npm ci also runs the repository's prepare script (husky + tsc build). Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "dc51aaa8b3349e7c6806165fe94905f0e3a4ed40",
+        "paths": [
+          "src/CronExpression.ts",
+          "tests/CronExpression.test.ts",
+          "tests/CronExpressionParser.test.ts"
+        ]
+      }
+    ]
+  }
+}

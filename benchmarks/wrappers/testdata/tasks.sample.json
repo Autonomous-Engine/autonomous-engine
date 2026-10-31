@@ -1,0 +1,13 @@
+{
+  "_comment": "Sample manifest for scripts/code-implementation-benchmark.py using the two reference wrappers. Paths must be absolute. The AE-registered repository must push to the same remote this fixture clones from (see benchmarks/wrappers/README.md).",
+  "tasks": [
+    {
+      "id": "sample-fix",
+      "repo": "/srv/bench/fixtures/calc.git",
+      "base_revision": "0123456789abcdef0123456789abcdef01234567",
+      "prompt": "Add subtract(a, b) to app.py next to add(). Do not change add(). Add a unit test.",
+      "test_command": "python -m unittest discover -s tests",
+      "hidden_test_patch": "/srv/bench/hidden/sample-fix.patch"
+    }
+  ]
+}

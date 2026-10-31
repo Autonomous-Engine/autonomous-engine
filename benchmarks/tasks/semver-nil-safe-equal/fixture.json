@@ -1,0 +1,30 @@
+{
+  "id": "semver-nil-safe-equal",
+  "summary": "Make (*Version).Equal nil-safe: nil==nil, nil!=non-nil, never panics.",
+  "repo": "https://github.com/Masterminds/semver",
+  "base_sha": "2f39fdc11c33c38e8b8b15b1f04334ba84e751f2",
+  "language": "go",
+  "task_class": "small_feature",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream feature commit; that commit is never reachable from the sealed clone.",
+    "upstream_feature_commit": "441ff8e5c8c464b3b1090ea5300a8e0fc4287e6f"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "441ff8e5c8c464b3b1090ea5300a8e0fc4287e6f",
+        "paths": [
+          "version.go",
+          "version_test.go"
+        ]
+      }
+    ]
+  }
+}

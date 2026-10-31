@@ -1,0 +1,65 @@
+{{- $fullname := include "autonomous-engine.fullname" . }}
+
+# ── Customer Portal ───────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "portal") | nindent 4 }}
+spec:
+  replicas: {{ .Values.portal.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "portal") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "portal") | nindent 8 }}
+    spec:
+      containers:
+        - name: portal
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "portal") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.portal.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.portal.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.portal.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.portal.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "portal") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "portal") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.portal.port }}
+      targetPort: {{ .Values.portal.port }}

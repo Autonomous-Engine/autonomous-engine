@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "autonomous-engine.fullname" . }}-config
+  labels:
+    {{- include "autonomous-engine.labels" . | nindent 4 }}
+data:
+  RESEARCH_POOL_SIZE: {{ .Values.config.researchPoolSize | quote }}
+  IMPL_POOL_SIZE: {{ .Values.config.implPoolSize | quote }}
+  QA_POOL_SIZE: {{ .Values.config.qaPoolSize | quote }}
+  GATEWAY_PORT: {{ .Values.config.gatewayPort | quote }}
+  WEBHOOK_PORT: {{ .Values.config.webhookPort | quote }}
+  STATUS_ORCHESTRATOR_PORT: {{ .Values.config.statusOrchestratorPort | quote }}
+  DASHBOARD_PORT: {{ .Values.config.dashboardPort | quote }}
+  PORTAL_PORT: {{ .Values.config.portalPort | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  ENABLE_HUMAN_REVIEW: {{ .Values.config.featureFlags.enableHumanReview | quote }}
+  ENABLE_JIRA_SYNC: {{ .Values.config.featureFlags.enableJiraSync | quote }}
+  KAFKA_BROKERS: {{ printf "kafka:%d" (.Values.kafka.port | int) | quote }}
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: {{ .Values.postgres.port | quote }}
+  POSTGRES_DB: {{ .Values.postgres.database | quote }}
+  POSTGRES_USER: {{ .Values.postgres.username | quote }}
+  QDRANT_HOST: "qdrant"
+  QDRANT_PORT: {{ .Values.qdrant.port | quote }}

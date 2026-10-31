@@ -1,0 +1,321 @@
+name: demo-app
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-server
+    command: ["node", "dist/server/index.js"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - PORT=3080
+      - LOG_LEVEL=info
+      - GEOCODER_ENABLED=true
+      - GEOCODER_REGIONS=all
+      - GEOCODER_ZOOM_MIN=8
+    ports:
+      - "3080:3080"
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: demo-app-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    networks:
+      - internal
+
+  import-parks:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-parks
+    command: ["node", "dist/import/run.js", "--category", "parks"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=250
+      - REFRESH_INTERVAL_MS=60000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-libraries:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-libraries
+    command: ["node", "dist/import/run.js", "--category", "libraries"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=300
+      - REFRESH_INTERVAL_MS=75000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-cafes:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-cafes
+    command: ["node", "dist/import/run.js", "--category", "cafes"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=350
+      - REFRESH_INTERVAL_MS=90000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-museums:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-museums
+    command: ["node", "dist/import/run.js", "--category", "museums"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=400
+      - REFRESH_INTERVAL_MS=105000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-markets:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-markets
+    command: ["node", "dist/import/run.js", "--category", "markets"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=450
+      - REFRESH_INTERVAL_MS=60000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-pools:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-pools
+    command: ["node", "dist/import/run.js", "--category", "pools"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=500
+      - REFRESH_INTERVAL_MS=75000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-gardens:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-gardens
+    command: ["node", "dist/import/run.js", "--category", "gardens"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=250
+      - REFRESH_INTERVAL_MS=90000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-theatres:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-theatres
+    command: ["node", "dist/import/run.js", "--category", "theatres"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=300
+      - REFRESH_INTERVAL_MS=105000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-bakeries:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-bakeries
+    command: ["node", "dist/import/run.js", "--category", "bakeries"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=350
+      - REFRESH_INTERVAL_MS=60000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-bookshops:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-bookshops
+    command: ["node", "dist/import/run.js", "--category", "bookshops"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=400
+      - REFRESH_INTERVAL_MS=75000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-playgrounds:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-playgrounds
+    command: ["node", "dist/import/run.js", "--category", "playgrounds"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=450
+      - REFRESH_INTERVAL_MS=90000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-galleries:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-galleries
+    command: ["node", "dist/import/run.js", "--category", "galleries"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=500
+      - REFRESH_INTERVAL_MS=105000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  import-halls:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-import-halls
+    command: ["node", "dist/import/run.js", "--category", "halls"]
+    restart: unless-stopped
+    volumes:
+      - places-data:/data
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+      - IMPORT_BATCH_SIZE=250
+      - REFRESH_INTERVAL_MS=60000
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+  admin:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: demo-app-admin
+    command: ["node", "dist/admin/index.js"]
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ADMIN_PORT=3081
+      - LOG_LEVEL=info
+    ports:
+      - "3081:3081"
+    networks:
+      - internal
+    depends_on:
+      - redis
+
+volumes:
+  places-data:
+  redis-data:
+
+networks:
+  internal:

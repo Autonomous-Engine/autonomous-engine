@@ -1,0 +1,22 @@
+{
+ "work_item_id": "1ceb083b-ca2e-4a25-b20a-d157de505b26",
+ "technical_brief_artifact_id": "47bc3594-3a3b-43b3-be1e-d4dd65e28b39",
+ "responses": [
+  {
+   "file": "response_1.txt",
+   "prompt": "prompt_1.json",
+   "answers": "decompose",
+   "inference_log_id": "a07b6bd6-e3be-4918-9ea2-4c2e1cd159f3",
+   "created_at": "2026-10-04T15:18:12.530215+00:00",
+   "model": "qwen2.5-coder:32b"
+  },
+  {
+   "file": "response_2.txt",
+   "prompt": "prompt_2.json",
+   "answers": "correction",
+   "inference_log_id": "c3c44982-769d-49de-892b-0cb80a933eee",
+   "created_at": "2026-10-04T15:18:50.252704+00:00",
+   "model": "qwen2.5-coder:32b"
+  }
+ ]
+}

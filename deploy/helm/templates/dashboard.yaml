@@ -1,0 +1,135 @@
+{{- $fullname := include "autonomous-engine.fullname" . }}
+{{- if and (gt (int .Values.dashboardBackend.replicas) 1) (not (include "autonomous-engine.redisURL" .)) }}
+{{- fail "dashboardBackend.replicas > 1 needs Redis for the WebSocket fan-out: set redis.enabled=true or redis.url" }}
+{{- end }}
+
+# ── Dashboard Backend ─────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-backend
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "dashboard-backend") | nindent 4 }}
+spec:
+  replicas: {{ .Values.dashboardBackend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "dashboard-backend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "dashboard-backend") | nindent 8 }}
+    spec:
+      containers:
+        - name: dashboard-backend
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "dashboard-backend") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.dashboardBackend.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $fullname }}-config
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          env:
+            # The process cannot count its own replicas; it refuses to start
+            # with more than one and no REDIS_URL.
+            - name: DASHBOARD_REPLICAS
+              value: {{ .Values.dashboardBackend.replicas | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.dashboardBackend.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.dashboardBackend.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.dashboardBackend.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-backend
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "dashboard-backend") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "dashboard-backend") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.dashboardBackend.port }}
+      targetPort: {{ .Values.dashboardBackend.port }}
+
+# ── Dashboard Frontend ────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-frontend
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "dashboard-frontend") | nindent 4 }}
+spec:
+  replicas: {{ .Values.dashboardFrontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "dashboard-frontend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "dashboard-frontend") | nindent 8 }}
+    spec:
+      containers:
+        - name: dashboard-frontend
+          image: {{ include "autonomous-engine.image" (dict "root" . "service" "dashboard-frontend") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.dashboardFrontend.port }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.dashboardFrontend.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.dashboardFrontend.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.dashboardFrontend.resources | nindent 12 }}
+          env:
+            - name: DASHBOARD_BACKEND_URL
+              value: {{ printf "http://dashboard-backend:%d" (.Values.dashboardBackend.port | int) | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-frontend
+  labels:
+    {{- include "autonomous-engine.serviceLabels" (dict "root" . "service" "dashboard-frontend") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "autonomous-engine.serviceSelectorLabels" (dict "root" . "service" "dashboard-frontend") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.dashboardFrontend.port }}
+      targetPort: {{ .Values.dashboardFrontend.port }}

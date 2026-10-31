@@ -1,0 +1,201 @@
+[
+ {
+  "title": "Add tilesApiKey to env.ts",
+  "description": "Update `src/config/env.ts` to include `tilesApiKey: process.env.TILES_API_KEY || ''`.",
+  "files": [
+   {
+    "path": "src/config/env.ts",
+    "evidence_ref": "repo:stat"
+   }
+  ],
+  "depends_on": [],
+  "repository_id": "1ceb083b-ca2e-4a25-b20a-d157de505b26",
+  "criterion_ids": [
+   "AC-1"
+  ],
+  "deliverable": "The `tilesApiKey` is added to `src/config/env.ts` as `tilesApiKey: process.env.TILES_API_KEY || ''`.",
+  "verification": [
+   {
+    "check_kind": "build",
+    "command": "npm run build"
+   },
+   {
+    "check_kind": "lint",
+    "command": "npm run lint"
+   }
+  ]
+ },
+ {
+  "title": "Create /api/client-config route",
+  "description": "Add a new GET `/api/client-config` route in `src/server/index.ts` to return the API key and a configuration status.",
+  "files": [
+   {
+    "path": "src/server/index.ts",
+    "evidence_ref": "repo:stat"
+   }
+  ],
+  "depends_on": [
+   "Add tilesApiKey to env.ts"
+  ],
+  "repository_id": "1ceb083b-ca2e-4a25-b20a-d157de505b26",
+  "criterion_ids": [
+   "AC-2"
+  ],
+  "deliverable": "A new GET `/api/client-config` route is added to `src/server/index.ts` that returns a JSON object with the `tilesApiKey` and a `basemapConfigured` boolean.",
+  "verification": [
+   {
+    "check_kind": "test",
+    "command": "npm run test"
+   },
+   {
+    "check_kind": "build",
+    "command": "npm run build"
+   },
+   {
+    "check_kind": "lint",
+    "command": "npm run lint"
+   }
+  ]
+ },
+ {
+  "title": "Modify index.html to fetch API key",
+  "description": "Modify `public/index.html` and `landing/index.html` to fetch the `/api/client-config` endpoint and append the API key to the tile URLs if configured.",
+  "files": [
+   {
+    "path": "public/index.html",
+    "evidence_ref": "repo:stat"
+   },
+   {
+    "path": "landing/index.html",
+    "evidence_ref": "repo:stat"
+   }
+  ],
+  "depends_on": [
+   "Create /api/client-config route"
+  ],
+  "repository_id": "1ceb083b-ca2e-4a25-b20a-d157de505b26",
+  "criterion_ids": [
+   "AC-3",
+   "AC-4",
+   "AC-6",
+   "AC-9"
+  ],
+  "deliverable": "Both `public/index.html` and `landing/index.html` fetch the `/api/client-config` endpoint before creating the tile layers and append `?api_key=<key>` to the TileHost tile URLs if the key is configured. They also display a notice if the API key is missing.",
+  "verification": [
+   {
+    "check_kind": "test",
+    "command": "npm run test"
+   },
+   {
+    "check_kind": "build",
+    "command": "npm run build"
+   },
+   {
+    "check_kind": "lint",
+    "command": "npm run lint"
+   }
+  ]
+ },
+ {
+  "title": "Log warning on server startup",
+  "description": "Log a warning at server startup in `src/server/index.ts` if the `TILES_API_KEY` environment variable is empty.",
+  "files": [
+   {
+    "path": "src/server/index.ts",
+    "evidence_ref": "repo:stat"
+   }
+  ],
+  "depends_on": [
+   "Add tilesApiKey to env.ts"
+  ],
+  "repository_id": "1ceb083b-ca2e-4a25-b20a-d157de505b26",
+  "criterion_ids": [
+   "AC-5"
+  ],
+  "deliverable": "The server logs a warning at startup if the `TILES_API_KEY` environment variable is empty.",
+  "verification": [
+   {
+    "check_kind": "test",
+    "command": "npm run test"
+   },
+   {
+    "check_kind": "build",
+    "command": "npm run build"
+   },
+   {
+    "check_kind": "lint",
+    "command": "npm run lint"
+   },
+   {
+    "check_kind": "diagnostic",
+    "description": "Start the server and check logs for the warning message."
+   }
+  ]
+ },
+ {
+  "title": "Update documentation",
+  "description": "Update `README.md`, `.env.example`, `docker-compose.yml`, and `docs/configuration.md` to inform users about obtaining and setting the TileHost API key.",
+  "files": [
+   {
+    "path": "README.md",
+    "evidence_ref": "repo:stat"
+   },
+   {
+    "path": ".env.example",
+    "evidence_ref": "repo:stat"
+   },
+   {
+    "path": "docker-compose.yml",
+    "evidence_ref": "repo:stat"
+   },
+   {
+    "path": "docs/configuration.md",
+    "evidence_ref": "repo:stat"
+   }
+  ],
+  "depends_on": [],
+  "repository_id": "1ceb083b-ca2e-4a25-b20a-d157de505b26",
+  "criterion_ids": [
+   "AC-7"
+  ],
+  "deliverable": "Documentation (`README.md`, `.env.example`, `docker-compose.yml`, `docs/configuration.md`) is updated to inform users about obtaining and setting the TileHost API key.",
+  "verification": [
+   {
+    "check_kind": "test",
+    "command": "npm run test"
+   },
+   {
+    "check_kind": "lint",
+    "command": "npm run lint"
+   },
+   {
+    "check_kind": "build",
+    "command": "npm run build"
+   }
+  ]
+ },
+ {
+  "title": "Add unit test for /api/client-config",
+  "description": "Add a unit test in `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilesApiKey` and `basemapConfigured` status based on the presence or absence of the `TILES_API_KEY` environment variable.",
+  "files": [
+   {
+    "path": "tests/unit/server.test.ts",
+    "evidence_ref": "repo:stat"
+   }
+  ],
+  "depends_on": [
+   "Create /api/client-config route"
+  ],
+  "repository_id": "1ceb083b-ca2e-4a25-b20a-d157de505b26",
+  "criterion_ids": [
+   "AC-8"
+  ],
+  "deliverable": "A unit test is added in `tests/unit/server.test.ts` to verify that the `/api/client-config` endpoint returns the correct `tilesApiKey` and `basemapConfigured` status based on the presence or absence of the `TILES_API_KEY` environment variable.",
+  "verification": [
+   {
+    "check_kind": "test",
+    "command": "npm run test"
+   }
+  ]
+ }
+]

@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Demo App: community places - parks, libraries and cafes on one page. Open map, no API keys.">
+  <title>Demo App - Map</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Demo App">
+  <meta property="og:description" content="Find parks, libraries and cafes on one map, with opening hours and search.">
+  <meta property="og:image" content="/screenshot.png">
+  <meta name="theme-color" content="#1d2733">
+  <meta name="color-scheme" content="dark light">
+  <meta name="robots" content="index, follow">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Demo App">
+  <meta name="twitter:image" content="/screenshot.png">
+  <meta name="application-name" content="Demo App">
+  <meta name="twitter:description" content="An open map of community places. No API keys.">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://a.basemaps.example.com">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <style>
+    :root {
+      --bg: #11161c;
+      --panel: #1d2733;
+      --border: #2c3a4a;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #4fb3a9;
+    }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+    body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .dm-toolbar {
+      display: flex; /* parks */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-search {
+      align-items: center; /* parks */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-chip {
+      gap: 8px; /* parks */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-card {
+      padding: 6px 10px; /* parks */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-legend {
+      border-radius: 6px; /* parks */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-drawer {
+      font-size: 13px; /* parks */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-badge {
+      color: var(--text); /* parks */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-list {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-row {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-tab {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-hours {
+      cursor: pointer; /* parks */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-filter {
+      margin: 0 0 6px; /* parks */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-popup {
+      display: flex; /* parks */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-cluster {
+      align-items: center; /* parks */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-toast {
+      gap: 8px; /* parks */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-footer {
+      padding: 6px 10px; /* parks */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-menu {
+      border-radius: 6px; /* parks */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-pager {
+      font-size: 13px; /* parks */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-toolbar.libraries {
+      color: var(--text); /* libraries */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-search.libraries {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-chip.libraries {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-card.libraries {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-legend.libraries {
+      cursor: pointer; /* libraries */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-drawer.libraries {
+      margin: 0 0 6px; /* libraries */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-badge.libraries {
+      display: flex; /* libraries */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-list.libraries {
+      align-items: center; /* libraries */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-row.libraries {
+      gap: 8px; /* libraries */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-tab.libraries {
+      padding: 6px 10px; /* libraries */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-hours.libraries {
+      border-radius: 6px; /* libraries */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-filter.libraries {
+      font-size: 13px; /* libraries */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-popup.libraries {
+      color: var(--text); /* libraries */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-cluster.libraries {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-toast.libraries {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-footer.libraries {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-menu.libraries {
+      cursor: pointer; /* libraries */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-pager.libraries {
+      margin: 0 0 6px; /* libraries */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-toolbar.cafes {
+      display: flex; /* cafes */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-search.cafes {
+      align-items: center; /* cafes */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-chip.cafes {
+      gap: 8px; /* cafes */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-card.cafes {
+      padding: 6px 10px; /* cafes */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-legend.cafes {
+      border-radius: 6px; /* cafes */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-drawer.cafes {
+      font-size: 13px; /* cafes */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-badge.cafes {
+      color: var(--text); /* cafes */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-list.cafes {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-row.cafes {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-tab.cafes {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-hours.cafes {
+      cursor: pointer; /* cafes */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-filter.cafes {
+      margin: 0 0 6px; /* cafes */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-popup.cafes {
+      display: flex; /* cafes */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-cluster.cafes {
+      align-items: center; /* cafes */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-toast.cafes {
+      gap: 8px; /* cafes */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-footer.cafes {
+      padding: 6px 10px; /* cafes */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-menu.cafes {
+      border-radius: 6px; /* cafes */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-pager.cafes {
+      font-size: 13px; /* cafes */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-toolbar.museums {
+      color: var(--text); /* museums */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-search.museums {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-chip.museums {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-card.museums {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-legend.museums {
+      cursor: pointer; /* museums */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-drawer.museums {
+      margin: 0 0 6px; /* museums */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-badge.museums {
+      display: flex; /* museums */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-list.museums {
+      align-items: center; /* museums */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-row.museums {
+      gap: 8px; /* museums */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-tab.museums {
+      padding: 6px 10px; /* museums */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-hours.museums {
+      border-radius: 6px; /* museums */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-filter.museums {
+      font-size: 13px; /* museums */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-popup.museums {
+      color: var(--text); /* museums */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-cluster.museums {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-toast.museums {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-footer.museums {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-menu.museums {
+      cursor: pointer; /* museums */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-pager.museums {
+      margin: 0 0 6px; /* museums */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-toolbar.markets {
+      display: flex; /* markets */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-search.markets {
+      align-items: center; /* markets */
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-chip.markets {
+      gap: 8px; /* markets */
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-card.markets {
+      padding: 6px 10px; /* markets */
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-legend.markets {
+      border-radius: 6px; /* markets */
+      font-size: 13px;
+      color: var(--text);
+    }
+    .dm-drawer.markets {
+      font-size: 13px; /* markets */
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    .dm-badge.markets {
+      color: var(--text); /* markets */
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-list.markets {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-row.markets {
+      border: 1px solid var(--border);
+      transition: background 0.15s ease;
+      cursor: pointer;
+    }
+    .dm-tab.markets {
+      transition: background 0.15s ease;
+      cursor: pointer;
+      margin: 0 0 6px;
+      display: flex;
+    }
+    .dm-hours.markets {
+      cursor: pointer; /* markets */
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-filter.markets {
+      margin: 0 0 6px; /* markets */
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    .dm-popup.markets {
+      display: flex; /* markets */
+      align-items: center;
+      gap: 8px;
+    }
+    .dm-cluster.markets {
+  </style>
+</head>
+<body>
+  <section class="panel" id="p-parks-0">
+    <h2>Parks</h2>
+    <p><span id="count-parks">0</span> in view</p>
+    <ul id="list-parks"></ul>
+  </section>
+  <section class="panel" id="p-libraries-0">
+    <h2>Libraries</h2>
+    <p><span id="count-libraries">0</span> in view</p>
+    <ul id="list-libraries"></ul>
+  </section>
+  <section class="panel" id="p-cafes-0">
+    <h2>Cafes</h2>
+    <p><span id="count-cafes">0</span> in view</p>
+    <ul id="list-cafes"></ul>
+  </section>
+  <section class="panel" id="p-museums-0">
+    <h2>Museums</h2>
+    <p><span id="count-museums">0</span> in view</p>
+    <ul id="list-museums"></ul>
+  </section>
+  <section class="panel" id="p-markets-0">
+    <h2>Markets</h2>
+    <p><span id="count-markets">0</span> in view</p>
+    <ul id="list-markets"></ul>
+  </section>
+  <section class="panel" id="p-pools-0">
+    <h2>Pools</h2>
+    <p><span id="count-pools">0</span> in view</p>
+    <ul id="list-pools"></ul>
+  </section>
+  <section class="panel" id="p-gardens-0">
+    <h2>Gardens</h2>
+    <p><span id="count-gardens">0</span> in view</p>
+    <ul id="list-gardens"></ul>
+  </section>
+  <section class="panel" id="p-theatres-0">
+    <h2>Theatres</h2>
+    <p><span id="count-theatres">0</span> in view</p>
+    <ul id="list-theatres"></ul>
+  </section>
+  <section class="panel" id="p-bakeries-0">
+    <h2>Bakeries</h2>
+    <p><span id="count-bakeries">0</span> in view</p>
+    <ul id="list-bakeries"></ul>
+  </section>
+  <section class="panel" id="p-bookshops-0">
+    <h2>Bookshops</h2>
+    <p><span id="count-bookshops">0</span> in view</p>
+    <ul id="list-bookshops"></ul>
+  </section>
+  <section class="panel" id="p-playgrounds-0">
+    <h2>Playgrounds</h2>
+    <p><span id="count-playgrounds">0</span> in view</p>
+    <ul id="list-playgrounds"></ul>
+  </section>
+  <section class="panel" id="p-galleries-0">
+    <h2>Galleries</h2>
+    <p><span id="count-galleries">0</span> in view</p>
+    <ul id="list-galleries"></ul>
+  </section>
+  <section class="panel" id="p-halls-0">
+    <h2>Halls</h2>
+    <p><span id="count-halls">0</span> in view</p>
+    <ul id="list-halls"></ul>
+  </section>
+  <section class="panel" id="p-studios-0">
+    <h2>Studios</h2>
+    <p><span id="count-studios">0</span> in view</p>
+    <ul id="list-studios"></ul>
+  </section>
+  <section class="panel" id="p-clinics-0">
+    <h2>Clinics</h2>
+    <p><span id="count-clinics">0</span> in view</p>
+    <ul id="list-clinics"></ul>
+  </section>
+  <section class="panel" id="p-trails-0">
+    <h2>Trails</h2>
+    <p><span id="count-trails">0</span> in view</p>
+    <ul id="list-trails"></ul>
+  </section>
+  <section class="panel" id="p-parks-1">
+    <h2>Parks</h2>
+    <p><span id="count-parks">0</span> in view</p>
+    <ul id="list-parks"></ul>
+  </section>
+  <section class="panel" id="p-libraries-1">
+    <h2>Libraries</h2>
+    <p><span id="count-libraries">0</span> in view</p>
+    <ul id="list-libraries"></ul>
+  </section>
+  <section class="panel" id="p-cafes-1">
+    <h2>Cafes</h2>
+    <p><span id="count-cafes">0</span> in view</p>
+    <ul id="list-cafes"></ul>
+  </section>
+  <section class="panel" id="p-museums-1">
+    <h2>Museums</h2>
+    <p><span id="count-museums">0</span> in view</p>
+    <ul id="list-museums"></ul>
+  </section>
+  <section class="panel" id="p-markets-1">
+    <h2>Markets</h2>
+    <p><span id="count-markets">0</span> in view</p>
+    <ul id="list-markets"></ul>
+  </section>
+  <section class="panel" id="p-pools-1">
+    <h2>Pools</h2>
+    <p><span id="count-pools">0</span> in view</p>
+    <ul id="list-pools"></ul>
+  </section>
+  <section class="panel" id="p-gardens-1">
+    <h2>Gardens</h2>
+    <p><span id="count-gardens">0</span> in view</p>
+    <ul id="list-gardens"></ul>
+  </section>
+  <section class="panel" id="p-theatres-1">
+    <h2>Theatres</h2>
+    <p><span id="count-theatres">0</span> in view</p>
+    <ul id="list-theatres"></ul>
+  </section>
+  <section class="panel" id="p-bakeries-1">
+    <h2>Bakeries</h2>
+    <p><span id="count-bakeries">0</span> in view</p>
+    <ul id="list-bakeries"></ul>
+  </section>
+  <section class="panel" id="p-bookshops-1">
+    <h2>Bookshops</h2>
+    <p><span id="count-bookshops">0</span> in view</p>
+    <ul id="list-bookshops"></ul>
+  </section>
+  <section class="panel" id="p-playgrounds-1">
+    <h2>Playgrounds</h2>
+    <p><span id="count-playgrounds">0</span> in view</p>
+    <ul id="list-playgrounds"></ul>
+  </section>
+  <section class="panel" id="p-galleries-1">
+    <h2>Galleries</h2>
+    <p><span id="count-galleries">0</span> in view</p>
+    <ul id="list-galleries"></ul>
+  </section>
+  <section class="panel" id="p-halls-1">
+    <h2>Halls</h2>
+    <p><span id="count-halls">0</span> in view</p>
+    <ul id="list-halls"></ul>
+  </section>
+  <section class="panel" id="p-studios-1">
+    <h2>Studios</h2>
+    <p><span id="count-studios">0</span> in view</p>
+    <ul id="list-studios"></ul>
+  </section>
+  <section class="panel" id="p-clinics-1">
+    <h2>Clinics</h2>
+    <p><span id="count-clinics">0</span> in view</p>
+    <ul id="list-clinics"></ul>
+  </section>
+  <section class="panel" id="p-trails-1">
+    <h2>Trails</h2>
+    <p><span id="count-trails">0</span> in view</p>
+    <ul id="list-trails"></ul>
+  </section>
+  <section class="panel" id="p-parks-2">
+    <h2>Parks</h2>
+    <p><span id="count-parks">0</span> in view</p>
+    <ul id="list-parks"></ul>
+  </section>
+  <section class="panel" id="p-libraries-2">
+    <h2>Libraries</h2>
+    <p><span id="count-libraries">0</span> in view</p>
+    <ul id="list-libraries"></ul>
+  </section>
+  <section class="panel" id="p-cafes-2">
+    <h2>Cafes</h2>
+    <p><span id="count-cafes">0</span> in view</p>
+    <ul id="list-cafes"></ul>
+  </section>
+  <section class="panel" id="p-museums-2">
+    <h2>Museums</h2>
+    <p><span id="count-museums">0</span> in view</p>
+    <ul id="list-museums"></ul>
+  </section>
+  <section class="panel" id="p-markets-2">
+    <h2>Markets</h2>
+    <p><span id="count-markets">0</span> in view</p>
+    <ul id="list-markets"></ul>
+  </section>
+  <section class="panel" id="p-pools-2">
+    <h2>Pools</h2>
+    <p><span id="count-pools">0</span> in view</p>
+    <ul id="list-pools"></ul>
+  </section>
+  <section class="panel" id="p-gardens-2">
+    <h2>Gardens</h2>
+    <p><span id="count-gardens">0</span> in view</p>
+    <ul id="list-gardens"></ul>
+  </section>
+  <section class="panel" id="p-theatres-2">
+    <h2>Theatres</h2>
+    <p><span id="count-theatres">0</span> in view</p>
+    <ul id="list-theatres"></ul>
+  </section>
+  <section class="panel" id="p-bakeries-2">
+    <h2>Bakeries</h2>
+    <p><span id="count-bakeries">0</span> in view</p>
+    <ul id="list-bakeries"></ul>
+  </section>
+  <div id="map" class="map"></div>
+
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    'use strict';
+
+    const API = window.location.origin;
+    const state = { category: 'all', openNow: false, selected: null };
+    const ICONS = {
+      parks: L.divIcon({ className: 'pin pin-parks', iconSize: [18, 18] }),
+      libraries: L.divIcon({ className: 'pin pin-libraries', iconSize: [18, 18] }),
+      cafes: L.divIcon({ className: 'pin pin-cafes', iconSize: [18, 18] }),
+      museums: L.divIcon({ className: 'pin pin-museums', iconSize: [18, 18] }),
+      markets: L.divIcon({ className: 'pin pin-markets', iconSize: [18, 18] }),
+      pools: L.divIcon({ className: 'pin pin-pools', iconSize: [18, 18] }),
+      gardens: L.divIcon({ className: 'pin pin-gardens', iconSize: [18, 18] }),
+      theatres: L.divIcon({ className: 'pin pin-theatres', iconSize: [18, 18] }),
+      bakeries: L.divIcon({ className: 'pin pin-bakeries', iconSize: [18, 18] }),
+      bookshops: L.divIcon({ className: 'pin pin-bookshops', iconSize: [18, 18] }),
+      playgrounds: L.divIcon({ className: 'pin pin-playgrounds', iconSize: [18, 18] }),
+      galleries: L.divIcon({ className: 'pin pin-galleries', iconSize: [18, 18] }),
+      halls: L.divIcon({ className: 'pin pin-halls', iconSize: [18, 18] }),
+      studios: L.divIcon({ className: 'pin pin-studios', iconSize: [18, 18] }),
+      clinics: L.divIcon({ className: 'pin pin-clinics', iconSize: [18, 18] }),
+      trails: L.divIcon({ className: 'pin pin-trails', iconSize: [18, 18] }),
+    };
+
+    function showToast(text) {
+      const t = document.getElementById('toast');
+      t.textContent = text;
+      t.dataset.n26 = '1';
+      t.dataset.n27 = '1';
+      t.dataset.n28 = '1';
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 4000);
+    }
+    const map = L.map('map', { zoomControl: false }).setView([40, -100], 4);
+    L.control.zoom({ position: 'topleft' }).addTo(map);
+
+    // Base map without labels; labels go on a pane above the markers
+    L.tileLayer('https://{s}.basemaps.example.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OSM &copy; Tiler',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Place names stay readable above the markers
+    map.createPane('labels');
+    const labelsLayer = L.tileLayer('https://{s}.basemaps.example.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+      attribution: '',
+      subdomains: 'abcd',
+      maxZoom: 19,
+      pane: 'overlayPane',
+    }).addTo(map);
+
+
+    // Parks panel (1)
+    async function loadParks0(bounds) {
+      const q = new URLSearchParams({ category: 'parks', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load parks right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'parks' }));
+    }
+
+    function renderParks0(places) {
+      const list = document.getElementById('list-parks');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row parks';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-parks').textContent = String(places.length);
+    }
+
+    // Libraries panel (1)
+    async function loadLibraries0(bounds) {
+      const q = new URLSearchParams({ category: 'libraries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load libraries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'libraries' }));
+    }
+
+    function renderLibraries0(places) {
+      const list = document.getElementById('list-libraries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row libraries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-libraries').textContent = String(places.length);
+    }
+
+    // Cafes panel (1)
+    async function loadCafes0(bounds) {
+      const q = new URLSearchParams({ category: 'cafes', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load cafes right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'cafes' }));
+    }
+
+    function renderCafes0(places) {
+      const list = document.getElementById('list-cafes');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row cafes';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-cafes').textContent = String(places.length);
+    }
+
+    // Museums panel (1)
+    async function loadMuseums0(bounds) {
+      const q = new URLSearchParams({ category: 'museums', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load museums right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'museums' }));
+    }
+
+    function renderMuseums0(places) {
+      const list = document.getElementById('list-museums');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row museums';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-museums').textContent = String(places.length);
+    }
+
+    // Markets panel (1)
+    async function loadMarkets0(bounds) {
+      const q = new URLSearchParams({ category: 'markets', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load markets right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'markets' }));
+    }
+
+    function renderMarkets0(places) {
+      const list = document.getElementById('list-markets');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row markets';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-markets').textContent = String(places.length);
+    }
+
+    // Pools panel (1)
+    async function loadPools0(bounds) {
+      const q = new URLSearchParams({ category: 'pools', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load pools right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'pools' }));
+    }
+
+    function renderPools0(places) {
+      const list = document.getElementById('list-pools');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row pools';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-pools').textContent = String(places.length);
+    }
+
+    // Gardens panel (1)
+    async function loadGardens0(bounds) {
+      const q = new URLSearchParams({ category: 'gardens', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load gardens right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'gardens' }));
+    }
+
+    function renderGardens0(places) {
+      const list = document.getElementById('list-gardens');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row gardens';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-gardens').textContent = String(places.length);
+    }
+
+    // Theatres panel (1)
+    async function loadTheatres0(bounds) {
+      const q = new URLSearchParams({ category: 'theatres', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load theatres right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'theatres' }));
+    }
+
+    function renderTheatres0(places) {
+      const list = document.getElementById('list-theatres');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row theatres';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-theatres').textContent = String(places.length);
+    }
+
+    // Bakeries panel (1)
+    async function loadBakeries0(bounds) {
+      const q = new URLSearchParams({ category: 'bakeries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load bakeries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'bakeries' }));
+    }
+
+    function renderBakeries0(places) {
+      const list = document.getElementById('list-bakeries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row bakeries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-bakeries').textContent = String(places.length);
+    }
+
+    // Bookshops panel (1)
+    async function loadBookshops0(bounds) {
+      const q = new URLSearchParams({ category: 'bookshops', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load bookshops right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'bookshops' }));
+    }
+
+    function renderBookshops0(places) {
+      const list = document.getElementById('list-bookshops');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row bookshops';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-bookshops').textContent = String(places.length);
+    }
+
+    // Playgrounds panel (1)
+    async function loadPlaygrounds0(bounds) {
+      const q = new URLSearchParams({ category: 'playgrounds', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load playgrounds right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'playgrounds' }));
+    }
+
+    function renderPlaygrounds0(places) {
+      const list = document.getElementById('list-playgrounds');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row playgrounds';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-playgrounds').textContent = String(places.length);
+    }
+
+    // Galleries panel (1)
+    async function loadGalleries0(bounds) {
+      const q = new URLSearchParams({ category: 'galleries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load galleries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'galleries' }));
+    }
+
+    function renderGalleries0(places) {
+      const list = document.getElementById('list-galleries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row galleries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-galleries').textContent = String(places.length);
+    }
+
+    // Halls panel (1)
+    async function loadHalls0(bounds) {
+      const q = new URLSearchParams({ category: 'halls', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load halls right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'halls' }));
+    }
+
+    function renderHalls0(places) {
+      const list = document.getElementById('list-halls');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row halls';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-halls').textContent = String(places.length);
+    }
+
+    // Studios panel (1)
+    async function loadStudios0(bounds) {
+      const q = new URLSearchParams({ category: 'studios', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load studios right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'studios' }));
+    }
+
+    function renderStudios0(places) {
+      const list = document.getElementById('list-studios');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row studios';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-studios').textContent = String(places.length);
+    }
+
+    // Clinics panel (1)
+    async function loadClinics0(bounds) {
+      const q = new URLSearchParams({ category: 'clinics', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load clinics right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'clinics' }));
+    }
+
+    function renderClinics0(places) {
+      const list = document.getElementById('list-clinics');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row clinics';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-clinics').textContent = String(places.length);
+    }
+
+    // Trails panel (1)
+    async function loadTrails0(bounds) {
+      const q = new URLSearchParams({ category: 'trails', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load trails right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'trails' }));
+    }
+
+    function renderTrails0(places) {
+      const list = document.getElementById('list-trails');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row trails';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-trails').textContent = String(places.length);
+    }
+
+    // Parks panel (2)
+    async function loadParks1(bounds) {
+      const q = new URLSearchParams({ category: 'parks', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load parks right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'parks' }));
+    }
+
+    function renderParks1(places) {
+      const list = document.getElementById('list-parks');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row parks';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-parks').textContent = String(places.length);
+    }
+
+    // Libraries panel (2)
+    async function loadLibraries1(bounds) {
+      const q = new URLSearchParams({ category: 'libraries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load libraries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'libraries' }));
+    }
+
+    function renderLibraries1(places) {
+      const list = document.getElementById('list-libraries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row libraries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-libraries').textContent = String(places.length);
+    }
+
+    // Cafes panel (2)
+    async function loadCafes1(bounds) {
+      const q = new URLSearchParams({ category: 'cafes', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load cafes right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'cafes' }));
+    }
+
+    function renderCafes1(places) {
+      const list = document.getElementById('list-cafes');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row cafes';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-cafes').textContent = String(places.length);
+    }
+
+    // Museums panel (2)
+    async function loadMuseums1(bounds) {
+      const q = new URLSearchParams({ category: 'museums', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load museums right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'museums' }));
+    }
+
+    function renderMuseums1(places) {
+      const list = document.getElementById('list-museums');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row museums';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-museums').textContent = String(places.length);
+    }
+
+    // Markets panel (2)
+    async function loadMarkets1(bounds) {
+      const q = new URLSearchParams({ category: 'markets', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load markets right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'markets' }));
+    }
+
+    function renderMarkets1(places) {
+      const list = document.getElementById('list-markets');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row markets';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-markets').textContent = String(places.length);
+    }
+
+    // Pools panel (2)
+    async function loadPools1(bounds) {
+      const q = new URLSearchParams({ category: 'pools', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load pools right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'pools' }));
+    }
+
+    function renderPools1(places) {
+      const list = document.getElementById('list-pools');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row pools';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-pools').textContent = String(places.length);
+    }
+
+    // Gardens panel (2)
+    async function loadGardens1(bounds) {
+      const q = new URLSearchParams({ category: 'gardens', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load gardens right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'gardens' }));
+    }
+
+    function renderGardens1(places) {
+      const list = document.getElementById('list-gardens');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row gardens';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-gardens').textContent = String(places.length);
+    }
+
+    // Theatres panel (2)
+    async function loadTheatres1(bounds) {
+      const q = new URLSearchParams({ category: 'theatres', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load theatres right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'theatres' }));
+    }
+
+    function renderTheatres1(places) {
+      const list = document.getElementById('list-theatres');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row theatres';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-theatres').textContent = String(places.length);
+    }
+
+    // Bakeries panel (2)
+    async function loadBakeries1(bounds) {
+      const q = new URLSearchParams({ category: 'bakeries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load bakeries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'bakeries' }));
+    }
+
+    function renderBakeries1(places) {
+      const list = document.getElementById('list-bakeries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row bakeries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-bakeries').textContent = String(places.length);
+    }
+
+    // Bookshops panel (2)
+    async function loadBookshops1(bounds) {
+      const q = new URLSearchParams({ category: 'bookshops', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load bookshops right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'bookshops' }));
+    }
+
+    function renderBookshops1(places) {
+      const list = document.getElementById('list-bookshops');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row bookshops';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-bookshops').textContent = String(places.length);
+    }
+
+    // Playgrounds panel (2)
+    async function loadPlaygrounds1(bounds) {
+      const q = new URLSearchParams({ category: 'playgrounds', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load playgrounds right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'playgrounds' }));
+    }
+
+    function renderPlaygrounds1(places) {
+      const list = document.getElementById('list-playgrounds');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row playgrounds';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-playgrounds').textContent = String(places.length);
+    }
+
+    // Galleries panel (2)
+    async function loadGalleries1(bounds) {
+      const q = new URLSearchParams({ category: 'galleries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load galleries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'galleries' }));
+    }
+
+    function renderGalleries1(places) {
+      const list = document.getElementById('list-galleries');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row galleries';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-galleries').textContent = String(places.length);
+    }
+
+    // Halls panel (2)
+    async function loadHalls1(bounds) {
+      const q = new URLSearchParams({ category: 'halls', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load halls right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'halls' }));
+    }
+
+    function renderHalls1(places) {
+      const list = document.getElementById('list-halls');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row halls';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-halls').textContent = String(places.length);
+    }
+
+    // Studios panel (2)
+    async function loadStudios1(bounds) {
+      const q = new URLSearchParams({ category: 'studios', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load studios right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'studios' }));
+    }
+
+    function renderStudios1(places) {
+      const list = document.getElementById('list-studios');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row studios';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-studios').textContent = String(places.length);
+    }
+
+    // Clinics panel (2)
+    async function loadClinics1(bounds) {
+      const q = new URLSearchParams({ category: 'clinics', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load clinics right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'clinics' }));
+    }
+
+    function renderClinics1(places) {
+      const list = document.getElementById('list-clinics');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row clinics';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-clinics').textContent = String(places.length);
+    }
+
+    // Trails panel (2)
+    async function loadTrails1(bounds) {
+      const q = new URLSearchParams({ category: 'trails', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load trails right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'trails' }));
+    }
+
+    function renderTrails1(places) {
+      const list = document.getElementById('list-trails');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row trails';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-trails').textContent = String(places.length);
+    }
+
+    // Parks panel (3)
+    async function loadParks2(bounds) {
+      const q = new URLSearchParams({ category: 'parks', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load parks right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'parks' }));
+    }
+
+    function renderParks2(places) {
+      const list = document.getElementById('list-parks');
+      list.innerHTML = '';
+      for (const p of places) {
+        const li = document.createElement('li');
+        li.className = 'place-row parks';
+        li.textContent = p.name;
+        li.addEventListener('click', () => focusPlace(p));
+        list.appendChild(li);
+      }
+      document.getElementById('count-parks').textContent = String(places.length);
+    }
+
+    // Libraries panel (3)
+    async function loadLibraries2(bounds) {
+      const q = new URLSearchParams({ category: 'libraries', bbox: bounds.toBBoxString() });
+      const res = await fetch(`${API}/places?${q}`);
+      if (!res.ok) {
+        showToast('Could not load libraries right now.');
+        return [];
+      }
+      const body = await res.json();
+      return body.places.map(p => ({ ...p, category: 'libraries' }));
+    }
+
+    function renderLibraries2(places) {
+      const list = document.getElementById('list-libraries');
+  </script>
+</body>
+</html>

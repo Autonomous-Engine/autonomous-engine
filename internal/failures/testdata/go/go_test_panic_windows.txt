@@ -1,0 +1,20 @@
+--- FAIL: TestAt (0.00s)
+panic: runtime error: index out of range [3] with length 3 [recovered, repanicked]
+
+goroutine 6 [running]:
+testing.tRunner.func1.2({0x7ff60a3e0180, 0x1f5da4b30240})
+	C:/Program Files/Go/src/testing/testing.go:2123 +0x239
+testing.tRunner.func1()
+	C:/Program Files/Go/src/testing/testing.go:2126 +0x329
+panic({0x7ff60a3e0180?, 0x1f5da4b30240?})
+	C:/Program Files/Go/src/runtime/panic.go:859 +0x125
+example.com/app/calc.At(...)
+	C:/Users/runner/AppData/Local/Temp/gocap2817/panic/calc/calc.go:3
+example.com/app/calc.TestAt(0x1f5da4b16400?)
+	C:/Users/runner/AppData/Local/Temp/gocap2817/panic/calc/calc_test.go:6 +0xa
+testing.tRunner(0x1f5da4b16400, 0x7ff60a3eba68)
+	C:/Program Files/Go/src/testing/testing.go:2193 +0xc3
+created by testing.(*T).Run in goroutine 1
+	C:/Program Files/Go/src/testing/testing.go:2258 +0x4b4
+FAIL	example.com/app/calc	0.154s
+FAIL

@@ -1,0 +1,154 @@
+{
+  "brief": {
+    "schema_version": 1,
+    "criteria": [
+      {
+        "id": "AC-1",
+        "text": "Fixed discount is applied before the percentage discount",
+        "source": {
+          "kind": "user",
+          "quote": "apply the fixed discount before the percentage discount"
+        },
+        "files": [
+          {
+            "path": "calculate.go",
+            "evidence": {
+              "kind": "repo",
+              "ref": "c3",
+              "confidence": 1,
+              "basis": "snapshot"
+            }
+          }
+        ],
+        "risk": "high",
+        "required_checks": [
+          "test"
+        ]
+      },
+      {
+        "id": "AC-2",
+        "text": "The calculate endpoint keeps its response shape",
+        "source": {
+          "kind": "derived",
+          "reason": "the handler is shared with the quote endpoint"
+        },
+        "risk": "low"
+      }
+    ],
+    "file_evidence": {
+      "calculate.go": {
+        "kind": "repo",
+        "ref": "c3",
+        "confidence": 1,
+        "basis": "snapshot"
+      }
+    }
+  },
+  "tasks": [
+    {
+      "index": 1,
+      "title": "Fix discount order",
+      "repository_id": "repo-1",
+      "repository": "test-app",
+      "spec": {
+        "schema_version": 1,
+        "criterion_ids": [
+          "AC-1"
+        ],
+        "deliverable": "calculate.go applies the fixed discount first",
+        "verification": [
+          {
+            "check_kind": "test",
+            "command": "go test ./..."
+          }
+        ],
+        "files": [
+          {
+            "path": "calculate.go",
+            "evidence": {
+              "kind": "repo",
+              "ref": "c3",
+              "confidence": 1
+            }
+          },
+          {
+            "path": "discount.go",
+            "evidence": {
+              "kind": "new",
+              "confidence": 0
+            }
+          },
+          {
+            "path": "old/pricing.go",
+            "evidence": {
+              "kind": "repo",
+              "ref": "c9",
+              "confidence": 1
+            }
+          }
+        ]
+      },
+      "policy_checks": [
+        "test"
+      ]
+    },
+    {
+      "index": 2,
+      "title": "Keep the response shape",
+      "repository_id": "repo-1",
+      "repository": "test-app",
+      "spec": {
+        "schema_version": 1,
+        "criterion_ids": [
+          "AC-2"
+        ],
+        "deliverable": "the handler response is unchanged",
+        "verification": [
+          {
+            "check_kind": "build",
+            "command": "go build ./..."
+          }
+        ],
+        "files": [
+          {
+            "path": "handler.go",
+            "evidence": {
+              "kind": "codex",
+              "ref": "c7",
+              "confidence": 0.8
+            }
+          }
+        ]
+      },
+      "policy_checks": [
+        "test"
+      ]
+    }
+  ],
+  "deps": {
+    "labels": [
+      "Implement in test-app"
+    ],
+    "edges": [
+      []
+    ],
+    "known_titles": [
+      "Fix discount order",
+      "Keep the response shape"
+    ]
+  },
+  "existing": {
+    "repo-1": [
+      "calculate.go",
+      "handler.go",
+      "README.md"
+    ]
+  },
+  "want": [
+    {
+      "code": "stale_evidence",
+      "task_index": 1,
+      "contains": "cites repo evidence (repo:c9) for old/pricing.go, which does not exist at the snapshot"
+    }
+  ]
+}

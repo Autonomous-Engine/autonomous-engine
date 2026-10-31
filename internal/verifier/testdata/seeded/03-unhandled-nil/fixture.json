@@ -1,0 +1,28 @@
+{
+  "name": "03-unhandled-nil",
+  "defect_class": "unhandled_nil",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "DisplayName returns \"First Last\" for a signed-in user, trimmed.",
+      "source": {"kind": "derived", "reason": "the header shows the account's name"},
+      "risk": "low"
+    },
+    {
+      "id": "AC-2",
+      "text": "DisplayName returns \"anonymous\" for a signed-out visitor (a nil *User) and for a user with no name; it never panics.",
+      "source": {"kind": "user", "quote": "visitors who are not signed in should see anonymous"},
+      "risk": "high",
+      "required_checks": ["test"]
+    }
+  ],
+  "task_spec": {
+    "schema_version": 1,
+    "criterion_ids": ["AC-1", "AC-2"],
+    "deliverable": "user.DisplayName for the page header",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [{"path": "user.go", "evidence": {"kind": "repo", "ref": "stat", "confidence": 1, "basis": "snapshot"}}]
+  },
+  "author_summary": "Added DisplayName for the header. Handles signed-out visitors and users without a name by returning \"anonymous\", as requested. Unit tests added and green.",
+  "expect": {"criterion_ids": ["AC-2"], "file": "user.go", "line": 14}
+}

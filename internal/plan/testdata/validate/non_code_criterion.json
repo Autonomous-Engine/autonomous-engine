@@ -1,0 +1,101 @@
+{
+  "brief": {
+    "schema_version": 1,
+    "criteria": [
+      {
+        "id": "AC-1",
+        "text": "The map tiles load with the TileHost API key from the environment",
+        "source": {
+          "kind": "user",
+          "quote": "load the tiles with the TileHost API key"
+        },
+        "risk": "medium",
+        "required_checks": [
+          "test"
+        ]
+      },
+      {
+        "id": "AC-2",
+        "text": "The change is deployed to staging and the team is notified",
+        "source": {
+          "kind": "user",
+          "quote": "deploy it to staging and tell the team"
+        },
+        "risk": "low"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "index": 1,
+      "title": "Read the TileHost key from the environment",
+      "repository_id": "repo-1",
+      "repository": "sample-app",
+      "spec": {
+        "schema_version": 1,
+        "criterion_ids": [
+          "AC-1"
+        ],
+        "deliverable": "the tile URL carries the configured key",
+        "verification": [
+          {
+            "check_kind": "test",
+            "command": "npm test"
+          }
+        ],
+        "files": [
+          {
+            "path": "src/config/env.ts",
+            "evidence": {
+              "kind": "repo",
+              "ref": "r1",
+              "confidence": 1
+            }
+          }
+        ]
+      },
+      "policy_checks": [
+        "test"
+      ]
+    },
+    {
+      "index": 2,
+      "title": "Deploy to staging and notify team",
+      "spec": {
+        "schema_version": 1,
+        "criterion_ids": [
+          "AC-2"
+        ],
+        "deliverable": "staging runs the change",
+        "verification": []
+      },
+      "dropped": "not an implementation task (process or deployment work; it names no repository file)",
+      "non_code": true
+    }
+  ],
+  "deps": {
+    "labels": [
+      "Implement in sample-app"
+    ],
+    "edges": [
+      []
+    ],
+    "known_titles": [
+      "Read the TileHost key from the environment",
+      "Deploy to staging and notify team"
+    ]
+  },
+  "existing": {
+    "repo-1": [
+      "src/config/env.ts"
+    ]
+  },
+  "want": [
+    {
+      "code": "non_code_criterion",
+      "severity": "warning",
+      "criterion_id": "AC-2",
+      "contains": "criterion AC-2 is non-code: cited only by task 2 \"Deploy to staging and notify team\", which the planner dropped (not an implementation task (process or deployment work; it names no repository file)); verify manually"
+    }
+  ]
+}

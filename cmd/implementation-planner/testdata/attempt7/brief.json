@@ -1,0 +1,17 @@
+{
+  "narrative": "Show a visible notice on both landing pages when the model API key is missing, instead of failing silently.",
+  "criteria": {
+    "schema_version": 1,
+    "criteria": [
+      {"id": "AC-1", "text": "The configuration loader reports whether the API key is set", "source": {"kind": "user", "quote": "know whether the API key is configured"}, "risk": "medium"},
+      {"id": "AC-2", "text": "A missing API key is logged once at startup", "source": {"kind": "derived", "reason": "server.js logs configuration at startup"}, "risk": "low"},
+      {"id": "AC-3", "text": "The status endpoint exposes an api_key_configured flag", "source": {"kind": "derived", "reason": "the pages read status from /api/status"}, "risk": "medium"},
+      {"id": "AC-4", "text": "The status endpoint never returns the key itself", "source": {"kind": "derived", "reason": "the key is a secret"}, "risk": "high"},
+      {"id": "AC-5", "text": "The public page fetches the status flag on load", "source": {"kind": "derived", "reason": "public/index.html renders on load"}, "risk": "low"},
+      {"id": "AC-6", "text": "The landing page fetches the status flag on load", "source": {"kind": "derived", "reason": "landing/index.html renders on load"}, "risk": "low"},
+      {"id": "AC-7", "text": "The notice explains how to set the API key", "source": {"kind": "user", "quote": "tell me how to fix it"}, "risk": "low"},
+      {"id": "AC-8", "text": "The notice is hidden when the API key is configured", "source": {"kind": "derived", "reason": "the notice must not show for a healthy install"}, "risk": "low"},
+      {"id": "AC-9", "text": "Both public/index.html and landing/index.html display a visible notice when the API key is missing", "source": {"kind": "user", "quote": "show a notice on both pages when the key is missing"}, "risk": "medium"}
+    ]
+  }
+}

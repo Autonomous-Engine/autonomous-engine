@@ -1,0 +1,32 @@
+{
+  "name": "06-test-asserts-nothing",
+  "defect_class": "empty_test",
+  "criteria": [
+    {
+      "id": "AC-1",
+      "text": "Discount(total) returns total minus 10% for totals of 100 or more, and total unchanged below 100.",
+      "source": {"kind": "user", "quote": "orders of 100 or more get 10% off"},
+      "risk": "medium",
+      "required_checks": ["test"]
+    },
+    {
+      "id": "AC-2",
+      "text": "Discount is covered by a unit test that fails if the discounted amount or the threshold is wrong.",
+      "source": {"kind": "derived", "reason": "pricing changes must be regression-tested"},
+      "risk": "medium",
+      "required_checks": ["test"]
+    }
+  ],
+  "task_spec": {
+    "schema_version": 1,
+    "criterion_ids": ["AC-1", "AC-2"],
+    "deliverable": "pricing.Discount with a regression test",
+    "verification": [{"check_kind": "test", "command": "go test ./..."}],
+    "files": [
+      {"path": "pricing.go", "evidence": {"kind": "repo", "ref": "stat", "confidence": 1, "basis": "snapshot"}},
+      {"path": "pricing_test.go", "evidence": {"kind": "new", "confidence": 1}}
+    ]
+  },
+  "author_summary": "Implemented the 10% discount for orders of 100 or more and added a regression test, TestDiscount, that exercises the threshold. go test passes.",
+  "expect": {"criterion_ids": ["AC-2"], "file": "pricing_test.go", "line": 5}
+}

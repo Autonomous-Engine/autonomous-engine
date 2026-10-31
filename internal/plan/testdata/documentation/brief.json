@@ -1,0 +1,37 @@
+{
+  "narrative": "Load the map tiles with a TileHost API key read from the environment, document how to obtain and configure the key, and roll the change out to staging.",
+  "criteria": {
+    "schema_version": 1,
+    "criteria": [
+      {
+        "id": "AC-1",
+        "text": "The map tiles load with the TileHost API key read from TILES_API_KEY",
+        "source": {"kind": "user", "quote": "the tiles must use the TileHost API key from the environment"},
+        "files": [{"path": "src/config/env.ts", "evidence": {"kind": "repo", "ref": "r1", "confidence": 1, "basis": "snapshot"}}],
+        "risk": "medium",
+        "required_checks": ["test"]
+      },
+      {
+        "id": "AC-2",
+        "text": "Relevant documentation is updated to describe obtaining and configuring the TileHost API key",
+        "source": {"kind": "user", "quote": "documentation is updated to describe obtaining and configuring the TileHost API key"},
+        "files": [
+          {"path": "README.md", "evidence": {"kind": "repo", "ref": "r2", "confidence": 1, "basis": "snapshot"}},
+          {"path": ".env.example", "evidence": {"kind": "repo", "ref": "r3", "confidence": 1, "basis": "snapshot"}}
+        ],
+        "risk": "low"
+      },
+      {
+        "id": "AC-3",
+        "text": "The change is deployed to staging and the team is notified",
+        "source": {"kind": "user", "quote": "deploy it to staging and tell the team"},
+        "risk": "low"
+      }
+    ],
+    "file_evidence": {
+      "src/config/env.ts": {"kind": "repo", "ref": "r1", "confidence": 1, "basis": "snapshot"},
+      "README.md": {"kind": "repo", "ref": "r2", "confidence": 1, "basis": "snapshot"},
+      ".env.example": {"kind": "repo", "ref": "r3", "confidence": 1, "basis": "snapshot"}
+    }
+  }
+}

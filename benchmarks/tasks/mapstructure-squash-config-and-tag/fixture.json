@@ -1,0 +1,33 @@
+{
+  "id": "mapstructure-squash-config-and-tag",
+  "summary": "Struct-to-map decoding stops squashing an embedded struct when DecoderConfig.Squash and a \",squash\" tag are both set (the tag toggles the option off).",
+  "repo": "https://github.com/mitchellh/mapstructure",
+  "base_sha": "b9b99d7d59762a5b2a43df840adc318b2fa229ee",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "7bbefaa2a042b74aa163cb995803735a14b2527c",
+    "upstream_change": "decodeMapFromStruct: `squash = !squash && <tag has squash>` became `squash = squash || <tag has squash>`",
+    "reference_patch": "git diff --binary b9b99d7..7bbefaa (source fix plus the upstream regression test, unchanged)",
+    "size_note": "about 1.8k non-test Go lines at base"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "7bbefaa2a042b74aa163cb995803735a14b2527c",
+        "paths": [
+          "mapstructure.go",
+          "mapstructure_test.go"
+        ]
+      }
+    ]
+  }
+}

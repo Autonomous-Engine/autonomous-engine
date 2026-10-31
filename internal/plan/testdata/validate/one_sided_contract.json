@@ -1,0 +1,87 @@
+{
+  "brief": {
+    "schema_version": 1,
+    "criteria": [
+      {
+        "id": "AC-1",
+        "text": "The user endpoint returns the contact address as email_address",
+        "source": {
+          "kind": "user",
+          "quote": "rename the user's email field to email_address"
+        },
+        "contracts": [
+          {
+            "type": "rest",
+            "name": "GET /api/users/{id}",
+            "evidence": {
+              "kind": "codex",
+              "ref": "c9",
+              "confidence": 0.8
+            },
+            "producer_repository": "api",
+            "consumer_repository": "web"
+          }
+        ],
+        "risk": "high",
+        "required_checks": [
+          "test"
+        ]
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "index": 1,
+      "title": "Rename the response field",
+      "repository_id": "repo-api",
+      "repository": "api",
+      "spec": {
+        "schema_version": 1,
+        "criterion_ids": [
+          "AC-1"
+        ],
+        "deliverable": "GET /api/users/{id} returns email_address",
+        "verification": [
+          {
+            "check_kind": "test",
+            "command": "go test ./..."
+          }
+        ],
+        "files": [
+          {
+            "path": "openapi.json",
+            "evidence": {
+              "kind": "repo",
+              "ref": "c1",
+              "confidence": 1
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "deps": {
+    "labels": [
+      "Rename the response field"
+    ],
+    "edges": [
+      []
+    ],
+    "known_titles": [
+      "Rename the response field"
+    ]
+  },
+  "existing": {
+    "repo-api": [
+      "openapi.json"
+    ]
+  },
+  "want": [
+    {
+      "code": "one_sided_contract",
+      "task_index": 1,
+      "criterion_id": "AC-1",
+      "contains": "AC-1's contract rest \"GET /api/users/{id}\" is changed only on the producer side (repository api: task 1 \"Rename the response field\"); no task changes the consumer repository web"
+    }
+  ]
+}

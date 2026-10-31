@@ -1,0 +1,101 @@
+# codex-config.yaml — Codex settings for the autonomous engine
+#
+# What is loaded (codex coherence design, Part 2):
+#   zones — embedded into the binaries (configs/embed.go) and applied by
+#           onboarding as the default zones of every newly onboarded
+#           repository: requires_human_review false -> policy autonomous,
+#           true -> human_review, escalate_immediately -> escalate. Zones are
+#           then per repository in code_zones (Admin -> Products ->
+#           Repository -> Zones); editing this file changes only the
+#           defaults for repositories onboarded afterwards. The block is read
+#           by a small parser (internal/zones/templates.go) that supports
+#           plain/quoted scalars, '>'/'|' block scalars, block and flow
+#           sequences and # comments; a test parses this file.
+#
+#           The defaults are repository-agnostic (a test rejects paths of
+#           this engine's own layout). Globs follow verifypolicy.MatchPath:
+#           a pattern with "/" matches a contiguous run of path segments at
+#           any depth, one without "/" matches any single segment, "**" is
+#           zero or more segments. A pattern starting with "!" excludes the
+#           files it matches from the zone.
+#
+#           There is no "safe" zone: a zone needs at least one pattern, and
+#           every file outside guarded and restricted is autonomous anyway.
+#
+# NOT IMPLEMENTED — the blocks below are documented intent only and are not
+# loaded by any service: quiet_period, submission, versioning, enforcement.
+
+# ── Zone definitions ──────────────────────────────────────────────────────────
+# Zones control what the autonomous system may modify without human approval.
+# Anything matched by no zone is autonomous.
+zones:
+  - name: guarded
+    description: >
+      Schema migrations, CI workflows, container and deployment
+      configuration, and authentication or security code. Autonomous
+      changes are permitted but a human must approve the PR.
+    patterns:
+      - "**/migrations/**"
+      - ".github/workflows/**"
+      - "**/Dockerfile"
+      - "**/Dockerfile.*"
+      - "**/docker-compose*.yml"
+      - "**/docker-compose*.yaml"
+      - "deploy/**"
+      - "infra/**"
+      - "**/auth/**"
+      - "**/security/**"
+    requires_human_review: true
+
+  - name: restricted
+    description: >
+      Secrets: environment files, secret directories, private keys and
+      certificates. A change here stops for a human decision before
+      verification. Example files (.env.example, *.example) hold no
+      secrets and are excluded.
+    patterns:
+      - ".env"
+      - ".env.*"
+      - "**/.env"
+      - "**/.env.*"
+      - "**/secrets/**"
+      - "**/*.pem"
+      - "**/*.key"
+      - "!**/*.example"   # .env.example, secrets/config.example: no secrets
+    requires_human_review: true
+    escalate_immediately: true
+
+# ── Quiet period ──────────────────────────────────────────────────────────────
+quiet_period:
+  # Time window (HH:MM – HH:MM, UTC) during which no autonomous PRs are merged.
+  # Empty string disables the quiet period.
+  window: "02:00-06:00"
+  # Timezone for the quiet period window
+  timezone: UTC
+  # Whether PR creation (not just merge) is also blocked during quiet period
+  block_creation: false
+
+# ── Submission timeout ────────────────────────────────────────────────────────
+submission:
+  # Maximum time (minutes) from work item creation to PR submission.
+  # Work items exceeding this are escalated to human-review.queue.
+  timeout_minutes: 240
+
+  # Maximum time (minutes) a PR may sit in review before re-escalation.
+  review_timeout_minutes: 60
+
+# ── Versioning ────────────────────────────────────────────────────────────────
+versioning:
+  # Minimum number of sections that must change before a new version is created.
+  min_sections_for_new_version: 1
+  # Whether to auto-create a version entry on every codex write (true) or
+  # only when explicitly requested (false).
+  auto_version: true
+
+# ── Anti-pattern enforcement ──────────────────────────────────────────────────
+enforcement:
+  # Block PR merge if any detected anti-pattern is flagged at severity >= this value.
+  # Levels: info | warning | error | critical
+  block_on_severity: error
+  # Run anti-pattern scan before every PR is submitted.
+  scan_on_pr: true

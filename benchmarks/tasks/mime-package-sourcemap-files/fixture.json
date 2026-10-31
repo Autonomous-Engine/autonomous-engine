@@ -1,0 +1,36 @@
+{
+  "id": "mime-package-sourcemap-files",
+  "summary": "package.json#files publishes source maps but not the src/ and types/ sources they reference.",
+  "repo": "https://github.com/broofa/mime",
+  "base_sha": "39ca9fa498947d04c8ec3164c51dc382898f7e46",
+  "language": "typescript",
+  "task_class": "dependency_or_config",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { ( rm -rf dist && npx tsc && node --test --test-skip-pattern=CLI ) 2>&1 | tee node_modules/.bench-out.txt; rc=${PIPESTATUS[0]}; if [ $rc -ne 0 ]; then if grep -qE \"TSError|error TS[0-9]+|Cannot find module|ERR_MODULE_NOT_FOUND|SyntaxError:\" node_modules/.bench-out.txt; then echo \"[setup failed] a test file failed to load\"; elif grep -qE \"AssertionError|[0-9]+ failing|^# fail [1-9]|ℹ fail [1-9]\" node_modules/.bench-out.txt; then echo \"--- FAIL: assertion failures\"; fi; elif { [ -e test/bench_package_files.test.js ]; } && ! grep -q \"bench:\" node_modules/.bench-out.txt; then echo \"[setup failed] hidden tests did not run\"; rc=1; fi; exit $rc; }",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "test_command_note": "The repository's `CLI` tests spawn bin/cli.js through a POSIX shell, are unrelated to this task and are skipped on every host with --test-skip-pattern (Node >= 22). The repository's exports_test.sh (npm install of a packed tarball under /tmp) is not run; the hidden test inspects `npm pack --dry-run --json` instead, which needs no network.",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the first upstream fix for issue #310; the fix was completed in a follow-up commit, and the reference patch is the package.json diff from base_sha to that follow-up (it also carries the 4.0.2 version bump that landed in between). Neither commit is reachable from the sealed clone.",
+    "upstream_fix_commits": [
+      "fc4fa81c09d8889bb0aa0a5eb34c206060cddaa9",
+      "b025aeb4c183265264a932aef630cd046f9bbf23"
+    ],
+    "upstream_issue": "https://github.com/broofa/mime/issues/310",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "node:test (built in) after `tsc`, the repository's own `node --test` invocation; hidden tests are plain ESM JavaScript under test/. Failure classification greps the captured output. Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "b025aeb4c183265264a932aef630cd046f9bbf23",
+        "paths": [
+          "package.json"
+        ]
+      }
+    ]
+  }
+}

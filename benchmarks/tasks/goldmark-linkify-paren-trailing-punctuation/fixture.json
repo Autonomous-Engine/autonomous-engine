@@ -1,0 +1,33 @@
+{
+  "id": "goldmark-linkify-paren-trailing-punctuation",
+  "summary": "Linkify trims trailing punctuation and an unmatched ')' in a single pass, so punctuation exposed by the ')' trim stays inside the autolink.",
+  "repo": "https://github.com/yuin/goldmark",
+  "base_sha": "e4435f3c4763ce2daadcae25b5b9fbd1b6d5de34",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "hard",
+  "size_stratum": "large",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "13ff14c87208c7170adef72b5546dcdb9fbc7eb7",
+    "upstream_issue": "https://github.com/yuin/goldmark/issues/580",
+    "reference_patch": "Source fix only: the extension/linkify.go hunk of e4435f3..13ff14c, verbatim. The upstream hunk adding cases to extension/_test/linkify.txt is omitted: that file mixes CRLF and LF line endings upstream, so it cannot be applied after the verifier normalises patches to LF, and the hidden tests do not depend on it.",
+    "hidden_tests_note": "Hidden tests use their own inputs (example.net/example.org URLs), not the upstream test-data cases; expected HTML follows the cmark-gfm autolink trimming rules and was confirmed against the upstream fix.",
+    "size_note": "about 15k non-test Go lines at base (large); the fix is confined to one function but requires understanding the interaction of three trimming rules"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "13ff14c87208c7170adef72b5546dcdb9fbc7eb7",
+        "paths": [
+          "extension/linkify.go"
+        ]
+      }
+    ]
+  }
+}

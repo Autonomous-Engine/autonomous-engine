@@ -1,0 +1,2 @@
+cmd/app/main.go:3:8: no required module provides package github.com/x/app/internal/foo; to add it:
+	go get github.com/x/app/internal/foo

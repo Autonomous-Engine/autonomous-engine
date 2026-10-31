@@ -1,0 +1,78 @@
+
+> shop-api@2.3.1 test
+> jest
+
+PASS src/utils/money.test.js
+PASS src/utils/dates.test.js
+  ● Console
+
+    console.log
+      [db] connected to sqlite::memory:
+
+      at Object.log (src/db.js:12:11)
+
+    console.log
+      [db] seeded 42 rows
+
+      at Object.log (src/db.js:18:11)
+
+PASS src/routes/health.test.js
+PASS src/routes/products.test.js
+PASS src/routes/users.test.js
+  ● Console
+
+    console.info
+      {"level":"info","msg":"user created","id":7}
+
+      at Logger.info (src/logger.js:9:13)
+
+FAIL src/routes/cart.test.js
+  ● Cart API › POST /cart/items › rejects a negative quantity
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 400
+    Received: 201
+
+      41 |       .post('/cart/items')
+      42 |       .send({ sku: 'A-1', quantity: -2 });
+    > 43 |     expect(res.status).toBe(400);
+         |                        ^
+      44 |   });
+      45 |
+      46 |   it('sums line totals', async () => {
+
+      at Object.toBe (src/routes/cart.test.js:43:24)
+
+PASS src/routes/orders.test.js
+PASS src/services/pricing.test.js
+PASS src/services/tax.test.js
+PASS src/services/inventory.test.js
+PASS src/services/shipping.test.js
+PASS src/services/email.test.js
+PASS src/services/search.test.js
+PASS src/middleware/auth.test.js
+PASS src/middleware/rate-limit.test.js
+PASS src/middleware/errors.test.js
+PASS src/models/product.test.js
+PASS src/models/user.test.js
+PASS src/models/order.test.js
+PASS src/models/cart.test.js
+  ● Console
+
+    console.warn
+      deprecated: use cart.addItem
+
+      at Cart.add (src/models/cart.js:30:13)
+
+PASS src/jobs/cleanup.test.js
+PASS src/jobs/reindex.test.js
+PASS src/jobs/digest.test.js
+PASS src/cli/import.test.js
+PASS src/cli/export.test.js
+
+Test Suites: 1 failed, 27 passed, 28 total
+Tests:       1 failed, 311 passed, 312 total
+Snapshots:   0 total
+Time:        6.214 s
+Ran all test suites.

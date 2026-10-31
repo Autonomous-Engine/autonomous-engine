@@ -1,0 +1,33 @@
+{
+  "id": "godotenv-escaped-backslash-quote",
+  "summary": "A double-quoted value ending in an escaped backslash is mis-parsed because the closing quote is treated as escaped.",
+  "repo": "https://github.com/joho/godotenv",
+  "base_sha": "a2be92d182fc04da33b365bf47c17fe0f4808aea",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "medium",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "b724238db6209280ed96a4e04aa2af38063763d9"
+  },
+  "reverse_apply_exceptions": {
+    "godotenv-go-module": "This base already has the three-line go.mod that godotenv-go-module's reference patch adds, so that patch reverses cleanly here. It is not an answer leak: the go-module task's answer is 'add the canonical go.mod', which every Go checkout reveals. The harmful direction (the go-module base containing this fixture's parser fix) is checked by the verifier and is clean."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "b724238db6209280ed96a4e04aa2af38063763d9",
+        "paths": [
+          "godotenv_test.go",
+          "parser.go"
+        ]
+      }
+    ]
+  }
+}

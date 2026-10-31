@@ -1,0 +1,34 @@
+{
+  "narrative": "Apply the fixed discount before the percentage discount; tax is computed on the discounted subtotal.",
+  "criteria": {
+    "schema_version": 1,
+    "criteria": [
+      {
+        "id": "AC-1",
+        "text": "The calculator applies the fixed discount before the percentage discount",
+        "source": {"kind": "user", "quote": "must apply the fixed discount before the percentage discount"},
+        "files": [{"path": "calculate.go", "evidence": {"kind": "repo", "ref": "c3", "confidence": 1, "basis": "snapshot"}}],
+        "risk": "high",
+        "required_checks": ["test"]
+      },
+      {
+        "id": "AC-2",
+        "text": "Tax is computed on the discounted subtotal",
+        "source": {"kind": "user", "quote": "tax is computed on the discounted subtotal"},
+        "risk": "medium",
+        "required_checks": ["test"]
+      },
+      {
+        "id": "AC-3",
+        "text": "The calculator applies the fixed discount before percentage discount",
+        "source": {"kind": "derived", "reason": "restates the request from calculate.go"},
+        "files": [{"path": "calculate_test.go", "evidence": {"kind": "repo", "ref": "c4", "confidence": 1, "basis": "snapshot"}}],
+        "risk": "medium"
+      }
+    ],
+    "file_evidence": {
+      "calculate.go": {"kind": "repo", "ref": "c3", "confidence": 1, "basis": "snapshot"},
+      "calculate_test.go": {"kind": "repo", "ref": "c4", "confidence": 1, "basis": "snapshot"}
+    }
+  }
+}

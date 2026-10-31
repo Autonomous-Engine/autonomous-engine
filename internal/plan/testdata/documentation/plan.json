@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Read the TileHost API key from the environment",
+    "description": "Add TILES_API_KEY to the env config and pass it to the tile URL.",
+    "criterion_ids": ["AC-1"],
+    "deliverable": "The tile URL carries the configured TileHost API key",
+    "verification": [{"check_kind": "test", "command": "npm test"}],
+    "files": [{"path": "src/config/env.ts", "evidence_ref": "repo:r1"}]
+  },
+  {
+    "title": "Update Documentation for TileHost API Key",
+    "description": "Document how to obtain a TileHost API key and configure TILES_API_KEY in the README and .env.example.",
+    "criterion_ids": ["AC-2"],
+    "deliverable": "README.md and .env.example describe obtaining and configuring TILES_API_KEY",
+    "verification": [{"check_kind": "other", "description": "README.md and .env.example name TILES_API_KEY and how to obtain it"}],
+    "files": [
+      {"path": "README.md", "evidence_ref": "repo:r2"},
+      {"path": ".env.example", "evidence_ref": "repo:r3"}
+    ],
+    "depends_on": ["Read the TileHost API key from the environment"]
+  },
+  {
+    "title": "Deploy to staging and notify team",
+    "description": "Roll the change out to staging and tell the team the key is required.",
+    "criterion_ids": ["AC-3"],
+    "deliverable": "Staging runs the change; the team knows about TILES_API_KEY",
+    "verification": [{"check_kind": "other", "description": "staging loads the tiles"}],
+    "depends_on": ["Update Documentation for TileHost API Key"]
+  }
+]

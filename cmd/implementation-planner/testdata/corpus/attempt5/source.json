@@ -1,0 +1,22 @@
+{
+ "work_item_id": "72078860-6f2d-428f-a138-cf85ee18c7f3",
+ "technical_brief_artifact_id": "0c971fcf-90d9-4857-88c2-efe607343998",
+ "responses": [
+  {
+   "file": "response_1.txt",
+   "prompt": "prompt_1.json",
+   "answers": "decompose",
+   "inference_log_id": "4683b1f2-f4a0-4dbf-902e-af28d4b7b367",
+   "created_at": "2026-10-04T05:21:58.946903+00:00",
+   "model": "qwen2.5-coder:32b"
+  },
+  {
+   "file": "response_2.txt",
+   "prompt": "prompt_2.json",
+   "answers": "repair",
+   "inference_log_id": "4ffe1e03-a181-4954-b04b-fd23c9377dc6",
+   "created_at": "2026-10-04T05:22:22.36589+00:00",
+   "model": "qwen2.5-coder:32b"
+  }
+ ]
+}

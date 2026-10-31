@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Station Finder - find a bike near you</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="Station Finder">
+  <meta property="og:type" content="website">
+  <meta property="og:description" content="Live bike and dock availability for your city.">
+  <meta name="theme-color" content="#10141a">
+  <meta name="description" content="Live bike and dock availability for your city. Open source, no API keys.">
+  <style>
+    :root {
+      --bg: #10141a;
+      --panel: #1a2029;
+      --panel-2: #222a35;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #3fb68b;
+      --ebike: #58a6ff;
+      --radius: 12px;
+      --max: 1120px;
+      --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.55; }
+    a { color: var(--accent); }
+    .wrap {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .brand-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(63, 182, 139, 0.25);
+    }
+    .nav-links {
+      display: flex;
+      gap: 22px;
+      font-size: 14px;
+    }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .nav-links a:hover {
+      color: var(--text);
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 40px;
+      align-items: center;
+      padding: 48px 0 64px;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 5vw, 52px);
+      line-height: 1.1;
+      margin: 0 0 16px;
+    }
+    .hero p {
+      color: var(--muted);
+      font-size: 18px;
+      margin: 0 0 24px;
+    }
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      padding: 12px 20px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .cta.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--panel-2);
+    }
+    .cta-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .preview {
+      position: relative;
+      height: 380px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    }
+    .preview #map {
+      position: absolute;
+      inset: 0;
+    }
+    .preview-badge {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      background: rgba(16, 20, 26, 0.85);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      z-index: 500;
+    }
+    .section {
+      padding: 64px 0;
+      border-top: 1px solid var(--panel-2);
+    }
+    .section h2 {
+      font-size: 28px;
+      margin: 0 0 12px;
+    }
+    .section .lead {
+      color: var(--muted);
+      max-width: 640px;
+      margin: 0 0 32px;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 22px;
+    }
+    .feature h3 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .feature-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--panel-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      color: var(--accent);
+      font-size: 18px;
+    }
+    .steps {
+      counter-reset: step;
+      display: grid;
+      gap: 14px;
+      max-width: 720px;
+    }
+    .step {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .step::before {
+      content: counter(step);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--panel-2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+    }
+    .step h4 {
+      margin: 4px 0;
+      font-size: 16px;
+    }
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .code {
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 28px;
+    }
+    .stat {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 18px;
+      text-align: center;
+    }
+    .stat .num {
+      font-size: 28px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat .lbl {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .faq {
+      max-width: 760px;
+    }
+    .faq details {
+      background: var(--panel);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+    }
+    .faq summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .faq details p {
+      color: var(--muted);
+      margin: 10px 0 0;
+    }
+    .footer {
+      padding: 32px 0 48px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px solid var(--panel-2);
+    }
+    .footer-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .footer a {
+      color: var(--muted);
+    }
+    .pill {
+      display: inline-block;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .marker {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid rgba(255, 255, 255, 0.85);
+    }
+    .marker.none {
+      background: #e5534b;
+    }
+    .leaflet-control-attribution {
+      background: rgba(16, 20, 26, 0.7) !important;
+      color: var(--muted) !important;
+    }
+    .leaflet-control-attribution a {
+      color: var(--muted) !important;
+    }
+    .leaflet-control-zoom a {
+      background: var(--panel) !important;
+      color: var(--text) !important;
+      border-color: var(--panel-2) !important;
+    }
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; }
+      .features { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap nav">
+    <a class="brand" href="/"><span class="brand-dot"></span> Station Finder</a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#self-host">Self-host</a>
+      <a href="#faq">FAQ</a>
+      <a href="/app/">Open the map</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="wrap hero">
+      <div>
+        <span class="pill">Live data, updated every minute</span>
+        <h1>Find a bike, or a free dock, before you walk there.</h1>
+        <p>Station Finder shows every bike-share station in the city on one map, with the bikes, e-bikes and free docks it has right now.</p>
+        <div class="cta-row">
+          <a class="cta" href="/app/">Open the map &rarr;</a>
+          <a class="cta secondary" href="#self-host">Run your own</a>
+        </div>
+      </div>
+      <div class="preview">
+        <div id="map" aria-label="Preview map of stations"></div>
+        <div class="preview-badge" id="previewBadge">Loading stations&hellip;</div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <h2>Everything you check before you leave</h2>
+        <p class="lead">One glance tells you whether the station around the corner has a bike, and whether the one at your destination has room.</p>
+        <div class="features">
+          <div class="feature">
+            <div class="feature-icon">&#9673;</div>
+            <h3>Live availability</h3>
+            <p>Bikes, e-bikes and free docks per station, refreshed every minute from the operator's feed.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">&#9733;</div>
+            <h3>Favourites</h3>
+            <p>Star the stations you use every day; they stay in your browser, no account needed.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">&#9201;</div>
+            <h3>24-hour history</h3>
+            <p>See when a station usually runs empty, so you know whether to try the next one.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">&#8981;</div>
+            <h3>Near me</h3>
+            <p>Allow location once and the closest stations with bikes are listed first.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">&#9906;</div>
+            <h3>Filters</h3>
+            <p>Only stations with bikes, only e-bikes, or only free docks, with one tap.</p>
+          </div>
+          <div class="feature">
+            <div class="feature-icon">&#8635;</div>
+            <h3>Works offline</h3>
+            <p>The last data stays available when your connection drops on the way.</p>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="num" id="statStations">&ndash;</div><div class="lbl">Stations</div></div>
+          <div class="stat"><div class="num" id="statBikes">&ndash;</div><div class="lbl">Bikes now</div></div>
+          <div class="stat"><div class="num" id="statEbikes">&ndash;</div><div class="lbl">E-bikes now</div></div>
+          <div class="stat"><div class="num" id="statDocks">&ndash;</div><div class="lbl">Free docks</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <div class="wrap">
+        <h2>How it works</h2>
+        <p class="lead">Bike-share operators publish the status of their stations as an open feed. Station Finder reads it and puts it on a map.</p>
+        <div class="steps">
+          <div class="step"><div><h4>The importer polls the feed</h4><p>Every minute it fetches the operator's station status feed and keeps the latest state of every station.</p></div></div>
+          <div class="step"><div><h4>The server answers the map</h4><p>A small JSON API returns the stations in the area you are looking at, plus a history per station.</p></div></div>
+          <div class="step"><div><h4>Your browser draws it</h4><p>The map app shows a marker per station, coloured by how many bikes it has. Nothing is tracked.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="self-host">
+      <div class="wrap">
+        <h2>Run it for your city</h2>
+        <p class="lead">Station Finder is a Node app with Redis. Point it at your city's station feed and start it with Docker Compose.</p>
+        <div class="code">git clone https://example.org/station-finder.git
+cd station-finder
+cp .env.example .env    # set FEED_URL and CITY_NAME
+docker compose up -d</div>
+        <p class="lead" style="margin-top: 18px">Then open <code>http://localhost:8700/</code>. See the README for every setting.</p>
+      </div>
+    </section>
+
+    <section class="section" id="changes">
+      <div class="wrap">
+        <h2>Release notes</h2>
+        <p class="lead">What changed recently. The full history is in the repository.</p>
+        <article class="release">
+          <h3>1.12.0 <time datetime="2026-09-01">2026-09-01</time></h3>
+          <ul>
+            <li>Station markers show the number of bikes instead of a dot</li>
+            <li>History chart per station (last 24 hours)</li>
+            <li>Favourites are kept in the browser</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.11.0 <time datetime="2026-08-01">2026-08-01</time></h3>
+          <ul>
+            <li>Search matches street names without accents</li>
+            <li>Importer keeps the last good feed when a poll fails</li>
+            <li>Filters for e-bikes and free docks</li>
+            <li>Near-me list sorted by walking distance</li>
+            <li>Keyboard shortcuts (press ? on the map)</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.10.0 <time datetime="2026-07-01">2026-07-01</time></h3>
+          <ul>
+            <li>API: bounding-box filter on /api/stations</li>
+            <li>Landing page preview map</li>
+            <li>Prometheus metrics for the importer</li>
+            <li>Stations that stop reporting are hidden after STATION_TTL_SECONDS</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.9.0 <time datetime="2026-06-01">2026-06-01</time></h3>
+          <ul>
+            <li>French, German and Spanish translations</li>
+            <li>Docker images are now multi-arch</li>
+            <li>Rate limit on the public API</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.8.0 <time datetime="2026-05-01">2026-05-01</time></h3>
+          <ul>
+            <li>Deep links to a station (#station=&lt;id&gt;)</li>
+            <li>Closed stations are greyed out</li>
+            <li>Faster first paint: stations load for the visible area first</li>
+            <li>The map remembers the last filters</li>
+            <li>Clustering at low zoom levels</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.7.0 <time datetime="2026-04-01">2026-04-01</time></h3>
+          <ul>
+            <li>Screen reader announcements for search results</li>
+            <li>Health endpoint reports the feed's last success</li>
+            <li>Redis memory use halved for the history</li>
+            <li>Offline support with a service worker</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.6.0 <time datetime="2026-03-01">2026-03-01</time></h3>
+          <ul>
+            <li>Smaller page: Leaflet is the only dependency</li>
+            <li>Station markers show the number of bikes instead of a dot</li>
+            <li>History chart per station (last 24 hours)</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.5.0 <time datetime="2026-02-01">2026-02-01</time></h3>
+          <ul>
+            <li>Favourites are kept in the browser</li>
+            <li>Search matches street names without accents</li>
+            <li>Importer keeps the last good feed when a poll fails</li>
+            <li>Filters for e-bikes and free docks</li>
+            <li>Near-me list sorted by walking distance</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.4.0 <time datetime="2026-01-01">2026-01-01</time></h3>
+          <ul>
+            <li>Keyboard shortcuts (press ? on the map)</li>
+            <li>API: bounding-box filter on /api/stations</li>
+            <li>Landing page preview map</li>
+            <li>Prometheus metrics for the importer</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.3.0 <time datetime="2025-12-01">2025-12-01</time></h3>
+          <ul>
+            <li>Stations that stop reporting are hidden after STATION_TTL_SECONDS</li>
+            <li>French, German and Spanish translations</li>
+            <li>Docker images are now multi-arch</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.2.0 <time datetime="2025-11-01">2025-11-01</time></h3>
+          <ul>
+            <li>Rate limit on the public API</li>
+            <li>Deep links to a station (#station=&lt;id&gt;)</li>
+            <li>Closed stations are greyed out</li>
+            <li>Faster first paint: stations load for the visible area first</li>
+            <li>The map remembers the last filters</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.1.0 <time datetime="2025-10-01">2025-10-01</time></h3>
+          <ul>
+            <li>Clustering at low zoom levels</li>
+            <li>Screen reader announcements for search results</li>
+            <li>Health endpoint reports the feed's last success</li>
+            <li>Redis memory use halved for the history</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>1.0.0 <time datetime="2025-09-01">2025-09-01</time></h3>
+          <ul>
+            <li>Offline support with a service worker</li>
+            <li>Smaller page: Leaflet is the only dependency</li>
+            <li>Station markers show the number of bikes instead of a dot</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.24.0 <time datetime="2025-08-01">2025-08-01</time></h3>
+          <ul>
+            <li>History chart per station (last 24 hours)</li>
+            <li>Favourites are kept in the browser</li>
+            <li>Search matches street names without accents</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.23.0 <time datetime="2025-07-01">2025-07-01</time></h3>
+          <ul>
+            <li>Importer keeps the last good feed when a poll fails</li>
+            <li>Filters for e-bikes and free docks</li>
+            <li>Near-me list sorted by walking distance</li>
+            <li>Keyboard shortcuts (press ? on the map)</li>
+            <li>API: bounding-box filter on /api/stations</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.22.0 <time datetime="2025-06-01">2025-06-01</time></h3>
+          <ul>
+            <li>Landing page preview map</li>
+            <li>Prometheus metrics for the importer</li>
+            <li>Stations that stop reporting are hidden after STATION_TTL_SECONDS</li>
+            <li>French, German and Spanish translations</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.21.0 <time datetime="2025-05-01">2025-05-01</time></h3>
+          <ul>
+            <li>Docker images are now multi-arch</li>
+            <li>Rate limit on the public API</li>
+            <li>Deep links to a station (#station=&lt;id&gt;)</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.20.0 <time datetime="2025-04-01">2025-04-01</time></h3>
+          <ul>
+            <li>Closed stations are greyed out</li>
+            <li>Faster first paint: stations load for the visible area first</li>
+            <li>The map remembers the last filters</li>
+            <li>Clustering at low zoom levels</li>
+            <li>Screen reader announcements for search results</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.19.0 <time datetime="2025-03-01">2025-03-01</time></h3>
+          <ul>
+            <li>Health endpoint reports the feed's last success</li>
+            <li>Redis memory use halved for the history</li>
+            <li>Offline support with a service worker</li>
+            <li>Smaller page: Leaflet is the only dependency</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.18.0 <time datetime="2025-02-01">2025-02-01</time></h3>
+          <ul>
+            <li>Station markers show the number of bikes instead of a dot</li>
+            <li>History chart per station (last 24 hours)</li>
+            <li>Favourites are kept in the browser</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.17.0 <time datetime="2025-01-01">2025-01-01</time></h3>
+          <ul>
+            <li>Search matches street names without accents</li>
+            <li>Importer keeps the last good feed when a poll fails</li>
+            <li>Filters for e-bikes and free docks</li>
+            <li>Near-me list sorted by walking distance</li>
+            <li>Keyboard shortcuts (press ? on the map)</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.16.0 <time datetime="2024-12-01">2024-12-01</time></h3>
+          <ul>
+            <li>API: bounding-box filter on /api/stations</li>
+            <li>Landing page preview map</li>
+            <li>Prometheus metrics for the importer</li>
+            <li>Stations that stop reporting are hidden after STATION_TTL_SECONDS</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.15.0 <time datetime="2024-11-01">2024-11-01</time></h3>
+          <ul>
+            <li>French, German and Spanish translations</li>
+            <li>Docker images are now multi-arch</li>
+            <li>Rate limit on the public API</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.14.0 <time datetime="2024-10-01">2024-10-01</time></h3>
+          <ul>
+            <li>Deep links to a station (#station=&lt;id&gt;)</li>
+            <li>Closed stations are greyed out</li>
+            <li>Faster first paint: stations load for the visible area first</li>
+            <li>The map remembers the last filters</li>
+            <li>Clustering at low zoom levels</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.13.0 <time datetime="2024-09-01">2024-09-01</time></h3>
+          <ul>
+            <li>Screen reader announcements for search results</li>
+            <li>Health endpoint reports the feed's last success</li>
+            <li>Redis memory use halved for the history</li>
+            <li>Offline support with a service worker</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.12.0 <time datetime="2024-08-01">2024-08-01</time></h3>
+          <ul>
+            <li>Smaller page: Leaflet is the only dependency</li>
+            <li>Station markers show the number of bikes instead of a dot</li>
+            <li>History chart per station (last 24 hours)</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.11.0 <time datetime="2024-07-01">2024-07-01</time></h3>
+          <ul>
+            <li>Favourites are kept in the browser</li>
+            <li>Search matches street names without accents</li>
+            <li>Importer keeps the last good feed when a poll fails</li>
+            <li>Filters for e-bikes and free docks</li>
+            <li>Near-me list sorted by walking distance</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.10.0 <time datetime="2024-06-01">2024-06-01</time></h3>
+          <ul>
+            <li>Keyboard shortcuts (press ? on the map)</li>
+            <li>API: bounding-box filter on /api/stations</li>
+            <li>Landing page preview map</li>
+            <li>Prometheus metrics for the importer</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.9.0 <time datetime="2024-05-01">2024-05-01</time></h3>
+          <ul>
+            <li>Stations that stop reporting are hidden after STATION_TTL_SECONDS</li>
+            <li>French, German and Spanish translations</li>
+            <li>Docker images are now multi-arch</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.8.0 <time datetime="2024-04-01">2024-04-01</time></h3>
+          <ul>
+            <li>Rate limit on the public API</li>
+            <li>Deep links to a station (#station=&lt;id&gt;)</li>
+            <li>Closed stations are greyed out</li>
+            <li>Faster first paint: stations load for the visible area first</li>
+            <li>The map remembers the last filters</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.7.0 <time datetime="2024-03-01">2024-03-01</time></h3>
+          <ul>
+            <li>Clustering at low zoom levels</li>
+            <li>Screen reader announcements for search results</li>
+            <li>Health endpoint reports the feed's last success</li>
+            <li>Redis memory use halved for the history</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.6.0 <time datetime="2024-02-01">2024-02-01</time></h3>
+          <ul>
+            <li>Offline support with a service worker</li>
+            <li>Smaller page: Leaflet is the only dependency</li>
+            <li>Station markers show the number of bikes instead of a dot</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.5.0 <time datetime="2024-01-01">2024-01-01</time></h3>
+          <ul>
+            <li>History chart per station (last 24 hours)</li>
+            <li>Favourites are kept in the browser</li>
+            <li>Search matches street names without accents</li>
+            <li>Importer keeps the last good feed when a poll fails</li>
+            <li>Filters for e-bikes and free docks</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.4.0 <time datetime="2023-12-01">2023-12-01</time></h3>
+          <ul>
+            <li>Near-me list sorted by walking distance</li>
+            <li>Keyboard shortcuts (press ? on the map)</li>
+            <li>API: bounding-box filter on /api/stations</li>
+            <li>Landing page preview map</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.3.0 <time datetime="2023-11-01">2023-11-01</time></h3>
+          <ul>
+            <li>Prometheus metrics for the importer</li>
+            <li>Stations that stop reporting are hidden after STATION_TTL_SECONDS</li>
+            <li>French, German and Spanish translations</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.2.0 <time datetime="2023-10-01">2023-10-01</time></h3>
+          <ul>
+            <li>Docker images are now multi-arch</li>
+            <li>Rate limit on the public API</li>
+            <li>Deep links to a station (#station=&lt;id&gt;)</li>
+            <li>Closed stations are greyed out</li>
+            <li>Faster first paint: stations load for the visible area first</li>
+          </ul>
+        </article>
+        <article class="release">
+          <h3>0.1.0 <time datetime="2023-09-01">2023-09-01</time></h3>
+          <ul>
+            <li>The map remembers the last filters</li>
+            <li>Clustering at low zoom levels</li>
+            <li>Screen reader announcements for search results</li>
+            <li>Health endpoint reports the feed's last success</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="wrap faq">
+        <h2>Questions</h2>
+        <details>
+          <summary>Where does the data come from?</summary>
+          <p>From the bike-share operator's public station feed. Station Finder shows it as published; if the operator's feed is late, so is the map.</p>
+        </details>
+        <details>
+          <summary>How often is it updated?</summary>
+          <p>The importer polls the feed every minute by default. The map refreshes on its own while it is open.</p>
+        </details>
+        <details>
+          <summary>Do you track me?</summary>
+          <p>No. Favourites and filters are stored in your browser only. Your location, if you allow it, never leaves your device.</p>
+        </details>
+        <details>
+          <summary>Why is a station missing?</summary>
+          <p>Stations that stop reporting are hidden after fifteen minutes, so closed or removed stations do not linger on the map.</p>
+        </details>
+        <details>
+          <summary>Can I use the API?</summary>
+          <p>Yes, the JSON API under /api is open. Please keep it under a couple of requests per second.</p>
+        </details>
+        <details>
+          <summary>Does it work for my city?</summary>
+          <p>If your operator publishes a GBFS-style station feed, yes: set FEED_URL and run your own copy.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-row">
+      <div>Station Finder &middot; open source &middot; MIT licence</div>
+      <div><a href="/app/">Map</a> &middot; <a href="#self-host">Self-host</a> &middot; <a href="/healthz">Status</a></div>
+    </div>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    'use strict';
+
+    const API = '/api';
+    const PREVIEW_LIMIT = 400;
+    const REFRESH_MS = 2 * 60 * 1000;
+
+    function plural(n, one, many) {
+      return n.toLocaleString() + ' ' + (n === 1 ? one : many);
+    }
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // countUp animates a stat from 0 to its value once it scrolls into view.
+    function countUp(id, value) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (reduceMotion) {
+        el.textContent = value.toLocaleString();
+        return;
+      }
+      const start = performance.now();
+      const dur = 900;
+      function frame(now) {
+        const p = Math.min(1, (now - start) / dur);
+        const eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(value * eased).toLocaleString();
+        if (p < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    const statsObserver = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          statsObserver.unobserve(e.target);
+          e.target.dataset.visible = '1';
+        }
+      }
+    }, { threshold: 0.4 }) : null;
+
+    function markerIcon(s) {
+      const n = s.bikes + s.ebikes;
+      return L.divIcon({ className: '', html: '<div class="marker' + (n === 0 ? ' none' : '') + '">' + n + '</div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+    }
+    // ── Preview map ──
+    const map = L.map('map', {
+      zoomControl: false,
+      attributionControl: true,
+      scrollWheelZoom: false,
+    }).setView([40.0, -75.0], 13);
+
+    // Scroll zoom only after the visitor clicks the map
+    map.getContainer().addEventListener('click', () => map.scrollWheelZoom.enable());
+    document.addEventListener('scroll', () => map.scrollWheelZoom.disable());
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    L.tileLayer('https://{s}.tiles.mapforgecdn.example/night_full/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://mapforge.example/attribution">Mapforge</a>',
+      subdomains: 'abc',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // ── Station preview layer ──
+    const stationLayer = L.layerGroup().addTo(map);
+
+    async function loadPreview() {
+      try {
+        const b = map.getBounds().pad(0.25);
+        const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => n.toFixed(5)).join(',');
+        const res = await fetch(API + '/stations?bbox=' + bbox);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const body = await res.json();
+        const stations = (body.stations || []).slice(0, PREVIEW_LIMIT);
+        stationLayer.clearLayers();
+        for (const s of stations) {
+          L.marker([s.lat, s.lon], { icon: markerIcon(s), keyboard: false, title: s.name }).addTo(stationLayer);
+        }
+        setText('previewBadge', plural(stations.length, 'station', 'stations') + ' in view');
+      } catch (e) {
+        setText('previewBadge', 'Stations unavailable right now');
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const res = await fetch(API + '/stations');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const body = await res.json();
+        const all = body.stations || [];
+        let bikes = 0, ebikes = 0, docks = 0;
+        for (const s of all) {
+          bikes += s.bikes;
+          ebikes += s.ebikes;
+          docks += s.docks;
+        }
+        setText('statStations', all.length.toLocaleString());
+        setText('statBikes', bikes.toLocaleString());
+        setText('statEbikes', ebikes.toLocaleString());
+        setText('statDocks', docks.toLocaleString());
+      } catch (e) {
+        // The stats are decoration; leave the dashes.
+      }
+    }
+
+    map.on('moveend', loadPreview);
+    loadPreview();
+    loadStats();
+    setInterval(() => {
+      if (!document.hidden) {
+        loadPreview();
+        loadStats();
+      }
+    }, REFRESH_MS);
+
+    // Smooth-scroll the in-page links and move focus for screen readers.
+    for (const a of document.querySelectorAll('a[href^="#"]')) {
+      a.addEventListener('click', (e) => {
+        const target = document.querySelector(a.getAttribute('href'));
+        if (!target) return;
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.setAttribute('tabindex', '-1');
+        target.focus({ preventScroll: true });
+      });
+    }
+  </script>
+</body>
+</html>

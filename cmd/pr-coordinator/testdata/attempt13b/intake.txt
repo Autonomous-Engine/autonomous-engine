@@ -1,0 +1,19 @@
+Narrow, file-specific bug fix. Research may SKIP repository-wide exploration, history archaeology and pattern surveys: every file involved is listed below. Read only these files.
+
+Symptom: the sample-app map shows the TileHost tile error "api key required tiles.example.com/keys" instead of the dark basemap, because the TileHost basemap tile URLs carry no API key.
+
+Files (repository sample-app, branch main):
+1. public/index.html, section "Map" (around line 836-853): two map tile layers, 'https://tiles.example.com/night/base/{z}/{x}/{y}.png' and labelTiles 'https://tiles.example.com/night/labels/{z}/{x}/{y}.png'. Served at /app by express.static in src/server/index.ts (line ~60).
+2. landing/index.html (around line 855): map tile layer 'https://tiles.example.com/night/full/{z}/{x}/{y}.png'; meta description (line 13) says "Free to use, no sign-up required."
+3. src/config/env.ts: `export const config = {...}` of process.env reads.
+4. src/server/index.ts: `export function createApp(...)` (line 33) builds the Express app (static mounts, routers); tests import createApp.
+5. .env.example, docker-compose.yml (server `environment:` list), docs/configuration.md, README.md.
+6. Tests live in tests/unit/*.test.ts (vitest; tests/unit/server.test.ts uses supertest).
+
+Goals (acceptance criteria):
+A. The TileHost API key comes from configuration, never hard-coded: add `tilesApiKey: process.env.TILES_API_KEY || ''` to src/config/env.ts; add a GET /api/client-config route in src/server/index.ts returning JSON {"tilesApiKey": string, "basemapConfigured": boolean}; both HTML pages fetch it before creating the tile layers and append `?api_key=<key>` to the TileHost tile URLs only when a key is configured.
+B. When the key is missing the UI says so clearly: both pages show a visible, non-blocking notice "Basemap unavailable: TILES_API_KEY is not configured. See README (Configuration)."; the server logs a warning at startup when TILES_API_KEY is empty; README.md, .env.example, docker-compose.yml and docs/configuration.md document TILES_API_KEY (obtain one at https://tiles.example.com/signup; the basemap does not render without it); fix the "no sign-up required" claim in landing/index.html.
+C. Add a vitest unit test for /api/client-config: returns the env key when set, returns an empty key and basemapConfigured=false when unset.
+
+Hard constraints: never invent, guess or hard-code a TileHost API key or a realistic-looking placeholder. This change cannot fully resolve the error by itself: the pull request description MUST state explicitly that the repository owner must obtain a TileHost API key and set TILES_API_KEY in the deployment environment (.env / docker-compose) for the basemap error to go away. Do not touch the data import pipeline. `npm test` must keep passing.
+

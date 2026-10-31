@@ -1,0 +1,3 @@
+# Fixture files (hidden tests, prompts) must keep LF line endings on every platform:
+# they are copied into sealed clones that are checked out with core.autocrlf=false.
+* -text

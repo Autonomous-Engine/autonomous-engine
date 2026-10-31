@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Station Finder - live bike availability</title>
+  <meta name="description" content="Live bike and dock availability on a map.">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --bg: #10141a;
+      --panel: #1a2029;
+      --panel-2: #222a35;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #3fb68b;
+      --accent-2: #2f8f6d;
+      --warn: #e3a72f;
+      --bad: #e5534b;
+      --ebike: #58a6ff;
+      --radius: 10px;
+      --shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+      --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); }
+    #map { position: absolute; inset: 0; z-index: 0; }
+    .topbar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+      z-index: 500;
+    }
+    .search {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .search input {
+      flex: 1;
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 15px;
+      outline: none;
+    }
+    .search-results {
+      position: absolute;
+      top: 52px;
+      left: 0;
+      right: 0;
+      background: var(--panel);
+      border-radius: var(--radius);
+      max-height: 50vh;
+      overflow-y: auto;
+    }
+    .search-result {
+      padding: 8px 12px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .search-result:hover {
+      background: var(--panel-2);
+    }
+    .filter-bar {
+      display: flex;
+      gap: 6px;
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 4px;
+      box-shadow: var(--shadow);
+    }
+    .chip {
+      border: 1px solid var(--panel-2);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .side-panel {
+      position: absolute;
+      top: 72px;
+      left: 12px;
+      bottom: 12px;
+      width: 340px;
+      background: var(--panel);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      z-index: 400;
+    }
+    .side-panel.hidden {
+      display: none;
+    }
+    .panel-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--panel-2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    .station-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+    .station-row:hover {
+      background: var(--panel-2);
+    }
+    .station-name {
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .station-meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .count {
+      min-width: 28px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 13px;
+    }
+    .count.bikes {
+      background: rgba(63, 182, 139, 0.15);
+      color: var(--accent);
+    }
+    .count.ebikes {
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--ebike);
+    }
+    .count.docks {
+      background: rgba(139, 152, 165, 0.15);
+      color: var(--muted);
+    }
+    .count.zero {
+      opacity: 0.45;
+    }
+    .detail {
+      padding: 14px;
+    }
+    .detail h3 {
+      margin: 0 0 4px;
+      font-size: 18px;
+    }
+    .detail .address {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .detail-cell {
+      background: var(--panel-2);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+    .detail-cell .value {
+      font-size: 22px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .detail-cell .label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .history {
+      height: 140px;
+      background: var(--panel-2);
+      border-radius: 8px;
+      position: relative;
+    }
+    .history canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .history-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .fav-btn {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .fav-btn.on {
+      color: var(--warn);
+    }
+    .legend {
+      position: absolute;
+      right: 12px;
+      bottom: 28px;
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      font-size: 12px;
+      box-shadow: var(--shadow);
+      z-index: 400;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 2px 0;
+    }
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-bar {
+      position: absolute;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      background: var(--panel);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      z-index: 400;
+    }
+    .status-bar.stale {
+      color: var(--warn);
+    }
+    .status-bar.error {
+      color: var(--bad);
+    }
+    .toast {
+      position: absolute;
+      top: 72px;
+      right: 12px;
+      background: var(--panel);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 13px;
+      box-shadow: var(--shadow);
+      z-index: 600;
+    }
+    .toast.warn {
+      border-left-color: var(--warn);
+    }
+    .toast.error {
+      border-left-color: var(--bad);
+    }
+    .locate-btn {
+      position: absolute;
+      right: 12px;
+      top: 120px;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      border: 0;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      z-index: 400;
+    }
+    .locate-btn.active {
+      color: var(--accent);
+    }
+    .marker {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      border: 2px solid rgba(255, 255, 255, 0.85);
+    }
+    .marker.full {
+      background: var(--accent);
+    }
+    .marker.some {
+      background: var(--warn);
+    }
+    .marker.none {
+      background: var(--bad);
+    }
+    .marker.closed {
+      background: #555;
+      opacity: 0.7;
+    }
+    .marker.selected {
+      transform: scale(1.25);
+      box-shadow: 0 0 0 3px rgba(63, 182, 139, 0.5);
+    }
+    .cluster {
+      background: rgba(26, 32, 41, 0.9);
+      color: var(--text);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      border: 2px solid var(--accent);
+    }
+    .popup {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .popup strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .leaflet-popup-content-wrapper {
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 8px;
+    }
+    .leaflet-popup-tip {
+      background: var(--panel);
+    }
+    .leaflet-control-zoom a {
+      background: var(--panel) !important;
+      color: var(--text) !important;
+      border-color: var(--panel-2) !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(16, 20, 26, 0.7) !important;
+      color: var(--muted) !important;
+    }
+    .leaflet-control-attribution a {
+      color: var(--muted) !important;
+    }
+    .empty {
+      padding: 24px 14px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--panel-2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .kbd {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      background: var(--panel-2);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+    .help {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 900;
+    }
+    .help.hidden {
+      display: none;
+    }
+    .help-card {
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      width: min(420px, 92vw);
+      box-shadow: var(--shadow);
+    }
+    .help-card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .help-card dl {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 12px;
+      margin: 0;
+      font-size: 13px;
+    }
+    .help-card dt {
+      color: var(--muted);
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 720px) {
+      .side-panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 45vh; border-radius: var(--radius) var(--radius) 0 0; }
+      .legend { bottom: 48vh; }
+      .filter-bar { display: none; }
+      .status-bar { bottom: 46vh; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation: none; }
+      .marker.selected { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map" role="application" aria-label="Station map"></div>
+
+  <div class="topbar">
+    <div class="search" role="search">
+      <label class="sr-only" for="searchInput">Search stations</label>
+      <input id="searchInput" type="search" placeholder="Search stations or streets" autocomplete="off">
+      <div id="searchResults" class="search-results" hidden></div>
+    </div>
+    <div class="filter-bar" role="group" aria-label="Filters">
+      <button class="chip" data-filter="bikes" type="button">Has bikes</button>
+      <button class="chip" data-filter="ebikes" type="button">Has e-bikes</button>
+      <button class="chip" data-filter="docks" type="button">Free docks</button>
+      <button class="chip" data-filter="favs" type="button">Favourites</button>
+    </div>
+  </div>
+
+  <aside id="sidePanel" class="side-panel hidden" aria-live="polite">
+    <div class="panel-header">
+      <h2 id="panelTitle" class="panel-title">Nearby stations</h2>
+      <button id="panelClose" class="fav-btn" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div id="panelBody" class="panel-body"></div>
+  </aside>
+
+  <button id="locateBtn" class="locate-btn" type="button" aria-label="Show my location">&#9678;</button>
+
+  <div class="legend" aria-hidden="true">
+    <div class="legend-row"><span class="legend-swatch" style="background: var(--accent)"></span> Bikes available</div>
+    <div class="legend-row"><span class="legend-swatch" style="background: var(--warn)"></span> Few bikes</div>
+    <div class="legend-row"><span class="legend-swatch" style="background: var(--bad)"></span> No bikes</div>
+    <div class="legend-row"><span class="legend-swatch" style="background: #555"></span> Closed</div>
+  </div>
+
+  <div id="statusBar" class="status-bar">Loading stations&hellip;</div>
+  <div id="toast" class="toast" hidden></div>
+
+  <div id="help" class="help hidden" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="help-card">
+      <h2 id="helpTitle">Keyboard shortcuts</h2>
+      <dl>
+        <dt><span class="kbd">/</span></dt><dd>Search</dd>
+        <dt><span class="kbd">f</span></dt><dd>Toggle favourites filter</dd>
+        <dt><span class="kbd">l</span></dt><dd>Show my location</dd>
+        <dt><span class="kbd">Esc</span></dt><dd>Close panel or dialog</dd>
+        <dt><span class="kbd">?</span></dt><dd>This help</dd>
+      </dl>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    'use strict';
+
+    // ── Settings ──
+    const CITY = { name: 'Sample City', lat: 40.0, lon: -75.0, zoom: 13 };
+    const API = '/app/../api';
+    const REFRESH_MS = 60 * 1000;
+    const STALE_MS = 5 * 60 * 1000;
+    const FAV_KEY = 'stationFinder.favourites';
+    const FILTER_KEY = 'stationFinder.filters';
+    const FEW_BIKES = 3;
+
+    // ── State ──
+    const state = {
+      stations: new Map(),
+      markers: new Map(),
+      selected: null,
+      filters: new Set(),
+      favourites: new Set(),
+      lastUpdate: 0,
+      lastError: null,
+      userPos: null,
+    };
+
+    // ── Storage ──
+    function loadSet(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        return new Set(raw ? JSON.parse(raw) : []);
+      } catch (e) {
+        return new Set();
+      }
+    }
+
+    function saveSet(key, set) {
+      try {
+        localStorage.setItem(key, JSON.stringify([...set]));
+      } catch (e) {
+        // Private mode or storage full: favourites last for this visit only.
+      }
+    }
+
+    state.favourites = loadSet(FAV_KEY);
+    state.filters = loadSet(FILTER_KEY);
+
+    // ── Formatting ──
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function plural(n, one, many) {
+      return n + ' ' + (n === 1 ? one : many);
+    }
+
+    function formatAge(ms) {
+      if (ms < 60 * 1000) return 'just now';
+      const min = Math.round(ms / 60000);
+      if (min < 60) return plural(min, 'minute', 'minutes') + ' ago';
+      const h = Math.round(min / 60);
+      return plural(h, 'hour', 'hours') + ' ago';
+    }
+
+    function formatDistance(m) {
+      if (m < 1000) return Math.round(m / 10) * 10 + ' m';
+      return (m / 1000).toFixed(1) + ' km';
+    }
+
+    function formatClock(ts) {
+      const d = new Date(ts);
+      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+
+    // Haversine distance in metres.
+    function distance(a, b) {
+      const R = 6371000;
+      const toRad = (x) => (x * Math.PI) / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLon = toRad(b.lon - a.lon);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+
+    function availabilityClass(s) {
+      if (s.status === 'closed') return 'closed';
+      const total = s.bikes + s.ebikes;
+      if (total === 0) return 'none';
+      if (total <= FEW_BIKES) return 'some';
+      return 'full';
+    }
+
+    function matchesFilters(s) {
+      if (state.filters.has('bikes') && s.bikes + s.ebikes === 0) return false;
+      if (state.filters.has('ebikes') && s.ebikes === 0) return false;
+      if (state.filters.has('docks') && s.docks === 0) return false;
+      if (state.filters.has('favs') && !state.favourites.has(s.id)) return false;
+      return true;
+    }
+
+    function normalize(s) {
+      return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    // ── Status bar and toast ──
+    const statusBar = document.getElementById('statusBar');
+    const toastEl = document.getElementById('toast');
+    let toastTimer = null;
+
+    function setStatus(text, kind) {
+      statusBar.textContent = text;
+      statusBar.className = 'status-bar' + (kind ? ' ' + kind : '');
+    }
+
+    function toast(text, kind, ms) {
+      toastEl.textContent = text;
+      toastEl.className = 'toast' + (kind ? ' ' + kind : '');
+      toastEl.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms || 4000);
+    }
+
+
+    // ── Messages ──
+    const MSG = {
+      loading: 'Loading stations…',
+      loaded: 'Stations updated',
+      stale: 'Station data is out of date',
+      offline: 'You are offline; showing the last data',
+      error: 'Could not load stations',
+      noResults: 'No station matches your search',
+      noFavs: 'No favourites yet: tap the star on a station',
+      located: 'Showing stations near you',
+      locateDenied: 'Location permission denied',
+      locateFailed: 'Could not get your location',
+      closed: 'This station is closed',
+      history: 'Bikes over the last 24 hours',
+      historyEmpty: 'Not enough history yet',
+      favAdded: 'Added to favourites',
+      favRemoved: 'Removed from favourites',
+      bikes: 'Bikes',
+      ebikes: 'E-bikes',
+      docks: 'Free docks',
+      nearby: 'Nearby stations',
+      updated: 'Updated',
+      help: 'Keyboard shortcuts',
+      retry: 'Retrying in a minute',
+    };
+
+    function debounce(fn, ms) {
+      let t = null;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), ms);
+      };
+    }
+
+    function byName(a, b) {
+      return a.name.localeCompare(b.name);
+    }
+
+    function clamp(n, lo, hi) {
+      return Math.min(Math.max(n, lo), hi);
+    }
+
+    // ── Translations ──
+    const TRANSLATIONS = {
+      de: {
+        loading: 'Stationen werden geladen…',
+        loaded: 'Stationen aktualisiert',
+        stale: 'Die Stationsdaten sind veraltet',
+        offline: 'Offline: die letzten Daten werden angezeigt',
+        error: 'Stationen konnten nicht geladen werden',
+        noResults: 'Keine Station passt zur Suche',
+        noFavs: 'Noch keine Favoriten: tippe auf den Stern einer Station',
+        located: 'Stationen in deiner Nähe',
+        locateDenied: 'Standortzugriff verweigert',
+        locateFailed: 'Standort nicht verfügbar',
+        closed: 'Diese Station ist geschlossen',
+        history: 'Räder in den letzten 24 Stunden',
+        historyEmpty: 'Noch zu wenig Verlauf',
+        favAdded: 'Zu Favoriten hinzugefügt',
+        favRemoved: 'Aus Favoriten entfernt',
+        bikes: 'Räder',
+        ebikes: 'E-Bikes',
+        docks: 'Freie Plätze',
+        nearby: 'Stationen in der Nähe',
+        updated: 'Aktualisiert',
+        help: 'Tastenkürzel',
+        retry: 'Neuer Versuch in einer Minute',
+      },
+      fr: {
+        loading: 'Chargement des stations…',
+        loaded: 'Stations mises à jour',
+        stale: 'Les données des stations sont anciennes',
+        offline: 'Hors ligne : dernières données affichées',
+        error: 'Impossible de charger les stations',
+        noResults: 'Aucune station ne correspond',
+        noFavs: 'Pas encore de favoris : touchez l\'étoile d\'une station',
+        located: 'Stations près de vous',
+        locateDenied: 'Localisation refusée',
+        locateFailed: 'Position indisponible',
+        closed: 'Cette station est fermée',
+        history: 'Vélos sur les dernières 24 heures',
+        historyEmpty: 'Historique insuffisant',
+        favAdded: 'Ajoutée aux favoris',
+        favRemoved: 'Retirée des favoris',
+        bikes: 'Vélos',
+        ebikes: 'Vélos électriques',
+        docks: 'Places libres',
+        nearby: 'Stations proches',
+        updated: 'Mis à jour',
+        help: 'Raccourcis clavier',
+        retry: 'Nouvel essai dans une minute',
+      },
+      es: {
+        loading: 'Cargando estaciones…',
+        loaded: 'Estaciones actualizadas',
+        stale: 'Los datos de las estaciones son antiguos',
+        offline: 'Sin conexión: se muestran los últimos datos',
+        error: 'No se pudieron cargar las estaciones',
+        noResults: 'Ninguna estación coincide',
+        noFavs: 'Aún no hay favoritas: toca la estrella de una estación',
+        located: 'Estaciones cerca de ti',
+        locateDenied: 'Permiso de ubicación denegado',
+        locateFailed: 'Ubicación no disponible',
+        closed: 'Esta estación está cerrada',
+        history: 'Bicis en las últimas 24 horas',
+        historyEmpty: 'Aún no hay historial suficiente',
+        favAdded: 'Añadida a favoritas',
+        favRemoved: 'Quitada de favoritas',
+        bikes: 'Bicis',
+        ebikes: 'Bicis eléctricas',
+        docks: 'Anclajes libres',
+        nearby: 'Estaciones cercanas',
+        updated: 'Actualizado',
+        help: 'Atajos de teclado',
+        retry: 'Reintentando en un minuto',
+      },
+    };
+
+    (function applyLanguage() {
+      const lang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+      const t = TRANSLATIONS[lang];
+      if (t) Object.assign(MSG, t);
+      document.documentElement.lang = t ? lang : 'en';
+    })();
+
+    // ── Preferences ──
+    const PREFS_KEY = 'stationFinder.prefs';
+    const prefs = Object.assign({ units: 'metric', showClosed: true }, (() => {
+      try {
+        return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+      } catch (e) {
+        return {};
+      }
+    })());
+
+    function savePrefs() {
+      try {
+        localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+      } catch (e) {
+        // Not persisted; the defaults apply next time.
+      }
+    }
+
+    // ── Screen reader announcements ──
+    const announcer = document.createElement('div');
+    announcer.className = 'sr-only';
+    announcer.setAttribute('aria-live', 'polite');
+    document.body.appendChild(announcer);
+
+    function announce(text) {
+      announcer.textContent = '';
+      setTimeout(() => { announcer.textContent = text; }, 50);
+    }
+
+    // ── Grid clustering ──
+    // At low zoom levels stations are grouped into grid cells of CELL_PX
+    // screen pixels; a cell with several stations shows one cluster marker.
+    const CELL_PX = 48;
+    const CLUSTER_MAX_ZOOM = 13;
+
+    function clusterStations(stations, zoom, project) {
+      if (zoom > CLUSTER_MAX_ZOOM) return stations.map((s) => ({ stations: [s], lat: s.lat, lon: s.lon }));
+      const cells = new Map();
+      for (const s of stations) {
+        const p = project([s.lat, s.lon], zoom);
+        const key = Math.floor(p.x / CELL_PX) + ':' + Math.floor(p.y / CELL_PX);
+        let c = cells.get(key);
+        if (!c) {
+          c = { stations: [], lat: 0, lon: 0 };
+          cells.set(key, c);
+        }
+        c.stations.push(s);
+        c.lat += s.lat;
+        c.lon += s.lon;
+      }
+      const out = [];
+      for (const c of cells.values()) {
+        c.lat /= c.stations.length;
+        c.lon /= c.stations.length;
+        out.push(c);
+      }
+      return out;
+    }
+
+    function clusterTotal(c) {
+      return c.stations.reduce((n, s) => n + s.bikes + s.ebikes, 0);
+    }
+
+    function clusterIcon(c) {
+      const size = c.stations.length < 10 ? 30 : c.stations.length < 100 ? 38 : 46;
+      return L.divIcon({ className: '', html: '<div class="cluster" style="width:' + size + 'px;height:' + size + 'px">' + clusterTotal(c) + '</div>', iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+    }
+
+    // fetchJson: fetch with a timeout, so a hanging request does not block refresh.
+    async function fetchJson(url, ms) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), ms || 10000);
+      try {
+        const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.json();
+      } finally {
+        clearTimeout(t);
+      }
+    }
+
+    // ── Map ──
+    const map = L.map('map', { zoomControl: false }).setView([CITY.lat, CITY.lon], CITY.zoom);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Night base layer (streets, no labels)
+    L.tileLayer('https://{s}.tiles.mapforgecdn.example/night_base/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; Mapforge',
+      subdomains: 'abc',
+      maxZoom: 19,
+    }).addTo(map);
+
+    // The station marker layer goes between the base and the labels
+    // Labels layer on top
+    const labelsLayer = L.tileLayer('https://{s}.tiles.mapforgecdn.example/night_labels/{z}/{x}/{y}.png', {
+      attribution: '',
+      subdomains: 'abc',
+      maxZoom: 19,
+      pane: 'overlayPane',
+    });
+    labelsLayer.addTo(map);
+
+    const stationLayer = L.layerGroup().addTo(map);
+    map.attributionControl.setPrefix('');
+
+    // ── Markers ──
+    function markerIcon(s) {
+      const cls = 'marker ' + availabilityClass(s) + (state.selected === s.id ? ' selected' : '');
+      const label = s.status === 'closed' ? '&times;' : String(s.bikes + s.ebikes);
+      return L.divIcon({ className: '', html: '<div class="' + cls + '">' + label + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+    }
+
+    function popupHtml(s) {
+      return '<div class="popup"><strong>' + escapeHtml(s.name) + '</strong>' +
+        plural(s.bikes, 'bike', 'bikes') + ', ' + plural(s.ebikes, 'e-bike', 'e-bikes') + '<br>' +
+        plural(s.docks, 'free dock', 'free docks') + '</div>';
+    }
+
+    function renderMarkers() {
+      const seen = new Set();
+      for (const s of state.stations.values()) {
+        if (!matchesFilters(s)) continue;
+        seen.add(s.id);
+        let m = state.markers.get(s.id);
+        if (!m) {
+          m = L.marker([s.lat, s.lon], { icon: markerIcon(s), keyboard: true, title: s.name });
+          m.on('click', () => selectStation(s.id));
+          m.bindPopup(() => popupHtml(state.stations.get(s.id) || s), { closeButton: false, offset: [0, -8] });
+          state.markers.set(s.id, m);
+          stationLayer.addLayer(m);
+        } else {
+          m.setIcon(markerIcon(s));
+          m.setLatLng([s.lat, s.lon]);
+          if (!stationLayer.hasLayer(m)) stationLayer.addLayer(m);
+        }
+      }
+      for (const [id, m] of state.markers) {
+        if (!seen.has(id)) stationLayer.removeLayer(m);
+      }
+    }
+
+    // ── Side panel ──
+    const panel = document.getElementById('sidePanel');
+    const panelTitle = document.getElementById('panelTitle');
+    const panelBody = document.getElementById('panelBody');
+
+    function openPanel(title) {
+      panelTitle.textContent = title;
+      panel.classList.remove('hidden');
+    }
+
+    function closePanel() {
+      panel.classList.add('hidden');
+      if (state.selected) {
+        const prev = state.selected;
+        state.selected = null;
+        const s = state.stations.get(prev);
+        const m = state.markers.get(prev);
+        if (s && m) m.setIcon(markerIcon(s));
+      }
+    }
+
+    function countCell(n, kind) {
+      return '<span class="count ' + kind + (n === 0 ? ' zero' : '') + '">' + n + '</span>';
+    }
+
+    function stationRow(s) {
+      const d = state.userPos ? ' &middot; ' + formatDistance(distance(state.userPos, s)) : '';
+      return '<div class="station-row" data-id="' + escapeHtml(s.id) + '" tabindex="0">' +
+        '<div><div class="station-name">' + escapeHtml(s.name) + '</div>' +
+        '<div class="station-meta">' + formatAge(Date.now() - s.updatedAt) + d + '</div></div>' +
+        countCell(s.bikes, 'bikes') + countCell(s.ebikes, 'ebikes') + countCell(s.docks, 'docks') + '</div>';
+    }
+
+    function renderList(stations, title) {
+      openPanel(title);
+      if (stations.length === 0) {
+        panelBody.innerHTML = '<div class="empty">' + escapeHtml(state.filters.has('favs') ? MSG.noFavs : MSG.noResults) + '</div>';
+        return;
+      }
+      panelBody.innerHTML = stations.map(stationRow).join('');
+    }
+
+    panelBody.addEventListener('click', (e) => {
+      const row = e.target.closest('.station-row');
+      if (row) selectStation(row.dataset.id);
+    });
+    panelBody.addEventListener('keydown', (e) => {
+      const row = e.target.closest('.station-row');
+      if (row && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        selectStation(row.dataset.id);
+      }
+    });
+    document.getElementById('panelClose').addEventListener('click', closePanel);
+
+    // ── Station detail ──
+    function selectStation(id) {
+      const s = state.stations.get(id);
+      if (!s) return;
+      const prev = state.selected;
+      state.selected = id;
+      for (const pid of [prev, id]) {
+        const ps = pid && state.stations.get(pid);
+        const pm = pid && state.markers.get(pid);
+        if (ps && pm) pm.setIcon(markerIcon(ps));
+      }
+      map.panTo([s.lat, s.lon]);
+      renderDetail(s);
+      loadHistory(s.id);
+    }
+
+    function detailCell(value, label) {
+      return '<div class="detail-cell"><div class="value">' + value + '</div><div class="label">' + label + '</div></div>';
+    }
+
+    function renderDetail(s) {
+      const fav = state.favourites.has(s.id);
+      openPanel(s.name);
+      panelBody.innerHTML = '<div class="detail">' +
+        '<button class="fav-btn' + (fav ? ' on' : '') + '" id="favBtn" type="button" aria-pressed="' + fav + '">&#9733;</button>' +
+        (s.status === 'closed' ? '<div class="address">' + MSG.closed + '</div>' : '') +
+        '<div class="detail-grid">' + detailCell(s.bikes, MSG.bikes) + detailCell(s.ebikes, MSG.ebikes) + detailCell(s.docks, MSG.docks) + '</div>' +
+        '<div class="station-meta">' + MSG.updated + ' ' + formatAge(Date.now() - s.updatedAt) + '</div>' +
+        '<h4>' + MSG.history + '</h4><div class="history"><canvas id="historyCanvas"></canvas><div id="historyEmpty" class="history-empty" hidden>' + MSG.historyEmpty + '</div></div>' +
+        '</div>';
+      document.getElementById('favBtn').addEventListener('click', () => toggleFavourite(s.id));
+    }
+
+    function toggleFavourite(id) {
+      if (state.favourites.has(id)) {
+        state.favourites.delete(id);
+        toast(MSG.favRemoved);
+      } else {
+        state.favourites.add(id);
+        toast(MSG.favAdded);
+      }
+      saveSet(FAV_KEY, state.favourites);
+      const s = state.stations.get(id);
+      if (s) renderDetail(s);
+      renderMarkers();
+    }
+
+    // ── History chart ──
+    // Bikes plus e-bikes per sample, drawn on a canvas sized for the
+    // device pixel ratio.
+    const HISTORY_COLOR = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3fb68b';
+    const HISTORY_GRID = 'rgba(139, 152, 165, 0.2)';
+    const HISTORY_PAD = { top: 10, right: 8, bottom: 18, left: 26 };
+
+    async function loadHistory(id) {
+      try {
+        const res = await fetch(API + '/stations/' + encodeURIComponent(id) + '/history');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const body = await res.json();
+        if (state.selected === id) drawHistory(body.samples || []);
+      } catch (e) {
+        if (state.selected === id) drawHistory([]);
+      }
+    }
+
+    function drawHistory(samples) {
+      const canvas = document.getElementById('historyCanvas');
+      const empty = document.getElementById('historyEmpty');
+      if (!canvas) return;
+      if (samples.length < 2) {
+        empty.hidden = false;
+        return;
+      }
+      empty.hidden = true;
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const max = Math.max(1, ...samples.map((p) => p.bikes + p.ebikes));
+      const t0 = samples[0].t, t1 = samples[samples.length - 1].t;
+      const x = (t) => HISTORY_PAD.left + ((t - t0) / Math.max(1, t1 - t0)) * (w - HISTORY_PAD.left - HISTORY_PAD.right);
+      const y = (v) => h - HISTORY_PAD.bottom - (v / max) * (h - HISTORY_PAD.top - HISTORY_PAD.bottom);
+      ctx.strokeStyle = HISTORY_GRID;
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const gy = y((max * i) / 4);
+        ctx.beginPath();
+        ctx.moveTo(HISTORY_PAD.left, gy);
+        ctx.lineTo(w - HISTORY_PAD.right, gy);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(139, 152, 165, 0.8)';
+      ctx.font = '10px system-ui';
+      ctx.fillText(String(max), 4, y(max) + 3);
+      ctx.fillText('0', 4, y(0) + 3);
+      ctx.fillText(formatClock(t0), HISTORY_PAD.left, h - 4);
+      ctx.fillText(formatClock(t1), w - HISTORY_PAD.right - 26, h - 4);
+      ctx.strokeStyle = HISTORY_COLOR;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      samples.forEach((p, i) => {
+        const px = x(p.t), py = y(p.bikes + p.ebikes);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    }
+
+    // ── Data loading ──
+    async function loadStations() {
+      const b = map.getBounds().pad(0.5);
+      const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((n) => clamp(n, -180, 180).toFixed(5)).join(',');
+      try {
+        const res = await fetch(API + '/stations?bbox=' + bbox);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const body = await res.json();
+        for (const s of body.stations || []) state.stations.set(s.id, s);
+        state.lastUpdate = Date.now();
+        state.lastError = null;
+        renderMarkers();
+        updateStatus();
+        if (state.selected) {
+          const s = state.stations.get(state.selected);
+          if (s) renderDetail(s);
+        }
+      } catch (e) {
+        state.lastError = e;
+        updateStatus();
+      }
+    }
+
+    function updateStatus() {
+      if (!navigator.onLine) return setStatus(MSG.offline, 'stale');
+      if (state.lastError && !state.lastUpdate) return setStatus(MSG.error + ' - ' + MSG.retry, 'error');
+      const age = Date.now() - state.lastUpdate;
+      if (age > STALE_MS) return setStatus(MSG.stale, 'stale');
+      setStatus(plural(state.stations.size, 'station', 'stations') + ' - ' + MSG.updated.toLowerCase() + ' ' + formatAge(age));
+    }
+
+    const reloadDebounced = debounce(loadStations, 400);
+    map.on('moveend', reloadDebounced);
+    setInterval(loadStations, REFRESH_MS);
+    setInterval(updateStatus, 15 * 1000);
+    window.addEventListener('online', loadStations);
+    window.addEventListener('offline', updateStatus);
+
+    // ── Search ──
+    const searchInput = document.getElementById('searchInput');
+    const searchResults = document.getElementById('searchResults');
+
+    function search(q) {
+      const nq = normalize(q.trim());
+      if (nq.length < 2) return [];
+      const out = [];
+      for (const s of state.stations.values()) {
+        const n = normalize(s.name);
+        const i = n.indexOf(nq);
+        if (i >= 0) out.push({ s, score: i === 0 ? 0 : 1 });
+      }
+      out.sort((a, b) => a.score - b.score || byName(a.s, b.s));
+      return out.slice(0, 12).map((r) => r.s);
+    }
+
+    function renderSearch() {
+      const hits = search(searchInput.value);
+      if (!searchInput.value.trim()) {
+        searchResults.hidden = true;
+        return;
+      }
+      searchResults.hidden = false;
+      if (hits.length === 0) {
+        searchResults.innerHTML = '<div class="empty">' + MSG.noResults + '</div>';
+        return;
+      }
+      searchResults.innerHTML = hits.map((s) =>
+        '<div class="search-result" data-id="' + escapeHtml(s.id) + '"><span>' + escapeHtml(s.name) + '</span>' +
+        countCell(s.bikes + s.ebikes, 'bikes') + '</div>').join('');
+    }
+
+    searchInput.addEventListener('input', debounce(renderSearch, 150));
+    searchResults.addEventListener('click', (e) => {
+      const r = e.target.closest('.search-result');
+      if (!r) return;
+      searchResults.hidden = true;
+      searchInput.value = '';
+      selectStation(r.dataset.id);
+    });
+
+    // ── Filters ──
+    for (const chip of document.querySelectorAll('.chip')) {
+      const f = chip.dataset.filter;
+      chip.classList.toggle('active', state.filters.has(f));
+      chip.addEventListener('click', () => {
+        if (state.filters.has(f)) state.filters.delete(f); else state.filters.add(f);
+        chip.classList.toggle('active', state.filters.has(f));
+        saveSet(FILTER_KEY, state.filters);
+        renderMarkers();
+        if (f === 'favs' && state.filters.has('favs')) {
+          renderList([...state.stations.values()].filter(matchesFilters).sort(byName), MSG.nearby);
+        }
+      });
+    }
+
+    // ── Geolocation ──
+    const locateBtn = document.getElementById('locateBtn');
+    let userMarker = null;
+
+    function showNearby() {
+      if (!state.userPos) return;
+      const list = [...state.stations.values()]
+        .filter(matchesFilters)
+        .map((s) => ({ s, d: distance(state.userPos, s) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 15)
+        .map((r) => r.s);
+      renderList(list, MSG.nearby);
+    }
+
+    function locate() {
+      if (!navigator.geolocation) return toast(MSG.locateFailed, 'warn');
+      locateBtn.classList.add('active');
+      navigator.geolocation.getCurrentPosition((pos) => {
+        state.userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        if (!userMarker) {
+          userMarker = L.circleMarker([state.userPos.lat, state.userPos.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#58a6ff', fillOpacity: 1 }).addTo(map);
+        } else {
+          userMarker.setLatLng([state.userPos.lat, state.userPos.lon]);
+        }
+        map.setView([state.userPos.lat, state.userPos.lon], Math.max(map.getZoom(), 15));
+        toast(MSG.located);
+        loadStations().then(showNearby);
+      }, (err) => {
+        locateBtn.classList.remove('active');
+        toast(err.code === 1 ? MSG.locateDenied : MSG.locateFailed, 'warn');
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    }
+
+    locateBtn.addEventListener('click', locate);
+
+    // ── Keyboard ──
+    const help = document.getElementById('help');
+    document.addEventListener('keydown', (e) => {
+      if (e.target === searchInput) {
+        if (e.key === 'Escape') {
+          searchInput.blur();
+          searchResults.hidden = true;
+        }
+        return;
+      }
+      switch (e.key) {
+        case '/':
+          e.preventDefault();
+          searchInput.focus();
+          break;
+        case 'f':
+          document.querySelector('.chip[data-filter="favs"]').click();
+          break;
+        case 'l':
+          locate();
+          break;
+        case '?':
+          help.classList.toggle('hidden');
+          break;
+        case 'Escape':
+          if (!help.classList.contains('hidden')) help.classList.add('hidden');
+          else closePanel();
+          break;
+      }
+    });
+    help.addEventListener('click', (e) => {
+      if (e.target === help) help.classList.add('hidden');
+    });
+
+    // ── Deep links ──
+    // /app/#station=<id> opens that station; the hash follows the selection.
+    function readHash() {
+      const m = /station=([^&]+)/.exec(location.hash);
+      return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    function writeHash(id) {
+      const h = id ? '#station=' + encodeURIComponent(id) : '';
+      if (location.hash !== h) history.replaceState(null, '', location.pathname + location.search + h);
+    }
+
+    const origSelect = selectStation;
+    selectStation = function (id) {
+      origSelect(id);
+      writeHash(id);
+    };
+    const origClose = closePanel;
+    closePanel = function () {
+      origClose();
+      writeHash(null);
+    };
+    window.addEventListener('hashchange', () => {
+      const id = readHash();
+      if (id && id !== state.selected) selectStation(id);
+    });
+
+    // ── Visibility ──
+    // Refresh when the tab comes back after a while in the background.
+    let hiddenAt = 0;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt && Date.now() - hiddenAt > REFRESH_MS) {
+        loadStations();
+      }
+    });
+
+    // ── Offline support ──
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/app/sw.js').catch(() => {
+          // Offline support is optional.
+        });
+      });
+    }
+
+    // ── Start ──
+    loadStations().then(() => {
+      const id = readHash();
+      if (id) selectStation(id);
+    });
+  </script>
+</body>
+</html>

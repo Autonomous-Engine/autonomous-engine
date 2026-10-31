@@ -1,0 +1,88 @@
+{
+  "$comment": "Synthetic manifest for scripts/test_benchmark_report.py; not a real corpus.",
+  "tasks": [
+    {
+      "id": "go-defect-a",
+      "repo": "https://example.invalid/go-defect-a",
+      "base_revision": "0000000000000000000000000000000000000000",
+      "prompt": "synthetic",
+      "test_command": "true",
+      "expected_outcome": "pass",
+      "language": "go",
+      "task_class": "historical_defect",
+      "difficulty": "easy",
+      "size_stratum": "small",
+      "partition": "development",
+      "fail_mode": "assert"
+    },
+    {
+      "id": "go-defect-b",
+      "repo": "https://example.invalid/go-defect-b",
+      "base_revision": "0000000000000000000000000000000000000000",
+      "prompt": "synthetic",
+      "test_command": "true",
+      "expected_outcome": "pass",
+      "language": "go",
+      "task_class": "historical_defect",
+      "difficulty": "medium",
+      "size_stratum": "small",
+      "partition": "sealed",
+      "fail_mode": "assert"
+    },
+    {
+      "id": "go-feature-c",
+      "repo": "https://example.invalid/go-feature-c",
+      "base_revision": "0000000000000000000000000000000000000000",
+      "prompt": "synthetic",
+      "test_command": "true",
+      "expected_outcome": "pass",
+      "language": "go",
+      "task_class": "small_feature",
+      "difficulty": "medium",
+      "size_stratum": "small",
+      "partition": "sealed",
+      "fail_mode": "build"
+    },
+    {
+      "id": "ts-refactor-d",
+      "repo": "https://example.invalid/ts-refactor-d",
+      "base_revision": "0000000000000000000000000000000000000000",
+      "prompt": "synthetic",
+      "test_command": "true",
+      "expected_outcome": "pass",
+      "language": "typescript",
+      "task_class": "cross_file_refactor",
+      "difficulty": "hard",
+      "size_stratum": "small",
+      "partition": "sealed",
+      "fail_mode": "assert"
+    },
+    {
+      "id": "ts-config-e",
+      "repo": "https://example.invalid/ts-config-e",
+      "base_revision": "0000000000000000000000000000000000000000",
+      "prompt": "synthetic",
+      "test_command": "true",
+      "expected_outcome": "pass",
+      "language": "typescript",
+      "task_class": "dependency_or_config",
+      "difficulty": "easy",
+      "size_stratum": "small",
+      "partition": "sealed",
+      "fail_mode": "assert"
+    },
+    {
+      "id": "go-blocked-f",
+      "repo": "https://example.invalid/go-blocked-f",
+      "base_revision": "0000000000000000000000000000000000000000",
+      "prompt": "synthetic",
+      "test_command": "true",
+      "expected_outcome": "blocked",
+      "language": "go",
+      "task_class": "blocked_or_underspecified",
+      "difficulty": "medium",
+      "size_stratum": "small",
+      "partition": "sealed"
+    }
+  ]
+}

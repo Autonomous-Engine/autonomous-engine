@@ -1,0 +1,34 @@
+{
+  "id": "neverthrow-ortee",
+  "summary": "Add orTee (error-track tee) to Result and ResultAsync.",
+  "repo": "https://github.com/supermacro/neverthrow",
+  "base_sha": "493e9e2aabf8545780c9bd567709de09f106c3bd",
+  "language": "typescript",
+  "task_class": "small_feature",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "npm ci --prefer-offline --no-audit --no-fund --loglevel=error && { rm -f node_modules/.bench-result.json; npx vitest run tests/ --reporter=default --reporter=json --outputFile=node_modules/.bench-result.json; rc=$?; node -e \"const fs=require('fs');const [rc,...h]=process.argv.slice(1);const on=h.some(p=>fs.existsSync(p));let r=null;try{r=JSON.parse(fs.readFileSync('node_modules/.bench-result.json','utf8'))}catch(e){}if(!r){if(rc==='0'){console.log('[setup failed] hidden tests did not run (no test report)');process.exit(1)}process.exit(+rc)}const t=r.testResults||[];const as=x=>x.assertionResults||[];const f=t.filter(x=>x.status==='failed'&&!as(x).some(a=>a.status==='failed'));if(f.length)console.log('[setup failed] '+f.length+' test file(s) failed to load');else if(r.numFailedTests>0)console.log('--- FAIL: '+r.numFailedTests+' test(s) failed');if(rc==='0'&&on&&!t.some(x=>/bench[-_]/.test(x.name.replace(/.*[\\x5c/]/,''))&&as(x).some(a=>a.status==='passed')&&!as(x).some(a=>a.status==='failed'))){console.log('[setup failed] hidden tests did not run');process.exit(1)}process.exit(+rc)\" \"$rc\" tests/bench_or_tee.test.ts; }",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream commit that added orTee; that commit is never reachable from the sealed clone.",
+    "upstream_feature_commit": "58d206a8f9ed7708b04060ada7147860c9eea902",
+    "dependency_cache": "test_command runs `npm ci` against the committed package-lock.json on every invocation. The time budget (< 2 minutes per run) assumes a warm npm cache (~/.npm/_cacache) holding this lockfile's packages, e.g. pre-seeded by one verifier run or a cache image; the first cold run downloads from the npm registry. Agents need no network for tests once the cache is warm.",
+    "test_runner": "vitest 2 (no type-check), the repository's runner, over tests/ (the whole runtime suite, about 10 s). A missing method surfaces as a runtime TypeError inside the tests, so the base fails in assert mode. Hidden-test guard: when the hidden test files are present, a run that exits 0 must show that they ran (jest/vitest: the JSON report has a bench_/bench- test file with at least one passed and no failed assertion; mocha/node:test: the captured output contains a `bench:` suite title); otherwise the command prints `[setup failed] hidden tests did not run` and exits 1."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "58d206a8f9ed7708b04060ada7147860c9eea902",
+        "paths": [
+          "README.md",
+          "src/result-async.ts",
+          "src/result.ts",
+          "tests/index.test.ts"
+        ]
+      }
+    ]
+  }
+}

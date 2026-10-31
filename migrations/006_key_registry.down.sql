@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS system_config_notify ON system_config;
+DROP TRIGGER IF EXISTS credential_registry_notify ON credential_registry;
+DROP FUNCTION IF EXISTS notify_config_change();
+DROP TABLE IF EXISTS system_config;
+DROP TABLE IF EXISTS credential_audit_log;
+DROP TABLE IF EXISTS credential_registry;
+DROP TYPE IF EXISTS config_value_type;
+DROP TYPE IF EXISTS audit_action;
+DROP TYPE IF EXISTS credential_category;
+DROP TYPE IF EXISTS credential_scope;

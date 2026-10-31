@@ -1,0 +1,8 @@
+--- FAIL: TestAdd (0.00s)
+    calc_test.go:7: Add(2, 3) = -1, want 5
+--- FAIL: TestTable (0.00s)
+    --- FAIL: TestTable/pos (0.00s)
+        calc_test.go:18: got 0 want 2
+FAIL
+FAIL	example.com/app/calc	0.002s
+FAIL

@@ -1,0 +1,35 @@
+{
+  "id": "lru-expirable-evict-callback-reentrancy",
+  "summary": "expirable.LRU invokes onEvict while holding its mutex, so a callback that re-enters the cache deadlocks (explicit removals and background expiry).",
+  "repo": "https://github.com/hashicorp/golang-lru",
+  "base_sha": "d76085cdab9945a45c62c163fddd48582dcc4f75",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "hard",
+  "size_stratum": "small",
+  "test_command": "go test ./... || go test -count=1 ./...",
+  "test_command_note": "The upstream TestLoadingExpired sleeps 100ms for a 5ms-TTL reaper and fails roughly once in 20-30 runs under load (observed on windows/amd64, Go 1.27, at both the base and the fix revision). One retry absorbs that flake. The held-out tests are deterministic: every re-entrancy check runs the operation on a separate goroutine with a 3s deadline, so a deadlocking implementation fails both attempts.",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "9c13c57de0bedd6b3e21183b34072e417ffa69d1",
+    "upstream_issue": "https://github.com/hashicorp/golang-lru/issues/230",
+    "reference_patch": "git diff --binary d76085c..9c13c57 (source fix plus upstream tests, unchanged)",
+    "difficulty_note": "Six code paths (Add eviction, Remove, RemoveOldest, Purge, Resize, background deleteExpired) must collect evictions under the lock and fire callbacks after unlocking, while keeping callbacks synchronous for explicit operations.",
+    "size_note": "about 1.6k non-test Go lines at base"
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "9c13c57de0bedd6b3e21183b34072e417ffa69d1",
+        "paths": [
+          "expirable/expirable_lru.go",
+          "expirable/expirable_lru_test.go"
+        ]
+      }
+    ]
+  }
+}

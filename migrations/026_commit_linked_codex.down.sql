@@ -1,0 +1,23 @@
+ALTER TABLE codex_sections      DROP COLUMN IF EXISTS blob_hash;
+ALTER TABLE codex_sections      DROP COLUMN IF EXISTS source_commit_sha;
+ALTER TABLE codex_anti_patterns DROP COLUMN IF EXISTS blob_hash;
+ALTER TABLE codex_anti_patterns DROP COLUMN IF EXISTS source_commit_sha;
+ALTER TABLE codex_patterns      DROP COLUMN IF EXISTS blob_hash;
+ALTER TABLE codex_patterns      DROP COLUMN IF EXISTS source_commit_sha;
+ALTER TABLE codex_modules       DROP COLUMN IF EXISTS blob_hash;
+ALTER TABLE codex_modules       DROP COLUMN IF EXISTS source_commit_sha;
+ALTER TABLE products            DROP COLUMN IF EXISTS trusted_autoindex;
+
+DROP INDEX IF EXISTS codex_extraction_failure_repo_idx;
+DROP TABLE IF EXISTS codex_extraction_failure;
+DROP TABLE IF EXISTS codex_product_topology;
+DROP INDEX IF EXISTS codex_contract_edges_consumer_idx;
+DROP INDEX IF EXISTS codex_contract_edges_producer_idx;
+DROP TABLE IF EXISTS codex_contract_edges;
+DROP TABLE IF EXISTS codex_git_strategy;
+DROP TABLE IF EXISTS codex_watched_branches;
+DROP INDEX IF EXISTS codex_snapshots_branch_idx;
+DROP TABLE IF EXISTS codex_snapshots;
+DROP INDEX IF EXISTS codex_blobs_extractor_idx;
+DROP INDEX IF EXISTS codex_blobs_section_idx;
+DROP TABLE IF EXISTS codex_blobs;

@@ -1,0 +1,257 @@
+{
+ "source": "synthetic: the read and insert calls of a live run's implementation main pass (attempt 12, calls 2-13), rewritten onto the demo-app fixture in testdata/attempt9/demo-app; recorded_* are that run's measurements.",
+ "turns": [
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"src/config/env.ts\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"src/server/index.ts\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"README.md\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \".env.example\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"docker-compose.yml\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"docs/configuration.md\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"tests/unit/server.test.ts\"}"
+   }
+  ],
+  [
+   {
+    "name": "edit_file",
+    "arguments": "{\"path\": \"src/config/env.ts\", \"old_string\": \"export const config = {\", \"new_string\": \"export const config = {\\n  tilerApiKey: process.env.TILER_API_KEY || '',\"}"
+   },
+   {
+    "name": "insert_after",
+    "arguments": "{\"path\": \"src/server/index.ts\", \"anchor_text\": \"app.use(createSearchRouter());\", \"text\": \"\\n\\n  // Client config endpoint\\n  app.get('/api/client-config', (req, res) => {\\n    const tilerApiKey = config.tilerApiKey;\\n    const basemapConfigured = !!tilerApiKey;\\n    res.json({ tilerApiKey, basemapConfigured });\\n  });\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "insert_after",
+    "arguments": "{\"path\": \"src/server/index.ts\", \"anchor_text\": \"const logger = createLogger('server');\", \"text\": \"\\n\\nif (!config.tilerApiKey) {\\n  logger.warn('TILER_API_KEY is not configured. Basemap will not be available.');\\n}\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "insert_after",
+    "arguments": "{\"path\": \"src/server/index.ts\", \"anchor_text\": \"const logger = createLogger('server');\", \"text\": \"\\n\\nif (!config.tilerApiKey) {\\n  logger.warn('TILER_API_KEY is not configured. Basemap will not be available.');\\n}\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"src/server/index.ts\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "insert_after",
+    "arguments": "{\"path\": \"public/index.html\", \"anchor_text\": \"const API = window.location.origin;\", \"text\": \"\\n\\n// Fetch client config\\nfetch('/api/client-config')\\n  .then(response => response.json())\\n  .then(config => {\\n    const apiKey = config.tilerApiKey;\\n    const basemapConfigured = config.basemapConfigured;\\n\\n    // Update tile layer URL with API key if configured\\n    if (basemapConfigured) {\\n      L.tileLayer('https://{s}.basemaps.example.com/dark_all/{z}/{x}/{y}{r}.png?api_key=' + apiKey, {\\n        attribution: '&copy; <a href=\\\"https://www.openstreetmap.org/copyright\\\">OSM</a> &copy; <a href=\\\"https://tiler.test/attributions\\\">Tiler</a>',\\n        subdomains: 'abcd',\\n        maxZoom: 19,\\n      }).addTo(map);\\n    } else {\\n      // Display notice if API key is missing\\n      const notice = document.createElement('div');\\n      notice.className = 'basemap-notice';\\n      notice.textContent = 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).';\\n      document.body.appendChild(notice);\\n    }\\n  })\\n  .catch(error => {\\n    console.error('Error fetching client config:', error);\\n  });\"}"
+   },
+   {
+    "name": "insert_after",
+    "arguments": "{\"path\": \"landing/index.html\", \"anchor_text\": \"const DEMO_API = '';\", \"text\": \"\\n\\n// Fetch client config\\nfetch('/api/client-config')\\n  .then(response => response.json())\\n  .then(config => {\\n    const apiKey = config.tilerApiKey;\\n    const basemapConfigured = config.basemapConfigured;\\n\\n    // Update tile layer URL with API key if configured\\n    if (basemapConfigured) {\\n      L.tileLayer('https://{s}.basemaps.example.com/dark_all/{z}/{x}/{y}{r}.png?api_key=' + apiKey, {\\n        attribution: '&copy; <a href=\\\"https://www.openstreetmap.org/copyright\\\">OSM</a> &copy; <a href=\\\"https://tiler.test/attributions\\\">Tiler</a>',\\n        subdomains: 'abcd',\\n        maxZoom: 19,\\n      }).addTo(map);\\n    } else {\\n      // Display notice if API key is missing\\n      const notice = document.createElement('div');\\n      notice.className = 'basemap-notice';\\n      notice.textContent = 'Basemap unavailable: TILER_API_KEY is not configured. See README (Configuration).';\\n      document.body.appendChild(notice);\\n    }\\n  })\\n  .catch(error => {\\n    console.error('Error fetching client config:', error);\\n  });\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"src/server/index.ts\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"src/server/index.ts\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"src/server/index.ts\"}"
+   }
+  ],
+  [
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"public/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"landing/index.html\"}"
+   },
+   {
+    "name": "read_file",
+    "arguments": "{\"path\": \"src/server/index.ts\"}"
+   }
+  ]
+ ],
+ "recorded_read_result_chars": [
+  64366,
+  124224,
+  123812,
+  105201,
+  75272,
+  63954,
+  63954,
+  63954,
+  75231,
+  86508,
+  86508,
+  86508
+ ],
+ "recorded_input_tokens": [
+  21978,
+  31070,
+  32520,
+  31399,
+  25451,
+  22447,
+  22496,
+  23372,
+  26254,
+  28358,
+  28356,
+  28196
+ ],
+ "seed_lines": {
+  "public/index.html": 837,
+  "landing/index.html": 855,
+  "src/server/index.ts": 33
+ },
+ "scope": [
+  "src/config/env.ts",
+  "src/server/index.ts",
+  "public/index.html",
+  "landing/index.html",
+  "README.md",
+  ".env.example",
+  "docker-compose.yml",
+  "docs/configuration.md",
+  "tests/unit/server.test.ts"
+ ]
+}

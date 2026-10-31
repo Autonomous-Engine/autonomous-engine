@@ -1,0 +1,16 @@
+title = "Autonomous Engine secret scan"
+
+[extend]
+useDefault = true
+
+# Test fixtures that contain fake, non-functional tokens by design.
+[allowlist]
+description = "Known test fixtures and placeholders"
+paths = [
+  '''(^|/)[^/]*_test\.go$''',
+  '''(^|/)testdata/''',
+  '''^\.env\.example$''',
+  '''^benchmarks/tasks/''',
+  '''^third_party/''',
+  '''^THIRD_PARTY_NOTICES\.md$''',
+]

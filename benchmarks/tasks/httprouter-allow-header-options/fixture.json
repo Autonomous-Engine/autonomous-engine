@@ -1,0 +1,31 @@
+{
+  "id": "httprouter-allow-header-options",
+  "summary": "The 405 Allow header lists OPTIONS even when Router.HandleOPTIONS is false.",
+  "repo": "https://github.com/julienschmidt/httprouter",
+  "base_sha": "ef8578da8d8e1217ea44313b23edf46154b198ab",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "medium",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "sealed",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone.",
+    "upstream_fix_commit": "484018016424d215c0b87c42f4c9b57d980fbd00",
+    "upstream_pr": "https://github.com/julienschmidt/httprouter/pull/360",
+    "reference_patch_note": "The upstream commit touched only router.go (no test changes); the patch is the full commit, nothing was dropped."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "484018016424d215c0b87c42f4c9b57d980fbd00",
+        "paths": [
+          "router.go"
+        ]
+      }
+    ]
+  }
+}

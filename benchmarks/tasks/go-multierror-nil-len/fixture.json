@@ -1,0 +1,30 @@
+{
+  "id": "go-multierror-nil-len",
+  "summary": "(*Error).Len() dereferences a nil receiver and panics; it must return 0 like ErrorOrNil tolerates nil.",
+  "repo": "https://github.com/hashicorp/go-multierror",
+  "base_sha": "162d0705ad4e3b568e3f8e79432725807eeffb46",
+  "language": "go",
+  "task_class": "historical_defect",
+  "difficulty": "easy",
+  "size_stratum": "small",
+  "test_command": "go test ./...",
+  "partition": "development",
+  "expected_outcome": "pass",
+  "fail_mode": "assert",
+  "provenance": {
+    "note": "Evaluator-only. base_sha is the parent of the upstream fix; the fix is never reachable from the sealed clone. Replaces go-version-zero-value-string, whose base already contained the go-version-sql-scanner-valuer reference fix (cross-fixture leak found in review).",
+    "upstream_fix_commit": "8c185579adb99b4ac3d8f935131793db89e23d2b",
+    "reference_patch_note": "The upstream commit touched only sort.go (no test changes); the patch is the full commit."
+  },
+  "reference": {
+    "note": "Evaluator-only. The verifier renders the reference patch from upstream: git diff --binary -M base_sha commit -- paths, per step.",
+    "steps": [
+      {
+        "commit": "8c185579adb99b4ac3d8f935131793db89e23d2b",
+        "paths": [
+          "sort.go"
+        ]
+      }
+    ]
+  }
+}

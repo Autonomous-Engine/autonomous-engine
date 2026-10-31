@@ -1,0 +1,141 @@
+
+> sample-app@0.1.0 test
+> vitest run
+
+
+ RUN  v3.2.7 /workspace/worktree-7d3c1e52-2f64-4b8e-9a51-0c6f4e1d8b20
+
+ ✓ tests/unit/search/ranker.test.ts (4 tests) 712ms
+ ✓ tests/unit/covers/renderer.test.ts (14 tests) 903ms
+   ✓ covers/renderer > renderCover > composes a cover from several layers (keeps the top layer)  655ms
+{"level":30,"time":1791100000037,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","shelf":"fiction","msg":"Client subscribed"}
+{"level":30,"time":1791100000074,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","msg":"Client disconnected"}
+{"level":30,"time":1791100000111,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","shelf":"fiction","msg":"Client subscribed"}
+{"level":30,"time":1791100000148,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","msg":"Client disconnected"}
+{"level":30,"time":1791100000185,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","shelf":"fiction","msg":"Client subscribed"}
+{"level":30,"time":1791100000222,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","msg":"Client disconnected"}
+{"level":30,"time":1791100000259,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","shelf":"fiction","msg":"Client subscribed"}
+{"level":30,"time":1791100000296,"pid":4120,"hostname":"c0ffee5a11fe","name":"reader-ws","clientId":"test-1","msg":"Client disconnected"}
+ ✓ tests/unit/search/reader-ws.test.ts (4 tests) 611ms
+ ✓ tests/unit/jobs/worker.test.ts (2 tests) 321ms
+   ✓ runWithTimeout > stops a runaway job and resolves null without hanging  301ms
+ ✓ tests/unit/search/tokenizer.test.ts (3 tests) 91ms
+ ✓ tests/unit/search/stemmer.test.ts (5 tests) 97ms
+ ✓ tests/unit/pagination.test.ts (5 tests) 78ms
+ ✓ tests/unit/search/server.test.ts (11 tests) 47ms
+{"level":30,"time":1791100000333,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"authors","entries":9,"msg":"Loaded index"}
+{"level":30,"time":1791100000370,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"books","entries":14,"msg":"Loaded index"}
+{"level":30,"time":1791100000407,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"genres","entries":14,"msg":"Loaded index"}
+{"level":30,"time":1791100000444,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"isbn","entries":2,"msg":"Loaded index"}
+{"level":30,"time":1791100000481,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"publishers","entries":15,"msg":"Loaded index"}
+{"level":30,"time":1791100000518,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"series","entries":10,"msg":"Loaded index"}
+{"level":30,"time":1791100000555,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"shelves","entries":11,"msg":"Loaded index"}
+{"level":30,"time":1791100000592,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"tags","entries":14,"msg":"Loaded index"}
+{"level":30,"time":1791100000629,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","count":8,"msg":"All indexes loaded"}
+ ✓ tests/unit/server-search.test.ts (7 tests) 41ms
+{"level":30,"time":1791100000666,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"authors","entries":9,"msg":"Loaded index"}
+{"level":30,"time":1791100000703,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"books","entries":14,"msg":"Loaded index"}
+{"level":30,"time":1791100000740,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"genres","entries":14,"msg":"Loaded index"}
+{"level":30,"time":1791100000777,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"isbn","entries":2,"msg":"Loaded index"}
+{"level":30,"time":1791100000814,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"publishers","entries":15,"msg":"Loaded index"}
+{"level":30,"time":1791100000851,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"series","entries":10,"msg":"Loaded index"}
+{"level":30,"time":1791100000888,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"shelves","entries":11,"msg":"Loaded index"}
+{"level":30,"time":1791100000925,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","index":"tags","entries":14,"msg":"Loaded index"}
+{"level":30,"time":1791100000962,"pid":4120,"hostname":"c0ffee5a11fe","name":"index","count":8,"msg":"All indexes loaded"}
+ ❯ tests/unit/server.test.ts (10 tests | 1 failed) 92ms
+   × Bookshelf API > GET /api/settings > returns reader settings with searchApiKey 17ms
+     → expected 404 to be 200 // Object.is equality
+   ✓ Bookshelf API > GET /books/:id > returns the book 10ms
+   ✓ Bookshelf API > GET /books/:id > returns 404 for an unknown book 5ms
+   ✓ Bookshelf API > GET /books > returns the book list 8ms
+   ✓ Bookshelf API > GET /health > returns health status 7ms
+   ✓ Bookshelf API > POST /books > returns 400 without a title 4ms
+   ✓ Bookshelf API > GET /search > returns 400 for an empty query 11ms
+   ✓ Bookshelf API > GET /shelves > returns the shelf list 4ms
+   ✓ Bookshelf API > GET /shelves/:id/cover > returns PNG for a known shelf 16ms
+   ✓ Bookshelf API > GET /shelves/:id/cover > returns 404 for an unknown shelf 3ms
+ ✓ tests/unit/store/sqlite-store.test.ts (16 tests) 22ms
+ ✓ tests/unit/search/index-reader.test.ts (6 tests) 21ms
+ ✓ tests/unit/store/memory-store.test.ts (12 tests) 11ms
+ ✓ tests/unit/catalog.test.ts (15 tests) 12ms
+ ✓ tests/unit/isbn.test.ts (21 tests) 4ms
+ ✓ tests/unit/storage.test.ts (5 tests) 5ms
+ ✓ tests/unit/csv-import.test.ts (14 tests) 2ms
+ ✓ tests/unit/search/summary.test.ts (3 tests) 1ms
+ ✓ tests/unit/opds.test.ts (5 tests) 2ms
+ ✓ tests/unit/search/watchlist.test.ts (5 tests) 2ms
+ ✓ tests/unit/search/scoring.test.ts (21 tests) 2ms
+ ✓ tests/unit/search/history.test.ts (3 tests) 3ms
+ ✓ tests/unit/color.test.ts (6 tests) 1ms
+ ✓ tests/unit/format.test.ts (8 tests) 1ms
+{"level":30,"time":1791100000999,"pid":4120,"hostname":"c0ffee5a11fe","name":"libraries","count":3,"msg":"Loaded bundled libraries"}
+{"level":30,"time":1791100001036,"pid":4120,"hostname":"c0ffee5a11fe","name":"libraries","count":3,"msg":"Loaded bundled libraries"}
+{"level":30,"time":1791100001073,"pid":4120,"hostname":"c0ffee5a11fe","name":"libraries","count":3,"msg":"Loaded bundled libraries"}
+{"level":30,"time":1791100001110,"pid":4120,"hostname":"c0ffee5a11fe","name":"libraries","count":3,"msg":"Loaded bundled libraries"}
+{"level":30,"time":1791100001147,"pid":4120,"hostname":"c0ffee5a11fe","name":"libraries","count":1,"msg":"Merged library overrides"}
+ ✓ tests/unit/search/libraries.test.ts (4 tests) 1ms
+ ✓ tests/unit/search/text.test.ts (10 tests) 1ms
+ ✓ tests/unit/feed-fetcher.test.ts (3 tests) 1ms
+{"level":30,"time":1791100001184,"pid":4120,"hostname":"c0ffee5a11fe","name":"cleanup","retentionDays":30,"msg":"Cleanup worker started"}
+ ✓ tests/unit/cleanup.test.ts (2 tests) 0ms
+stderr | EventEmitter.emit (/workspace/sample-app/node_modules/pg-pool/index.js:45:11)
+[pg-pool] Unhandled error event: AggregateError: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+{"level":30,"time":1791100001221,"pid":4120,"hostname":"c0ffee5a11fe","name":"cleanup","msg":"SIGTERM received, stopping cleanup worker"}
+stderr | EventEmitter.emit (/workspace/sample-app/node_modules/pg-pool/index.js:45:11)
+[pg-pool] Unhandled error event: AggregateError: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+stderr | EventEmitter.emit (/workspace/sample-app/node_modules/pg-pool/index.js:45:11)
+[pg-pool] Unhandled error event: AggregateError: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+stderr | EventEmitter.emit (/workspace/sample-app/node_modules/pg-pool/index.js:45:11)
+[pg-pool] Unhandled error event: AggregateError: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+stderr | EventEmitter.emit (/workspace/sample-app/node_modules/pg-pool/index.js:45:11)
+[pg-pool] Unhandled error event: AggregateError: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+stderr | EventEmitter.emit (/workspace/sample-app/node_modules/pg-pool/index.js:45:11)
+[pg-pool] Unhandled error event: AggregateError: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/server.test.ts > Bookshelf API > GET /api/settings > returns reader settings with searchApiKey
+AssertionError: expected 404 to be 200 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 404[39m
+
+ ❯ tests/unit/server.test.ts:25:26
+     23|     it('returns reader settings with searchApiKey', async () => {
+     24|       const res = await request(app).get('/api/settings');
+     25|       expect(res.status).toBe(200);
+       |                          ^
+     26|       expect(res.body).toHaveProperty('searchApiKey');
+     27|       expect(res.body.searchApiKey).toBe(process.env.SEARCH_API_KEY);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 27 passed (28)
+      Tests  1 failed | 223 passed (224)
+   Start at  09:12:05
+   Duration  5.42s (transform 512ms, setup 0ms, collect 1.08s, tests 3.02s, environment 0ms, prepare 79ms)
+
+
+[exit code: exit status 1]
