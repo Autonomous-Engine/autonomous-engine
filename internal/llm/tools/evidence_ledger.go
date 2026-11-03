@@ -91,6 +91,12 @@ type LoopOptions struct {
 	// database (tests and offline replays); with a database the snapshots
 	// go to conversation_snapshots.
 	CheckpointStore func(ctx context.Context, snapshotID, workItemID uuid.UUID, agentType string, seq int, messagesJSON []byte, summary string, turns int) error
+	// Findings (findings.go) offers record_finding's results as the loop's
+	// memory: findings are stored for the work item when the loop has a
+	// database, rendered in the ledger message, and a finding recorded
+	// after a read makes a repeat of that read productive rather than
+	// stuck. Research sets it.
+	Findings bool
 }
 
 // pinnedRead is the latest compacted read of one file.

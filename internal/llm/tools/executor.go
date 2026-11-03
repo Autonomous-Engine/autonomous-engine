@@ -173,6 +173,13 @@ type Executor struct {
 	// on a file read only in part is refused).
 	readCov map[string]*readCoverage
 
+	// findings are the record_finding results of this loop (findings.go);
+	// findingStore also writes each one (the database, in a loop with one).
+	findings            []CitedFinding
+	findingStore        func(context.Context, CitedFinding) error
+	findingTaskID       string
+	findingResearchType string
+
 	// Branch scoping for commit-linked codex. When set, codex queries resolve
 	// to a materialized snapshot for the given branch+commit instead of the
 	// live codex tables. Set via SetWorkItemBranch.
@@ -579,6 +586,8 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 		result = e.pastDecisionsQuery(ctx, call.ID, args)
 	case "recall_context":
 		result = e.recallContext(ctx, call.ID, args)
+	case "record_finding":
+		result = e.recordFinding(ctx, call.ID, args)
 	case "set_product_context":
 		if e.db == nil {
 			return adapter.ToolResult{ToolCallID: call.ID, Content: "database not available", IsError: true}
@@ -4278,6 +4287,9 @@ func RunToolLoopWithOptions(
 	}
 
 	executor.db = db
+	if opts.Findings && db != nil && workItemID != nil && executor.findingStore == nil {
+		executor.SetFindingStore(dbFindingStore(db, *workItemID, executor))
+	}
 
 	// Per-work-item token budget: kill the loop when cumulative tokens
 	// across all agents exceed the cap. Default 500K tokens (~$5 at
