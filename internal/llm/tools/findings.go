@@ -156,31 +156,42 @@ func (e *Executor) recordFinding(ctx context.Context, callID string, args map[st
 		return refuse(fmt.Sprintf("cites %d lines; a finding cites at most %d — split it into one claim per range", int(end-start)+1, findingRangeMax))
 	}
 
-	root := e.repoPath
+	// The citation is checked against the tree the loop read (readCov is
+	// kept for e.repoPath); a repo that resolves elsewhere is refused
+	// rather than excerpted from a tree the model never saw (review #3).
+	repo := strings.TrimSpace(stringMapField(args, "repo"))
 	if e.codexReadsAvailable() {
-		if r, _, rerr := e.codexReadRoot(ctx, stringMapField(args, "repo")); rerr == nil {
-			root = r
+		root, _, rerr := e.codexReadRoot(ctx, repo)
+		if rerr != nil {
+			return refuse(fmt.Sprintf("repo %q: %v", repo, rerr))
+		}
+		if filepath.Clean(root) != filepath.Clean(e.repoPath) {
+			return refuse(fmt.Sprintf("repo %q is not the tree this task reads; cite what you read here", repo))
 		}
 	}
-	full := filepath.Join(root, filepath.FromSlash(rel))
+	full := filepath.Join(e.repoPath, filepath.FromSlash(rel))
 	raw, err := os.ReadFile(full)
 	if err != nil {
 		return refuse(fmt.Sprintf("cannot read %q: %v", rel, err))
 	}
-	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n"), "\n")
+	// Lines are counted as codex_read_file counts them (review #4).
+	lines := fileLinesOf(strings.ReplaceAll(string(raw), "\r\n", "\n"))
 	if int(end) > len(lines) {
 		return refuse(fmt.Sprintf("%s has %d lines; cite lines that exist", rel, len(lines)))
 	}
 	if !e.hasRead(rel, int(start), int(end)) {
 		return refuse(fmt.Sprintf("you have not read %s lines %d-%d in this task; read them first, then cite what they show", rel, int(start), int(end)))
 	}
-
+	cited := make([]string, 0, int(end-start)+1)
+	for _, l := range lines[int(start)-1 : int(end)] {
+		cited = append(cited, strings.TrimSuffix(l, "\n"))
+	}
 	f := CitedFinding{
 		Claim:     claim,
 		Path:      rel,
 		StartLine: int(start),
 		EndLine:   int(end),
-		Excerpt:   truncateRunes(strings.Join(lines[int(start)-1:int(end)], "\n"), findingExcerptMax),
+		Excerpt:   truncateRunes(strings.Join(cited, "\n"), findingExcerptMax),
 	}
 	e.observedMu.Lock()
 	e.findings = append(e.findings, f)
@@ -199,6 +210,18 @@ func (e *Executor) recordFinding(ctx context.Context, callID string, args map[st
 func isFindingRecorded(r adapter.ToolResult) bool {
 	return !r.IsError && strings.HasPrefix(r.Content, findingRecordedPrefix)
 }
+
+// The read gate. The live run on qwen3.6:35b made 25 reads and no
+// record_finding call: a strategy line is not enough. A read that follows a
+// read nothing was recorded from carries readGateNote; the next one is not
+// served (readGateRefusal) until something is recorded; after that reads
+// are served again, so a model that will not record is slowed, not starved.
+const (
+	readGateNote = "[unrecorded read] You recorded nothing from your previous read. This result leaves your context after this turn: " +
+		"record_finding what it shows (one claim + lines) before the next read, or the next read is not served."
+	readGateRefusal = "record_finding: not served — you have read twice without recording anything. " +
+		"Call record_finding with what your last read showed (one claim, path, lines); then read on."
+)
 
 // insertFinding stores one finding for the work item.
 func insertFinding(ctx context.Context, db *pgxpool.Pool, workItemID uuid.UUID, taskID, researchType string, productID *uuid.UUID, f CitedFinding) error {

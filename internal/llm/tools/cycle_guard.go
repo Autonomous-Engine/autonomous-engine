@@ -244,11 +244,12 @@ func (g *cycleGuard) stuck(reason string, attempts int) *LoopStuck {
 type readRepeats struct {
 	count map[string]int // read fingerprint → reads so far
 	span  map[string][2]int
-	turn  map[string]int // the turn of the first read
+	turn  map[string]int    // the turn of the first read
+	path  map[string]string // the file read (pinPath form)
 }
 
 func newReadRepeats() *readRepeats {
-	return &readRepeats{count: map[string]int{}, span: map[string][2]int{}, turn: map[string]int{}}
+	return &readRepeats{count: map[string]int{}, span: map[string][2]int{}, turn: map[string]int{}, path: map[string]string{}}
 }
 
 // check runs before a turn: the third repeat of a read ends the loop.
@@ -275,13 +276,23 @@ func (r *readRepeats) check(tc []turnCall, allowed map[string]bool) (map[int]int
 	return prior, nil
 }
 
-// productive forgets the repeats of every read made before turn: a finding
-// was recorded in turn, so a read that comes back after it is the model
-// citing more of what compaction took away, not a loop (findings.go).
-func (r *readRepeats) productive(turn int) {
+// productive forgets the repeats of the reads the turn's findings cite —
+// same path, overlapping lines, first read before turn: a read that comes
+// back after a finding on it is the model citing more of what compaction
+// took away, not a loop (findings.go). Reads the findings do not cite keep
+// their counts (review #2: resetting every read let "read B, trivial
+// finding on A" run unmetered).
+func (r *readRepeats) productive(turn int, fs []CitedFinding) {
 	for fp, first := range r.turn {
-		if first < turn {
-			r.count[fp] = 0
+		if first >= turn {
+			continue
+		}
+		sp := r.span[fp]
+		for _, f := range fs {
+			if r.path[fp] == pinPath(f.Path) && f.StartLine <= sp[1] && f.EndLine >= sp[0] {
+				r.count[fp] = 0
+				break
+			}
 		}
 	}
 }
@@ -305,7 +316,7 @@ func (r *readRepeats) annotate(tc []turnCall, prior map[int]int, results []adapt
 			_ = json.Unmarshal([]byte(c.call.Arguments), &args)
 			if _, ok := r.span[c.fp]; !ok {
 				a, b := readSpan(args, res.Content)
-				r.span[c.fp], r.turn[c.fp] = [2]int{a, b}, turn
+				r.span[c.fp], r.turn[c.fp], r.path[c.fp] = [2]int{a, b}, turn, c.path
 			}
 			r.count[c.fp]++
 			continue

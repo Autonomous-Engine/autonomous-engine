@@ -75,7 +75,7 @@ func TestFindingAfterAReadMakesTheRereadProductive(t *testing.T) {
 	if _, stuck := r.check(readTurn(readRepeatLimit+1), allowed); stuck == nil {
 		t.Fatal("control: the repeat past the limit with no finding must be stuck")
 	}
-	r.productive(readRepeatLimit + 1)
+	r.productive(readRepeatLimit+1, []CitedFinding{{Path: "a.go", StartLine: 2, EndLine: 3}})
 	if _, stuck := r.check(readTurn(readRepeatLimit+2), allowed); stuck != nil {
 		t.Fatalf("after a finding the read is productive, got stuck: %v", stuck)
 	}

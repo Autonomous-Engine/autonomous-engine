@@ -4397,6 +4397,7 @@ func RunToolLoopWithOptions(
 	}
 	var stuck *stuckTracker
 	var cycles *cycleGuard   // R17: whole-turn cycles
+	unrecordedReads := 0     // Findings read gate: read turns since the last finding
 	var repeats *readRepeats // R17: repeated reads of a read-only tree
 	if opts.StuckControl {
 		stuck = newStuckTracker(opts.PriorStuck)
@@ -4927,6 +4928,32 @@ func RunToolLoopWithOptions(
 		var shortReads map[int]adapter.ToolResult
 		if rereads != nil {
 			shortReads = rereads.answer(ctx, executor, validCalls, toolTurn, keepRecent, ledger)
+		}
+		// Findings read gate (findings.go): the third consecutive read turn
+		// with nothing recorded is not served.
+		findingsBefore := 0
+		gated := map[int]bool{} // reads the gate did not serve: not failures, not repeats
+		if opts.Findings {
+			findingsBefore = len(executor.Findings())
+			if unrecordedReads >= 2 {
+				for k, c := range validCalls {
+					if !isReadTool(c.Name) {
+						continue
+					}
+					// A repeat is the repeat guard's to answer (note, short
+					// answer, repeated_read); the gate is for new ranges.
+					if fp, _ := executor.callFingerprint(c); fp == "" || (repeats != nil && repeats.count[fp] > 0) {
+						continue
+					}
+					if shortReads == nil {
+						shortReads = map[int]adapter.ToolResult{}
+					}
+					shortReads[k] = adapter.ToolResult{ToolCallID: c.ID, Content: readGateRefusal, IsError: true}
+					gated[k] = true
+				}
+			}
+		}
+		{
 			if len(shortReads) > 0 {
 				runCalls = make([]adapter.ToolCall, 0, len(validCalls))
 				for k, c := range validCalls {
@@ -4970,13 +4997,27 @@ func RunToolLoopWithOptions(
 				vt = append(vt, turnFPs[k])
 			}
 			repeats.annotate(vt, vp, validResults, toolTurn, rereads != nil)
-			if opts.Findings {
-				for _, r := range validResults {
-					if isFindingRecorded(r) {
-						repeats.productive(toolTurn)
-						break
-					}
+		}
+		if opts.Findings {
+			newFindings := executor.Findings()[findingsBefore:]
+			if repeats != nil && len(newFindings) > 0 {
+				repeats.productive(toolTurn, newFindings)
+			}
+			served := false
+			for k, c := range validCalls {
+				if !isReadTool(c.Name) || validResults[k].IsError || isRereadResult(validResults[k].Content) {
+					continue
 				}
+				served = true
+				if unrecordedReads == 1 {
+					validResults[k].Content = withNote(validResults[k].Content, readGateNote)
+				}
+			}
+			switch {
+			case len(newFindings) > 0:
+				unrecordedReads = 0
+			case served:
+				unrecordedReads++
 			}
 		}
 		if rereads != nil {
@@ -5002,6 +5043,9 @@ func RunToolLoopWithOptions(
 
 		if stuck != nil {
 			for k := range validCalls {
+				if gated[k] {
+					continue
+				}
 				if s := stuck.observe(validCalls[k], fingerprints[k], fpPaths[k], &validResults[k]); s != nil {
 					log.Printf("tool-loop: %v — ending the loop", s)
 					return nil, s
