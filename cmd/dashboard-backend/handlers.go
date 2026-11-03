@@ -994,6 +994,18 @@ func (h *Handlers) RetryWorkItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A parent whose subtasks stopped resumes implementation; the research
+	// and the plan stand.
+	if stopped := h.stoppedSubtasks(r.Context(), id); len(stopped) > 0 {
+		if err := h.resumeImplementation(r.Context(), item, stopped, userID, "Manual retry by admin — implementation resumed"); err != nil {
+			log.Printf("handlers: retry %s to implementation: %v", id, err)
+			writeError(w, http.StatusInternalServerError, "retry failed: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "retrying"})
+		return
+	}
+
 	// Check whether a PRD artifact exists. If one was already generated,
 	// we can skip straight to research by publishing to prd.ready. If
 	// NOT (e.g. the clarity gate blocked before PRD generation), we must

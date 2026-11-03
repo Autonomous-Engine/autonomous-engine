@@ -572,3 +572,28 @@ func TestBlockedPromptAnswer_ParentRetryWithStoppedSubtasksResumesImplementation
 		t.Errorf("payload = %v", body)
 	}
 }
+
+// The admin retry of a blocked parent whose subtasks stopped resumes
+// implementation too (the research and the plan stand), instead of
+// resetting to the PRD and running research again.
+func TestRetryWorkItem_ParentWithStoppedSubtasksResumesImplementation(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateBlocked, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateBlocked,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{child}
+	a.g.artifacts[models.ArtifactTypePRD] = []*models.WorkItemArtifact{prdArtifact(t)}
+	rec := post(a.h.RetryWorkItem, "/api/work-items/retry?id="+parent.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if a.db.begins != 1 || a.tx.commits != 1 || len(a.g.transitions) != 2 ||
+		a.g.transitions[0].id != parent.ID || a.g.transitions[0].to != models.WorkItemStateImplementation ||
+		a.g.transitions[1].id != child.ID || a.g.transitions[1].to != models.WorkItemStateImplementation {
+		t.Fatalf("begins=%d commits=%d transitions=%+v, want parent and subtask to implementation in one transaction", a.db.begins, a.tx.commits, a.g.transitions)
+	}
+	if a.tx.calls != 1 || a.tx.topic != bus.TopicImplementationTasks || a.tx.key != child.ID.String() {
+		t.Fatalf("events=%d topic=%s key=%s, want one implementation.tasks for the subtask", a.tx.calls, a.tx.topic, a.tx.key)
+	}
+}

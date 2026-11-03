@@ -267,3 +267,34 @@ func TestRevokeCodexEntry_RejectsInvalidJSON(t *testing.T) {
 
 // Dummy reference so "errors" isn't an unused import if error paths don't use it.
 var _ = errors.New
+
+// The prompts an implementation stop raises on the parent ("Retry with a
+// fresh attempt" / "Cancel this work item") were recorded as answered and
+// nothing else happened: only the generic "blocked" trigger reached the
+// blocked-answer workflow, so the item stayed blocked under an answered
+// prompt. A stop prompt's answer runs the same workflow.
+func TestPromptsHandler_ImplementationStopAnswerRunsTheBlockedWorkflow(t *testing.T) {
+	for _, trig := range []interactions.Trigger{interactions.TriggerBudgetExhausted, interactions.TriggerRepairStopped, interactions.TriggerBlocked} {
+		store := newInMemStore()
+		h := NewPromptsHandlers(store, &recordingPub{}, "admin@localhost")
+		var gotItem uuid.UUID
+		var gotAction string
+		h.SetOnBlockedAnswer(func(_ context.Context, workItemID uuid.UUID, action, _ string, _ string) error {
+			gotItem, gotAction = workItemID, action
+			return nil
+		})
+		id, item := uuid.New(), uuid.New()
+		store.mustInsert(&interactions.Prompt{ID: id, WorkItemID: item, ProductID: uuid.New(), AskingAgent: "implementation-agent",
+			Trigger: trig, PromptType: interactions.PromptTypeEscalation, Headline: "h", Question: "q", State: interactions.StatePending, RequestedAt: time.Now().UTC()})
+		req := httptest.NewRequest(http.MethodPost, "/api/prompts/"+id.String()+"/answer", bytes.NewReader([]byte(`{"action_chosen":"retry"}`)))
+		req.SetPathValue("id", id.String())
+		rec := httptest.NewRecorder()
+		h.AnswerPrompt(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, body = %s", trig, rec.Code, rec.Body.String())
+		}
+		if gotItem != item || gotAction != "retry" {
+			t.Fatalf("%s: blocked workflow got item=%s action=%q, want the prompt's item and retry", trig, gotItem, gotAction)
+		}
+	}
+}

@@ -36,6 +36,12 @@ const (
 	TriggerApprovalPRGate           Trigger = "approval:pr_gate"
 	TriggerPreflightBrokenBuild     Trigger = "preflight:broken_build"
 	TriggerBlocked                  Trigger = "blocked"
+	// TriggerBudgetExhausted and TriggerRepairStopped: the implementation
+	// agent stopped an attempt (its budget, or a failure that repeated
+	// after repair) and asks the parent's owner to retry or cancel. The
+	// answer runs the blocked workflow, like TriggerBlocked.
+	TriggerBudgetExhausted Trigger = "budget:exhausted"
+	TriggerRepairStopped   Trigger = "repair:stopped"
 	// TriggerCodexReplan (codex coherence Part 1): the codex changed under
 	// an in-flight item that may not be re-planned automatically (the
 	// re-plan cap or its budget is reached). Actions: replan, continue,
