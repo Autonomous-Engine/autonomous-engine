@@ -55,38 +55,16 @@ var escalatedDecisions = map[string]bool{"escalate": true, "request_changes": tr
 // in one transaction. handled is false when the parent has no escalated
 // verification (the pre-R14 review path): the caller takes its QA path.
 func (h *Handlers) approveEscalatedVerification(ctx context.Context, parentID uuid.UUID, userID, note string) (handled bool, err error) {
-	if h.txdb == nil {
+	if h.txdb == nil || h.verifications == nil {
 		return false, nil
 	}
+	escalated, err := latestEscalatedVerifications(ctx, h.verifications, parentID)
+	if err != nil || len(escalated) == 0 {
+		return false, err
+	}
 	err = workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
-		rows, qerr := tx.Query(ctx, latestVerificationEventsSQL, bus.TopicVerificationComplete, parentID)
-		if qerr != nil {
-			return fmt.Errorf("read verification events: %w", qerr)
-		}
-		var payloads [][]byte
-		for rows.Next() {
-			var raw []byte
-			if serr := rows.Scan(&raw); serr != nil {
-				rows.Close()
-				return fmt.Errorf("scan verification event: %w", serr)
-			}
-			payloads = append(payloads, raw)
-		}
-		rows.Close()
-		if rows.Err() != nil {
-			return fmt.Errorf("read verification events: %w", rows.Err())
-		}
-
 		now := time.Now().UTC()
-		for _, raw := range payloads {
-			var payload map[string]any
-			if uerr := json.Unmarshal(raw, &payload); uerr != nil {
-				return fmt.Errorf("decode verification event: %w", uerr)
-			}
-			decision, _ := payload["decision"].(string)
-			if !escalatedDecisions[decision] {
-				continue
-			}
+		for _, payload := range escalated {
 			taskID, perr := uuid.Parse(stringField(payload, "task_id"))
 			if perr != nil {
 				return fmt.Errorf("verification event task_id %q: %w", stringField(payload, "task_id"), perr)
@@ -137,6 +115,34 @@ func (h *Handlers) approveEscalatedVerification(ctx context.Context, parentID uu
 		return handled, err
 	}
 	return handled, nil
+}
+
+// latestEscalatedVerifications is each subtask's newest verification.complete
+// payload for parentID whose decision a person's approval overrides.
+func latestEscalatedVerifications(ctx context.Context, q rowQuerier, parentID uuid.UUID) ([]map[string]any, error) {
+	rows, err := q.Query(ctx, latestVerificationEventsSQL, bus.TopicVerificationComplete, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("read verification events: %w", err)
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, fmt.Errorf("scan verification event: %w", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return nil, fmt.Errorf("decode verification event: %w", err)
+		}
+		if escalatedDecisions[stringField(payload, "decision")] {
+			out = append(out, payload)
+		}
+	}
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("read verification events: %w", rows.Err())
+	}
+	return out, nil
 }
 
 // stringField is payload[key] as a string, "" when absent or not a string.

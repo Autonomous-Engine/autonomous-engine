@@ -64,6 +64,10 @@ type Handlers struct {
 	// tests that do not exercise them: the blocked answers then take the
 	// generic paths.
 	codexDB codexRefusalDB
+	// verifications reads the parent's verification.complete events for a
+	// human-review approval (human_review_verification.go). Nil in tests
+	// that do not exercise it: the approval then takes the QA path.
+	verifications rowQuerier
 }
 
 // NewHandlers creates a Handlers instance from the given WorkGraph and Codex.
@@ -81,6 +85,7 @@ func NewHandlers(wg *workgraph.WorkGraph, cx *codex.Codex, msgBus bus.MessageBus
 		if pool := wg.DB(); pool != nil {
 			h.runs = controller.NewStore(pool)
 			h.codexDB = pool
+			h.verifications = pool
 		}
 	}
 	return h
