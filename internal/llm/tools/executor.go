@@ -4473,6 +4473,9 @@ func RunToolLoopWithOptions(
 		// next LLM call is paid for.
 		if executor.iterationHook != nil {
 			if err := executor.iterationHook(ctx, cumulativeTokens, tokenBudget); err != nil {
+				if opts.Findings && len(executor.Findings()) > 0 {
+					return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("stopped after %d iterations: %v", i, err))
+				}
 				return nil, fmt.Errorf("tool loop stopped after %d iterations: %w", i, err)
 			}
 		}
@@ -5154,5 +5157,8 @@ func RunToolLoopWithOptions(
 		req.ToolResults = nil
 	}
 
+	if opts.Findings && len(executor.Findings()) > 0 {
+		return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("iteration cap %d reached", maxIterations))
+	}
 	return nil, fmt.Errorf("%w: %d iterations", ErrSafetyLimit, maxIterations)
 }

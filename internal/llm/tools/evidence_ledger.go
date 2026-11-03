@@ -114,12 +114,16 @@ const (
 )
 
 const (
-	ledgerHeader          = "## Evidence ledger"
-	defaultLedgerKeep     = 2
-	ledgerArgsMax         = 80
-	ledgerSummaryMax      = 160
-	ledgerAssistantKeep   = 300
-	ledgerHeaderParagraph = ledgerHeader + "\n" +
+	ledgerHeader        = "## Evidence ledger"
+	defaultLedgerKeep   = 2
+	ledgerArgsMax       = 80
+	ledgerSummaryMax    = 160
+	ledgerAssistantKeep = 300
+	// ledgerAssistantStubsWithFindings is how many trimmed assistant turns
+	// a Findings loop keeps: the ledger holds what the older turns did, and
+	// 25 stubs of 300 chars were 2k tokens on every call live.
+	ledgerAssistantStubsWithFindings = 4
+	ledgerHeaderParagraph            = ledgerHeader + "\n" +
 		"Earlier tool calls and what they returned; the full results were removed to save context. " +
 		"Do not repeat a call listed here: use its result.\n"
 )
@@ -568,6 +572,26 @@ func compactTranscript(msgs []adapter.ChatMessage, ledger *evidenceLedger, keepR
 			}
 		default:
 			out = append(out, m)
+		}
+	}
+	if ledger.findings != nil {
+		// Only the last few assistant stubs stay (findings.go).
+		stubs := 0
+		for _, m := range out[ledgerAt:] {
+			if m.Role == adapter.RoleAssistant {
+				stubs++
+			}
+		}
+		if drop := stubs - ledgerAssistantStubsWithFindings; drop > 0 {
+			kept := out[:ledgerAt]
+			for _, m := range out[ledgerAt:] {
+				if m.Role == adapter.RoleAssistant && drop > 0 {
+					drop--
+					continue
+				}
+				kept = append(kept, m)
+			}
+			out = kept
 		}
 	}
 	out = append(out, base[cutoff:]...)

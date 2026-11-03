@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -212,6 +213,29 @@ func (e *Executor) recordFinding(ctx context.Context, callID string, args map[st
 		}
 	}
 	return adapter.ToolResult{ToolCallID: callID, Content: content}
+}
+
+// closingAnswerMessage is the one user message of the closing call.
+const closingAnswerMessage = "You have reached this task's limit. Write your answer now from your findings (listed in the ledger): " +
+	"what the acceptance criteria need, each point with its file:line citation; say what is missing. No more tool calls."
+
+// closingAnswer ends a loop that hit its iteration cap or the caller's
+// budget with an answer written from the findings it recorded: one call,
+// no tools, FinishReason "closed_at_limit". Live, pattern_match explored
+// for 25 iterations, recorded 13 findings and returned nothing.
+func closingAnswer(ctx context.Context, llmAdapter adapter.ModelAdapter, req adapter.CompletionRequest, why string) (*adapter.CompletionResponse, error) {
+	req.Tools = nil
+	req.ToolChoice = ""
+	req.ToolResults = nil
+	req.Messages = append(append([]adapter.ChatMessage(nil), req.Messages...), adapter.ChatMessage{Role: adapter.RoleUser, Content: closingAnswerMessage})
+	log.Printf("tool-loop: %s — closing with an answer from the recorded findings", why)
+	resp, err := llmAdapter.Complete(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("closing answer after %s: %w", why, err)
+	}
+	resp.FinishReason = "closed_at_limit"
+	resp.ToolCalls = nil
+	return resp, nil
 }
 
 // isFindingRecorded reports a successful record_finding result.

@@ -597,10 +597,7 @@ func buildHandler(
 
 		// Run the tool loop — the LLM will actually read files and search code.
 		// MaxIterations comes from the prompt scaffold (tier-adjusted).
-		maxIters := scaffold.MaxIterations
-		if maxIters <= 0 {
-			maxIters = 15
-		}
+		maxIters := researchMaxIterations(scaffold.MaxIterations)
 		resp, err := tools.RunToolLoopWithOptions(msgCtx, llmAdapter, req, executor, maxIters, pool, &workID,
 			researchTaskLoopOptions(task, func() bool { return executor.LSPReady(msgCtx) }))
 		if err != nil {

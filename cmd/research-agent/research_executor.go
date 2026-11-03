@@ -29,7 +29,20 @@ func newResearchExecutor(primaryPath, repoName string, cx *codex.Codex, vs *vect
 const (
 	researchReadWindow    = 120
 	researchReadWindowMax = 240
+	// researchIterationCap bounds one research task: the scaffold's 30 let
+	// pattern_match explore for 25 iterations and return nothing; at the
+	// cap a task with findings closes with an answer from them.
+	researchIterationCap = 10
 )
+
+// researchMaxIterations is the task's iteration cap: the scaffold's, at
+// most researchIterationCap.
+func researchMaxIterations(scaffold int) int {
+	if scaffold <= 0 || scaffold > researchIterationCap {
+		return researchIterationCap
+	}
+	return scaffold
+}
 
 // primaryRepoName is the name of the repository whose read path is primary
 // (pinned.Paths parallels the selected repos); "" when it cannot be told,
