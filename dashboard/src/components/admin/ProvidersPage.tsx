@@ -303,12 +303,15 @@ interface ProviderModalProps {
   onSaved: () => void
 }
 
-function ProviderModal({ initial, onClose, onSaved }: ProviderModalProps) {
+export function ProviderModal({ initial, onClose, onSaved }: ProviderModalProps) {
   const { post, put } = useApi()
 
   const [provType, setProvType] = useState(initial?.provider_type ?? 'ollama')
   const [name, setName] = useState(initial?.name ?? PROVIDER_DEFAULTS.ollama.suggestedName)
   const [endpoint, setEndpoint] = useState(initial?.endpoint ?? PROVIDER_DEFAULTS.ollama.endpoint)
+  // The model agents use. It lives in settings.model; before, the only way
+  // to set it was typing JSON into the settings box (F14).
+  const [model, setModel] = useState(typeof initial?.settings?.model === 'string' ? (initial.settings.model as string) : '')
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [settings, setSettings] = useState<string>(
@@ -369,6 +372,8 @@ function ProviderModal({ initial, onClose, onSaved }: ProviderModalProps) {
       setError('Settings must be valid JSON')
       return
     }
+    if (model.trim()) parsedSettings.model = model.trim()
+    else delete parsedSettings.model
 
     setSaving(true)
     try {
@@ -431,8 +436,9 @@ function ProviderModal({ initial, onClose, onSaved }: ProviderModalProps) {
 
           {/* Name */}
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">Name</label>
+            <label htmlFor="provider-name" className="mb-1 block text-xs font-medium text-muted">Name</label>
             <input
+              id="provider-name"
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="e.g. My Local Ollama"
@@ -486,10 +492,23 @@ function ProviderModal({ initial, onClose, onSaved }: ProviderModalProps) {
             </div>
           )}
 
+          {/* Model */}
+          <div>
+            <label htmlFor="provider-model" className="mb-1 block text-xs font-medium text-muted">Model</label>
+            <input
+              id="provider-model"
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              placeholder={provType === 'ollama' ? 'e.g. qwen3.6:35b (as listed by ollama list)' : 'e.g. gpt-4o'}
+              className="w-full rounded-sm border border-rule bg-surface-950 px-3 py-2 text-sm text-fg font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <p className="mt-1 text-xs text-dim">The model every agent uses with this provider. Leave empty to choose one from the installed list after saving.</p>
+          </div>
+
           {/* Settings JSON */}
           <div>
             <label className="mb-1 block text-xs font-medium text-muted">
-              Settings <span className="text-dim">(JSON — provider-specific config)</span>
+              Settings <span className="text-dim">(JSON — extra provider-specific config)</span>
             </label>
             <textarea
               value={settings}

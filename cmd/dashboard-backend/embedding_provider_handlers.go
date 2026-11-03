@@ -219,11 +219,18 @@ func (eh *EmbeddingProviderHandlers) CreateEmbeddingProvider(w http.ResponseWrit
 		credIDVal = credID
 	}
 
+	// The first enabled embedding provider becomes the default:
+	// knowledge-indexer refuses to start without one (F16, F19).
+	makeDefault := false
+	if err := eh.db.QueryRow(r.Context(), `SELECT NOT EXISTS (SELECT 1 FROM embedding_providers WHERE is_default AND enabled)`).Scan(&makeDefault); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("check default embedding provider: %v", err))
+		return
+	}
 	_, err := eh.db.Exec(r.Context(), `
 		INSERT INTO embedding_providers
-			(id, name, provider_type, endpoint, model, dimension, api_key_credential_id, settings)
-		VALUES ($1, $2, $3, $4, $5, 0, $6, $7)
-	`, providerID, req.Name, req.ProviderType, req.Endpoint, req.Model, credIDVal, settingsJSON)
+			(id, name, provider_type, endpoint, model, dimension, api_key_credential_id, settings, is_default)
+		VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+	`, providerID, req.Name, req.ProviderType, req.Endpoint, req.Model, credIDVal, settingsJSON, makeDefault)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("insert embedding_provider: %v", err))
 		return

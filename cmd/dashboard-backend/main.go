@@ -368,6 +368,7 @@ func main() {
 	mux.HandleFunc("/api/admin/providers/delete", authSvc.Middleware(AdminOnly(providerHandlers.DeleteProvider)))
 	mux.HandleFunc("/api/admin/providers/set-default", authSvc.Middleware(AdminOnly(providerHandlers.SetDefault)))
 	mux.HandleFunc("/api/admin/providers/test", authSvc.Middleware(AdminOnly(providerHandlers.TestConnection)))
+	mux.HandleFunc("/api/admin/providers/probe", authSvc.Middleware(AdminOnly(providerHandlers.Probe)))
 	mux.HandleFunc("/api/admin/providers/models", authSvc.Middleware(AdminOnly(providerHandlers.ListModels)))
 	mux.HandleFunc("/api/admin/providers/pull", authSvc.Middleware(AdminOnly(providerHandlers.PullModel)))
 	mux.HandleFunc("/api/admin/providers/models/delete", authSvc.Middleware(AdminOnly(providerHandlers.DeleteModel)))
