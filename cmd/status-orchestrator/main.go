@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -35,6 +37,28 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+// migrationsApplied is set once db.Migrate succeeded; migrationError holds
+// the last failure for /health. Every other service starts after this
+// service is healthy (docker-compose depends_on), so none of them queries a
+// table before the migrations exist (F1).
+var (
+	migrationsApplied atomic.Bool
+	migrationError    atomic.Value // string
+)
+
+// migrationCheck is the /health check for the migrations.
+func migrationCheck(applied *atomic.Bool) func() error {
+	return func() error {
+		if applied.Load() {
+			return nil
+		}
+		if msg, _ := migrationError.Load().(string); msg != "" {
+			return fmt.Errorf("migrations not applied: %s", msg)
+		}
+		return errors.New("migrations not applied yet")
+	}
+}
 
 const (
 	agentID       = "status-orchestrator"
@@ -187,8 +211,16 @@ func main() {
 		log.Printf("status-orchestrator: db migrate from %s: %v — retrying with cwd", migrationsDir, err)
 		migrationsDir = "migrations"
 		if err := db.Migrate(ctx, pool, migrationsDir); err != nil {
-			log.Printf("status-orchestrator: db migrate: %v — continuing without migration", err)
+			// /health stays unhealthy (F1): compose holds the other
+			// services, and the reason is visible instead of a startup
+			// race against half-applied tables.
+			log.Printf("status-orchestrator: db migrate: %v — continuing without migration; /health reports it", err)
+			migrationError.Store(err.Error())
+		} else {
+			migrationsApplied.Store(true)
 		}
+	} else {
+		migrationsApplied.Store(true)
 	}
 
 	if err := auth.Bootstrap(ctx, pool); err != nil {
@@ -234,6 +266,7 @@ func main() {
 
 	// Set up health checker.
 	checker := health.New("status-orchestrator")
+	checker.AddCheck("migrations", migrationCheck(&migrationsApplied))
 	checker.AddCheck("database", func() error {
 		return pool.Ping(ctx)
 	})
