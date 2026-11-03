@@ -50,10 +50,8 @@ type repoZoneProposal struct {
 // the prefill candidate of that repository (or of the product), with the
 // candidate's module evidence unless the user edited the text.
 func (s *server) riskAnswer(ctx context.Context, productID, repoID uuid.UUID, first bool) (string, []string) {
-	s.sessionMu.RLock()
-	sess := s.session
-	s.sessionMu.RUnlock()
-	if sess != nil && first {
+	sess := s.sessionFor(productID)
+	if first {
 		sess.mu.RLock()
 		draft, ok := sess.CodexDraft[onboarding.QRiskZones]
 		sess.mu.RUnlock()

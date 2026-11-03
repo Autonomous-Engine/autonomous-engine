@@ -2223,8 +2223,25 @@ interface CodexReviewStepProps {
   onBack?: () => void
 }
 
-function CodexReviewStep({ product, repos, onNext, onBack }: CodexReviewStepProps) {
-  const { get } = useApi()
+export function CodexReviewStep({ product, repos, onNext, onBack }: CodexReviewStepProps) {
+  const { get, post } = useApi()
+  const [approving, setApproving] = useState(false)
+  const [approveError, setApproveError] = useState('')
+
+  // Approve writes the reviewed answers into the codex. Before this the
+  // button only advanced the wizard and every answer was discarded (F28).
+  async function handleApprove() {
+    setApproving(true)
+    setApproveError('')
+    try {
+      await post('/onboarding/approve-codex', { product_id: product.id })
+      onNext()
+    } catch (e: unknown) {
+      setApproveError(e instanceof Error ? e.message : 'Approve failed')
+    } finally {
+      setApproving(false)
+    }
+  }
   const { lastMessage, subscribe, unsubscribe, isConnected } = useWebSocket()
   const [stats, setStats] = useState<{ modules: number; patterns: number; last_updated?: string } | null>(null)
   const [graph, setGraph] = useState<GraphResponse | null>(null)
@@ -2629,12 +2646,16 @@ function CodexReviewStep({ product, repos, onNext, onBack }: CodexReviewStepProp
         </div>
       )}
 
+      {approveError && (
+        <p className="text-xs text-red-300">Approve failed: {approveError}</p>
+      )}
       <div className="flex items-center gap-4">
         <button
-          onClick={onNext}
-          className="rounded bg-accent px-4 py-2 text-sm font-medium text-surface-900 hover:bg-accent-hover"
+          onClick={hasContent ? handleApprove : onNext}
+          disabled={approving}
+          className="rounded bg-accent px-4 py-2 text-sm font-medium text-surface-900 hover:bg-accent-hover disabled:opacity-50"
         >
-          {hasContent ? 'Approve Codex' : 'Skip for Now'}
+          {approving ? 'Approving…' : hasContent ? 'Approve Codex' : 'Skip for Now'}
         </button>
       </div>
     </div>

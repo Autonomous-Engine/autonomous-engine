@@ -79,6 +79,25 @@ type onboardingSession struct {
 	ProductID    uuid.UUID         `json:"product_id"`
 }
 
+// sessionFor returns the product's onboarding session, creating it on
+// demand. It also becomes the "current" session the single-session
+// handlers read, so a wizard that never called /start still works.
+func (s *server) sessionFor(productID uuid.UUID) *onboardingSession {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+	if s.sessions == nil {
+		s.sessions = make(map[uuid.UUID]*onboardingSession)
+	}
+	sess, ok := s.sessions[productID]
+	if !ok {
+		sess = newSession()
+		sess.ProductID = productID
+		s.sessions[productID] = sess
+	}
+	s.session = sess
+	return sess
+}
+
 func newSession() *onboardingSession {
 	return &onboardingSession{
 		SessionID:  uuid.New().String(),
@@ -192,7 +211,8 @@ type server struct {
 	// means the database-backed one (see verification_policy.go).
 	policyStore      policyBackend
 	githubServiceURL string
-	session          *onboardingSession
+	session          *onboardingSession            // most recent session (legacy single-session handlers)
+	sessions         map[uuid.UUID]*onboardingSession // per product (F31)
 	sessionMu        sync.RWMutex
 	upgrader         websocket.Upgrader
 }
@@ -663,14 +683,6 @@ func (s *server) approveCodexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
 
-	s.sessionMu.RLock()
-	sess := s.session
-	s.sessionMu.RUnlock()
-	if sess == nil {
-		http.Error(w, "no active session", http.StatusBadRequest)
-		return
-	}
-
 	ctx := r.Context()
 
 	// Parse product_id up front so every downstream write (sections,
@@ -684,6 +696,10 @@ func (s *server) approveCodexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid product_id", http.StatusBadRequest)
 		return
 	}
+	// The session is per product and created on demand: the dashboard
+	// never calls /start, and "no active session" discarded every
+	// reviewed answer (F28, F31).
+	sess := s.sessionFor(productUUID)
 
 	// Resolve the first enabled repository for this product so codex
 	// module/pattern rows can also carry repository_id. Onboarding today
@@ -783,43 +799,6 @@ func (s *server) approveCodexHandler(w http.ResponseWriter, r *http.Request) {
 		sectionKeys = append(sectionKeys, key)
 	}
 
-	// Create a module entry for the product so the Codex has at least one module.
-	// This represents what was learned about the codebase from analysis + conversation.
-	modulePurpose := draft["architecture_overview"]
-	if modulePurpose == "" {
-		modulePurpose = "Primary application module"
-	}
-	testingNotes := draft["testing_philosophy"]
-	if testingNotes == "" {
-		testingNotes = "Not specified"
-	}
-
-	moduleEntry := &models.CodexModule{
-		Name:              "main",
-		Purpose:           modulePurpose,
-		PublicInterface:   json.RawMessage(`{}`),
-		Dependencies:      []string{},
-		Dependents:        []string{},
-		InternalPatterns:  draft["patterns_discovered"],
-		OwnerDomain:       draft["domain_knowledge"],
-		RiskLevel:         "medium",
-		TestCoverageNotes: testingNotes,
-		Branch:            repoBranch,
-	}
-	// Prefer the product-scoped -ForRepo variant when we have a repo;
-	// fall back to the plain UpsertModule (which writes NULL product_id
-	// to the legacy/global partition) only if no repo is available.
-	var moduleErr error
-	if repoIDPtr != nil {
-		moduleErr = s.cx.UpsertModuleForRepoBranch(ctx, productUUID, *repoIDPtr, repoBranch, moduleEntry)
-	} else {
-		pid := productUUID
-		moduleEntry.ProductID = &pid
-		moduleErr = s.cx.UpsertModule(ctx, moduleEntry)
-	}
-	if moduleErr != nil {
-		log.Printf("onboarding: upsert module: %v", moduleErr)
-	}
 
 	// Create a pattern entry from the conversation data.
 	patternWritten := false
@@ -860,7 +839,7 @@ func (s *server) approveCodexHandler(w http.ResponseWriter, r *http.Request) {
 	rec, err := s.cx.RecordVersion(ctx, codex.NewVersion{
 		ProductID:       productUUID,
 		Branch:          repoBranch,
-		SectionsChanged: approvalSections(sectionKeys, moduleErr == nil, patternWritten),
+		SectionsChanged: approvalSections(sectionKeys, patternWritten),
 		Summary:         "Initial onboarding — version 1 committed",
 		Source:          models.CodexChangeSourceOnboarding,
 		Diff:            json.RawMessage(`{}`),
@@ -903,8 +882,10 @@ func (s *server) approveCodexHandler(w http.ResponseWriter, r *http.Request) {
 
 // approvalSections is the approved codex's typed sections_changed
 // (migration 060): section:<key> for every onboarding answer written, then
-// module:main and patterns when the approval wrote them.
-func approvalSections(keys []string, moduleWritten, patternsWritten bool) []string {
+// patterns when the approval wrote them. The approval never claims a module:
+// it once upserted a module named "main", which overwrote the real Go
+// `package main` module the indexer had stored (F29).
+func approvalSections(keys []string, patternsWritten bool) []string {
 	sorted := append([]string{}, keys...)
 	sort.Strings(sorted)
 	out := make([]string, 0, len(sorted)+2)
@@ -913,9 +894,6 @@ func approvalSections(keys []string, moduleWritten, patternsWritten bool) []stri
 			continue
 		}
 		out = append(out, codex.SectionChange(k))
-	}
-	if moduleWritten {
-		out = append(out, codex.ModuleChange("main"))
 	}
 	if patternsWritten {
 		out = append(out, string(codex.ChangePatterns))

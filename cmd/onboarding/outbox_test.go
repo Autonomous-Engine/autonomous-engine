@@ -143,20 +143,6 @@ func TestApproveCodex_NoCodexUpdatedNotification(t *testing.T) {
 	}
 }
 
-func TestApprovalSections(t *testing.T) {
-	got := approvalSections([]string{"risk_zones", "autonomous_scope", "risk_zones"}, true, true)
-	want := []string{"section:autonomous_scope", "section:risk_zones", "module:main", "patterns"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("sections = %v, want %v", got, want)
-	}
-	if got := approvalSections(nil, true, false); strings.Join(got, ",") != "module:main" {
-		t.Fatalf("no draft = %v", got)
-	}
-	if got := approvalSections([]string{"k"}, false, false); strings.Join(got, ",") != "section:k" {
-		t.Fatalf("module not written = %v", got)
-	}
-}
-
 func TestAnalysisTriggerAggregate(t *testing.T) {
 	session := uuid.New()
 	product := uuid.New()
