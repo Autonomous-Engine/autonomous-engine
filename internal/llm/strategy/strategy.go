@@ -212,6 +212,7 @@ func buildUserPrompt(intent Intent) string {
 		"technical_brief",
 		"prd",
 		"pain_point",
+		"user_guidance", // reviewer feedback from "Request changes" (F34)
 		"pattern_reference",
 		"target_file",
 		"diff",

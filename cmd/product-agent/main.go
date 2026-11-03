@@ -35,6 +35,35 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// guidanceFromIntake is the reviewer's feedback carried by a "Request
+// changes" intake (metadata.user_guidance), or "" (F34).
+func guidanceFromIntake(msg intakeMessage) string {
+	if msg.Metadata == nil {
+		return ""
+	}
+	if s, ok := msg.Metadata["user_guidance"].(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return ""
+}
+
+// prdContext is the PRD generation prompt's context; user_guidance is
+// present only when a reviewer gave feedback.
+func prdContext(title, painPoint, workType, codexContext, source, workItemID, guidance string) map[string]string {
+	ctx := map[string]string{
+		"title":         title,
+		"pain_point":    painPoint,
+		"work_type":     workType,
+		"codex_context": codexContext,
+		"source":        source,
+		"work_item_id":  workItemID,
+	}
+	if guidance != "" {
+		ctx["user_guidance"] = "A reviewer sent the previous PRD back with this feedback; the new PRD must address it: " + guidance
+	}
+	return ctx
+}
+
 // updateTitleSQL replaces the work item title with the one extracted from
 // the PRD; it commits with the PRD artifact.
 const updateTitleSQL = `UPDATE work_items SET title = $1 WHERE id = $2`
@@ -377,15 +406,8 @@ Return ONLY the JSON. No prose before or after.`,
 		}
 
 		prdIntent := strategy.Intent{
-			Type: strategy.IntentGeneratePRD,
-			Context: map[string]string{
-				"title":         workTitle,
-				"pain_point":    workDescription,
-				"work_type":     workType,
-				"codex_context": codexContext,
-				"source":        intake.Source,
-				"work_item_id":  workID.String(),
-			},
+			Type:    strategy.IntentGeneratePRD,
+			Context: prdContext(workTitle, workDescription, workType, codexContext, intake.Source, workID.String(), guidanceFromIntake(intake)),
 			OutputFormat: "Markdown with sections: Overview, Problem Statement, Goals, Non-Goals, User Stories, Acceptance Criteria. Only include an Open Questions section if there are genuinely unresolvable unknowns requiring business owner input. Omit it for straightforward requests.",
 		}
 		prdResult, err := llmSvc.Execute(msgCtx, prdIntent)

@@ -233,11 +233,13 @@ func main() {
 	mux.HandleFunc("/api/work-items/approve", authSvc.Middleware(handlers.ApproveWorkItem))
 	mux.HandleFunc("/api/work-items/approve-prd", authSvc.Middleware(handlers.ApprovePRD))
 	mux.HandleFunc("/api/work-items/reject-prd", authSvc.Middleware(handlers.RejectPRD))
+	mux.HandleFunc("/api/work-items/revise-prd", authSvc.Middleware(handlers.RevisePRD))
 	// Admin-prefixed aliases — the dashboard UI's WorkItemDetail + ApprovalQueue
 	// components were built against /admin/work-items/... per an earlier spec.
 	// Keep both routes active so the UI works without a re-release of the frontend.
 	mux.HandleFunc("/api/admin/work-items/approve-prd", authSvc.Middleware(AdminOnly(handlers.ApprovePRD)))
 	mux.HandleFunc("/api/admin/work-items/reject-prd", authSvc.Middleware(AdminOnly(handlers.RejectPRD)))
+	mux.HandleFunc("/api/admin/work-items/revise-prd", authSvc.Middleware(AdminOnly(handlers.RevisePRD)))
 	mux.HandleFunc("/api/work-items/cancel", authSvc.Middleware(handlers.CancelWorkItem))
 	mux.HandleFunc("/api/work-items/retry", authSvc.Middleware(handlers.RetryWorkItem))
 	mux.HandleFunc("/api/work-items/update-and-retry", authSvc.Middleware(handlers.UpdateAndRetry))
