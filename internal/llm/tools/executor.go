@@ -4459,6 +4459,7 @@ func RunToolLoopWithOptions(
 	var stuck *stuckTracker
 	var cycles *cycleGuard   // R17: whole-turn cycles
 	unrecordedReads := 0     // Findings read gate: read turns since the last finding
+	uneditedReads := 0       // EditGate: read turns since the last edit (gate.go)
 	var repeats *readRepeats // R17: repeated reads of a read-only tree
 	if opts.StuckControl {
 		stuck = newStuckTracker(opts.PriorStuck)
@@ -5000,6 +5001,18 @@ func RunToolLoopWithOptions(
 		// with nothing recorded is not served.
 		findingsBefore := 0
 		gated := map[int]bool{} // reads the gate did not serve: not failures, not repeats
+		if opts.EditGate > 0 && uneditedReads >= opts.EditGate {
+			for k, c := range validCalls {
+				if !isReadTool(c.Name) {
+					continue
+				}
+				if shortReads == nil {
+					shortReads = map[int]adapter.ToolResult{}
+				}
+				shortReads[k] = adapter.ToolResult{ToolCallID: c.ID, Content: editGateRefusal(uneditedReads), IsError: true}
+				gated[k] = true
+			}
+		}
 		if opts.Findings {
 			findingsBefore = len(executor.Findings())
 			if unrecordedReads >= 2 {
@@ -5064,6 +5077,23 @@ func RunToolLoopWithOptions(
 				vt = append(vt, turnFPs[k])
 			}
 			repeats.annotate(vt, vp, validResults, toolTurn, rereads != nil)
+		}
+		if opts.EditGate > 0 {
+			edited, readServed := false, false
+			for k, c := range validCalls {
+				switch {
+				case (IsFileEditTool(c.Name) || isWriteTool(c.Name)) && !validResults[k].IsError:
+					edited = true
+				case isReadTool(c.Name) && !validResults[k].IsError:
+					readServed = true
+				}
+			}
+			switch {
+			case edited:
+				uneditedReads = 0
+			case readServed:
+				uneditedReads++
+			}
 		}
 		if opts.Findings {
 			newFindings := executor.Findings()[findingsBefore:]

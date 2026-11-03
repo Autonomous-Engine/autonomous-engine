@@ -56,6 +56,9 @@ const implementationKeepRecent = 2
 const (
 	implementationReadWindow    = 160
 	implementationReadWindowMax = 400
+	// implementationEditGate: read turns allowed without an edit before
+	// reads are refused until one is made (tools/gate.go).
+	implementationEditGate = 4
 )
 
 // implementationLoopOptions are the loop options of every implementation
@@ -71,6 +74,7 @@ func implementationLoopOptions(base []adapter.Tool, lspReady func() bool, scope 
 	return tools.LoopOptions{
 		// Passes of one attempt share a ledger and its pins (carry.go).
 		Carry:          carry,
+		EditGate:       implementationEditGate,
 		EvidenceLedger: true,
 		KeepRecent:     implementationKeepRecent,
 		PinReads:       true,

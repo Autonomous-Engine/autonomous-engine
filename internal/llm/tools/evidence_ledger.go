@@ -91,6 +91,11 @@ type LoopOptions struct {
 	// database (tests and offline replays); with a database the snapshots
 	// go to conversation_snapshots.
 	CheckpointStore func(ctx context.Context, snapshotID, workItemID uuid.UUID, agentType string, seq int, messagesJSON []byte, summary string, turns int) error
+	// EditGate, when > 0, is how many consecutive read turns a loop with
+	// PinReads may make without an edit before further reads are refused
+	// until an edit is made (gate.go). The implementation agent sets it:
+	// live, 21 calls and three nudges went by without one edit.
+	EditGate int
 	// Carry, when set, receives the compacted transcript and the ledger
 	// when the loop returns, and a loop given a carry with a ledger
 	// continues that ledger (carry.go). The implementation agent sets it
