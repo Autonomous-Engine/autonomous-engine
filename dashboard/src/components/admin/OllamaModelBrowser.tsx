@@ -568,7 +568,7 @@ export default function OllamaModelBrowser({ endpoint, onModelsChanged, provider
               Delete <span className="font-mono text-fg">{deleteTarget.name}</span>?
             </p>
             <p className="mb-6 text-xs text-dim">
-              This will free {formatBytes(deleteTarget.size)} of disk space. This action cannot be undone.
+              This removes the model files from the Ollama host ({formatBytes(deleteTarget.size)}), not just from this list. Agents configured with it will fail until it is pulled again. This cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button

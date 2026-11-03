@@ -144,7 +144,9 @@ export function PromptDetailPane({
   const { post } = useApi()
   const [actionId, setActionId] = useState<string>('')
   const [answerText, setAnswerText] = useState('')
-  const [saveAs, setSaveAs] = useState<SaveAsOverride>('codex_fact')
+  // Default to "just this run": a codex fact is an explicit choice. Every
+  // answer defaulted to codex_fact, so Approve/Retry wrote junk rows (F38).
+  const [saveAs, setSaveAs] = useState<SaveAsOverride>('ephemeral')
   // "Request changes" on a PRD approval: the item goes back through intake
   // with the feedback instead of being approved as-is or killed (F34).
   const isRevise = prompt.prompt_type === 'approval' && actionId === 'revise'
@@ -156,7 +158,7 @@ export function PromptDetailPane({
   useEffect(() => {
     setActionId('')
     setAnswerText('')
-    setSaveAs('codex_fact')
+    setSaveAs('ephemeral')
     setError(null)
   }, [prompt.id])
 
