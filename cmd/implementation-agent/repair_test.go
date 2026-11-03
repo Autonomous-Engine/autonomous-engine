@@ -87,16 +87,19 @@ func (a *queueAdapter) Complete(_ context.Context, req adapter.CompletionRequest
 			a.prompts = append(a.prompts, m.Content)
 		}
 	}
-	half := a.tokens / 2
+	// The budget counts work (output plus input not sent before, capped at
+	// the input reported): one token of input and the rest as output makes
+	// every call cost exactly a.tokens, whatever the prompt's size.
+	in, out := 1, a.tokens-1
 	if a.n < len(a.steps) {
 		s := a.steps[a.n]
 		a.n++
 		if len(s.calls) > 0 {
-			return &adapter.CompletionResponse{ToolCalls: s.calls, FinishReason: "tool_calls", InputTokens: half, OutputTokens: half}, nil
+			return &adapter.CompletionResponse{ToolCalls: s.calls, FinishReason: "tool_calls", InputTokens: in, OutputTokens: out}, nil
 		}
-		return &adapter.CompletionResponse{Content: s.text, FinishReason: "stop", InputTokens: half, OutputTokens: half}, nil
+		return &adapter.CompletionResponse{Content: s.text, FinishReason: "stop", InputTokens: in, OutputTokens: out}, nil
 	}
-	return &adapter.CompletionResponse{Content: "Done.", FinishReason: "stop", InputTokens: half, OutputTokens: half}, nil
+	return &adapter.CompletionResponse{Content: "Done.", FinishReason: "stop", InputTokens: in, OutputTokens: out}, nil
 }
 func (a *queueAdapter) Stream(context.Context, adapter.CompletionRequest) (<-chan adapter.StreamChunk, error) {
 	return nil, errors.New("not used")

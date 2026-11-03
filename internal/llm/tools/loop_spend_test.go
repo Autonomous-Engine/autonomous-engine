@@ -28,8 +28,10 @@ func TestIterationHookGetsTheLoopsOwnSpend(t *testing.T) {
 	req := adapter.CompletionRequest{Messages: []adapter.ChatMessage{{Role: adapter.RoleUser, Content: "go"}}, Tools: SafeImplementationTools()}
 	workID := uuid.New()
 	_, _ = RunToolLoopWithOptions(context.Background(), model, req, ex, 3, nil, &workID, LoopOptions{})
-	if len(own) < 3 || own[0] != 0 || own[1] != 200 || own[2] != 400 {
-		t.Fatalf("loop spend seen by the hook = %v, want [0 200 400]", own)
+	// Work tokens: the first call's input (capped at the 100 reported) plus
+	// output, then new input plus output — not the resent prompt.
+	if len(own) < 3 || own[0] != 0 || own[1] != 200 || own[2] < 300 || own[2] > 400 {
+		t.Fatalf("loop spend seen by the hook = %v, want [0 200 300..400]", own)
 	}
 	// The total is the work item's refreshed sum (plus what this loop added
 	// since the refresh), never the loop's own count.

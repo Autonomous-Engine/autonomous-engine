@@ -43,7 +43,7 @@ func TestIterationHookStopsTheLoopBeforeTheNextCall(t *testing.T) {
 		if budget != TokenBudget() {
 			t.Errorf("budget %d, want %d", budget, TokenBudget())
 		}
-		if cumulative >= 400 {
+		if cumulative >= 300 {
 			return stopErr{}
 		}
 		return nil
@@ -55,8 +55,11 @@ func TestIterationHookStopsTheLoopBeforeTheNextCall(t *testing.T) {
 	if !errors.As(err, &se) {
 		t.Fatalf("err = %v, want the hook's error wrapped", err)
 	}
-	if model.n != 2 || len(seen) != 3 || seen[0] != 0 || seen[1] != 200 || seen[2] != 400 {
-		t.Fatalf("calls=%d hook saw %v, want 2 calls and [0 200 400]", model.n, seen)
+	// The meter counts work: the first call's input (capped at the 100 the
+	// adapter reports) plus its output, then each call's new input and
+	// output — not the resent prompt.
+	if model.n != 2 || len(seen) != 3 || seen[0] != 0 || seen[1] != 200 || seen[2] < 300 || seen[2] > 400 {
+		t.Fatalf("calls=%d hook saw %v, want 2 calls and [0 200 300..400]", model.n, seen)
 	}
 }
 

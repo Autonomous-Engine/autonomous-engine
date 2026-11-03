@@ -341,7 +341,7 @@ var sumWorkItemTokens = func(ctx context.Context, db *pgxpool.Pool, workItemID u
 	}
 	var sum int64
 	if err := db.QueryRow(ctx,
-		`SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM inference_logs WHERE work_item_id = $1`,
+		`SELECT COALESCE(SUM(COALESCE(work_tokens, input_tokens + output_tokens)), 0) FROM inference_logs WHERE work_item_id = $1`,
 		workItemID,
 	).Scan(&sum); err != nil {
 		return 0, false
@@ -4457,9 +4457,11 @@ func RunToolLoopWithOptions(
 		}
 	}
 	var stuck *stuckTracker
-	var cycles *cycleGuard          // R17: whole-turn cycles
-	unrecordedReads := 0            // Findings read gate: read turns since the last finding
-	uneditedReads := 0              // EditGate: read turns since the last edit (gate.go)
+	var cycles *cycleGuard   // R17: whole-turn cycles
+	unrecordedReads := 0     // Findings read gate: read turns since the last finding
+	uneditedReads := 0       // EditGate: read turns since the last edit (gate.go)
+	sent := newSentTracker() // work tokens: input not sent before (work_tokens.go)
+	progress := newProgressTracker()
 	gateExempt := map[string]bool{} // paths a REJECTED edit asked the model to read: served through the gate
 	gateScope := map[string]bool{}  // the files in scope: what the task edits, never refused (gate.go)
 	for _, p := range opts.PinnedFiles {
@@ -4582,6 +4584,7 @@ func RunToolLoopWithOptions(
 		callStart := time.Now()
 		var resp *adapter.CompletionResponse
 		var err error
+		newInput := sent.newInputTokens(req)
 		for attempt := 0; attempt < 3; attempt++ {
 			resp, err = llmAdapter.Complete(ctx, req)
 			if err == nil || !llm.IsTransientLLMError(err) {
@@ -4606,10 +4609,15 @@ func RunToolLoopWithOptions(
 				errMsg = err.Error()
 			}
 			var inputTokens, outputTokens int
+			var workTokens int64
 			responseText := ""
 			if resp != nil {
 				inputTokens = resp.InputTokens
 				outputTokens = resp.OutputTokens
+				if resp.InputTokens > 0 && newInput > int64(resp.InputTokens) {
+					newInput = int64(resp.InputTokens)
+				}
+				workTokens = newInput + int64(resp.OutputTokens) // work_tokens.go
 				responseText = resp.Content
 			}
 			messagesJSON := []byte("[]")
@@ -4620,10 +4628,12 @@ func RunToolLoopWithOptions(
 				`UPDATE inference_logs
 				 SET input_tokens = $1, output_tokens = $2, latency_ms = $3,
 				     success = $4, error_message = $5,
-				     prompt_messages = $6::jsonb, response_content = $7
+				     prompt_messages = $6::jsonb, response_content = $7,
+				     work_tokens = $9
 				 WHERE id = $8::uuid`,
 				inputTokens, outputTokens, latency.Milliseconds(),
 				err == nil, errMsg, string(messagesJSON), responseText, logID,
+				workTokens,
 			)
 			_, _ = db.Exec(ctx, "SELECT pg_notify('inference_completed', $1)", logID)
 		}
@@ -4636,8 +4646,15 @@ func RunToolLoopWithOptions(
 		metrics.LLMCallsTotal.Inc()
 		if resp.InputTokens > 0 || resp.OutputTokens > 0 {
 			metrics.LLMTokensUsed.Add(int64(resp.InputTokens + resp.OutputTokens))
-			cumulativeTokens += int64(resp.InputTokens + resp.OutputTokens)
-			loopTokens += int64(resp.InputTokens + resp.OutputTokens)
+			// The budget counts what the call added (work_tokens.go), not
+			// the whole resent prompt.
+			// A call cannot add more input than the prompt it sent.
+			if resp.InputTokens > 0 && newInput > int64(resp.InputTokens) {
+				newInput = int64(resp.InputTokens)
+			}
+			work := newInput + int64(resp.OutputTokens)
+			cumulativeTokens += work
+			loopTokens += work
 		}
 
 		// Token budget kill switch.
@@ -5115,6 +5132,18 @@ func RunToolLoopWithOptions(
 			case readServed:
 				uneditedReads++
 			}
+		}
+		full := progress.observe(validCalls, validResults)
+		if progress.idle > 0 {
+			log.Printf("tool-loop: no progress for %d tool turn(s) (window %d)", progress.idle, noProgressWindow)
+		}
+		if opts.StuckControl && full {
+			reason := fmt.Sprintf("no progress in %d tool turns: no edit or write applied, no command run, no finding recorded, no call the loop had not made before", noProgressWindow)
+			log.Printf("tool-loop: %s — ending the loop", reason)
+			if opts.Findings && toolsRun > 0 {
+				return closingAnswer(ctx, llmAdapter, req, reason)
+			}
+			return nil, &LoopStuck{Tool: "(none)", Kind: StuckKindNoProgress, Reason: reason, Attempts: noProgressWindow}
 		}
 		if opts.Findings {
 			newFindings := executor.Findings()[findingsBefore:]

@@ -89,7 +89,7 @@ func researchSpent(pool *pgxpool.Pool, workID uuid.UUID) func(ctx context.Contex
 			return 0, false
 		}
 		var n int64
-		if err := pool.QueryRow(ctx, `SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM inference_logs
+		if err := pool.QueryRow(ctx, `SELECT COALESCE(SUM(COALESCE(work_tokens, input_tokens + output_tokens)), 0) FROM inference_logs
 			WHERE work_item_id = $1 AND role = 'research'
 			  AND created_at >= COALESCE((SELECT MAX("timestamp") FROM work_item_transitions WHERE work_item_id = $1 AND to_state = 'research'), '-infinity'::timestamptz)`, workID).Scan(&n); err != nil {
 			return 0, false

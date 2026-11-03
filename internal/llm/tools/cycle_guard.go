@@ -28,6 +28,9 @@ const (
 	// StuckKindSlidingWindow: the sliding-window detector fired again after
 	// its warning, and no turn since the warning made a new call.
 	StuckKindSlidingWindow = "sliding_window"
+	// StuckKindNoProgress: noProgressWindow tool turns in which nothing
+	// happened (work_tokens.go).
+	StuckKindNoProgress = "no_progress"
 )
 
 const (

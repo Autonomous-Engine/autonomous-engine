@@ -76,3 +76,25 @@ func TestIntegration_ResearchSpentCountsTheCurrentRoundOnly(t *testing.T) {
 		t.Fatalf("second round spend = %d ok=%v, want 5000 (the first round's spend must not count)", n, ok)
 	}
 }
+
+// The research share is measured on work tokens where a row has them.
+func TestIntegration_ResearchSpentUsesWorkTokens(t *testing.T) {
+	pool := budgetIntegrationPool(t)
+	ctx := context.Background()
+	workID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO work_items (id, type, state, title) VALUES ($1, 'feature', 'research', 'work tokens')`, workID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM inference_logs WHERE work_item_id = $1`, workID)
+		_, _ = pool.Exec(ctx, `DELETE FROM work_items WHERE id = $1`, workID)
+	})
+	if _, err := pool.Exec(ctx, `INSERT INTO inference_logs (id, model_provider, model_id, intent_type, input_tokens, output_tokens, latency_ms, success, error_message, work_item_id, created_at, prompt_messages, response_content, role, work_tokens)
+		VALUES ($1, 'ollama', 'qwen', 'tool_loop', 10000, 500, 1, true, '', $2, now(), '[]', '', 'research', 900),
+		       ($3, 'ollama', 'qwen', 'criteria', 3000, 400, 1, true, '', $2, now(), '[]', '', 'research', NULL)`, uuid.New(), workID, uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := researchSpent(pool, workID)(ctx); !ok || n != 900+3400 {
+		t.Fatalf("research spend = %d ok=%v, want 900 (work) + 3400 (raw, no work_tokens)", n, ok)
+	}
+}
