@@ -154,6 +154,12 @@ func (h *AuthHandlers) HandleLogin(w http.ResponseWriter, r *http.Request) {
 			r.UserAgent(),
 			nil,
 		)
+		// A locked account is reported as such so the login page can say so
+		// instead of "invalid credentials" (its lock branch never matched).
+		if strings.Contains(err.Error(), "account locked") {
+			http.Error(w, `{"error":"account locked"}`, http.StatusLocked)
+			return
+		}
 		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 		return
 	}
@@ -186,6 +192,12 @@ func (h *AuthHandlers) HandleLDAPLogin(w http.ResponseWriter, r *http.Request) {
 			r.UserAgent(),
 			nil,
 		)
+		// A locked account is reported as such so the login page can say so
+		// instead of "invalid credentials" (its lock branch never matched).
+		if strings.Contains(err.Error(), "account locked") {
+			http.Error(w, `{"error":"account locked"}`, http.StatusLocked)
+			return
+		}
 		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 		return
 	}
