@@ -62,6 +62,10 @@ func (h *Handlers) approveEscalatedVerification(ctx context.Context, parentID uu
 	if err != nil || len(escalated) == 0 {
 		return false, err
 	}
+	escalated = h.roundParticipants(ctx, parentID, escalated)
+	if len(escalated) == 0 {
+		return false, nil
+	}
 	err = workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
 		now := time.Now().UTC()
 		for _, payload := range escalated {
@@ -115,6 +119,44 @@ func (h *Handlers) approveEscalatedVerification(ctx context.Context, parentID uu
 		return handled, err
 	}
 	return handled, nil
+}
+
+// roundParticipants keeps the events of subtasks that take part in the
+// parent's current round — pr-coordinator's rule (roundParticipant): a
+// subtask passed before the parent last re-entered implementation belongs
+// to an earlier round (the fix subtask superseded it). Live, approving the
+// superseded round-1 subtask too made pr-coordinator record the pending
+// change twice. Without transitions (no work graph) every event stands.
+func (h *Handlers) roundParticipants(ctx context.Context, parentID uuid.UUID, events []map[string]any) []map[string]any {
+	if h.wg == nil {
+		return events
+	}
+	ts, err := h.wg.GetTransitions(ctx, parentID)
+	if err != nil {
+		return events
+	}
+	start := workgraph.RoundStart(ts)
+	if start.IsZero() {
+		return events
+	}
+	var out []map[string]any
+	for _, ev := range events {
+		taskID, perr := uuid.Parse(stringField(ev, "task_id"))
+		if perr != nil {
+			continue
+		}
+		sts, serr := h.wg.GetTransitions(ctx, taskID)
+		if serr != nil {
+			out = append(out, ev)
+			continue
+		}
+		if passed := workgraph.LastPassed(sts); passed.IsZero() || !passed.Before(start) {
+			out = append(out, ev)
+		} else {
+			log.Printf("handlers: work_id=%s task=%s passed before the current round — not part of the human-review approval", parentID, taskID)
+		}
+	}
+	return out
 }
 
 // latestEscalatedVerifications is each subtask's newest verification.complete

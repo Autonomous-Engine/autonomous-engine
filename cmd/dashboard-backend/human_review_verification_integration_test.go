@@ -24,25 +24,38 @@ import (
 func TestIntegration_HumanReviewApprovalAfterEscalationBecomesTheApproveVerification(t *testing.T) {
 	pool := refusalPool(t)
 	ctx := context.Background()
-	product, parent, sub := uuid.New(), uuid.New(), uuid.New()
+	product, parent, sub, superseded := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	head := strings.Repeat("a", 40)
-	escalated := map[string]any{
-		"work_id": parent.String(), "task_id": sub.String(), "head_sha": head, "branch": "agent/x",
-		"decision": "escalate", "reason": "recorded gaps need human review (criteria AC-3); everything else met",
-		"result_id": uuid.New().String(), "defects": map[string]int{"critical": 0, "major": 0, "minor": 1},
-		"implementation": map[string]any{"work_id": parent.String(), "task_id": sub.String(), "success": true, "branch": "agent/x", "head_sha": head},
-		"event_id": uuid.New().String(), "timestamp": "2026-11-03T19:03:13Z",
+	event := func(task uuid.UUID, decision, reason string) string {
+		b, _ := json.Marshal(map[string]any{
+			"work_id": parent.String(), "task_id": task.String(), "head_sha": head, "branch": "agent/x",
+			"decision": decision, "reason": reason,
+			"result_id": uuid.New().String(), "defects": map[string]int{"critical": 0, "major": 0, "minor": 1},
+			"implementation": map[string]any{"work_id": parent.String(), "task_id": task.String(), "success": true, "branch": "agent/x", "head_sha": head},
+			"event_id": uuid.New().String(), "timestamp": "2026-11-03T19:03:13Z",
+		})
+		return string(b)
 	}
-	payload, _ := json.Marshal(escalated)
+	// Round 1: `superseded` passed, the verifier requested changes, the
+	// parent re-entered implementation (the round start) and the fix
+	// subtask `sub` passed; round 2 escalated. Only `sub` takes part in the
+	// round the person is approving (pr-coordinator's own rule).
 	for _, q := range []struct {
 		sql  string
 		args []any
 	}{
 		{`INSERT INTO products (id, name) VALUES ($1, $2)`, []any{product, "hr-" + product.String()[:8]}},
 		{`INSERT INTO work_items (id, type, state, previous_state, title, product_id) VALUES ($1, 'feature', 'awaiting_user', 'human_review', 'parent', $2)`, []any{parent, product}},
-		{`INSERT INTO work_items (id, type, state, title, product_id, parent_id) VALUES ($1, 'subtask', 'passed', 'sub', $2, $3)`, []any{sub, product, parent}},
-		{`INSERT INTO verification_results (id, work_item_id, task_id, head_sha, decision, reason, verifier_version) VALUES ($1, $2, $3, $4, 'escalate', 'recorded gaps need human review', '7')`, []any{uuid.New(), parent, sub, head}},
-		{`INSERT INTO outbox_events (id, aggregate_type, aggregate_id, topic, key, payload, headers, created_at, published_at) VALUES ($1, 'work_item', $2, $3, $4, $5::jsonb, '{}'::jsonb, NOW() - interval '1 minute', NOW() - interval '50 seconds')`, []any{uuid.New(), parent, bus.TopicVerificationComplete, parent.String(), string(payload)}},
+		{`INSERT INTO work_items (id, type, state, title, product_id, parent_id) VALUES ($1, 'subtask', 'passed', 'sub', $2, $3), ($4, 'subtask', 'passed', 'superseded', $2, $3)`, []any{sub, product, parent, superseded}},
+		{`INSERT INTO work_item_transitions (id, work_item_id, from_state, to_state, agent_id, reason, timestamp) VALUES
+			($1, $2, 'implementation', 'passed', 'a', 'r', NOW() - interval '3 hours'),
+			($3, $4, 'verification', 'implementation', 'a', 'fix round', NOW() - interval '2 hours'),
+			($5, $6, 'implementation', 'passed', 'a', 'r', NOW() - interval '1 hour')`, []any{uuid.New(), superseded, uuid.New(), parent, uuid.New(), sub}},
+		{`INSERT INTO verification_results (id, work_item_id, task_id, head_sha, decision, reason, verifier_version, created_at) VALUES ($1, $2, $3, $4, 'request_changes', 'defects', '7', NOW() - interval '3 hours'), ($5, $2, $6, $4, 'escalate', 'recorded gaps need human review', '7', NOW() - interval '1 minute')`, []any{uuid.New(), parent, superseded, head, uuid.New(), sub}},
+		{`INSERT INTO outbox_events (id, aggregate_type, aggregate_id, topic, key, payload, headers, created_at, published_at) VALUES
+			($1, 'work_item', $2, $3, $4, $5::jsonb, '{}'::jsonb, NOW() - interval '3 hours', NOW() - interval '3 hours'),
+			($6, 'work_item', $2, $3, $4, $7::jsonb, '{}'::jsonb, NOW() - interval '1 minute', NOW() - interval '50 seconds')`,
+			[]any{uuid.New(), parent, bus.TopicVerificationComplete, parent.String(), event(superseded, "request_changes", "defects"), uuid.New(), event(sub, "escalate", "recorded gaps need human review (criteria AC-3); everything else met")}},
 	} {
 		if _, err := pool.Exec(ctx, q.sql, q.args...); err != nil {
 			t.Fatalf("%s: %v", q.sql, err)
@@ -51,6 +64,7 @@ func TestIntegration_HumanReviewApprovalAfterEscalationBecomesTheApproveVerifica
 	t.Cleanup(func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM outbox_events WHERE aggregate_id = $1`, parent)
 		_, _ = pool.Exec(ctx, `DELETE FROM verification_results WHERE work_item_id = $1`, parent)
+		_, _ = pool.Exec(ctx, `DELETE FROM work_item_transitions WHERE work_item_id IN ($1, $2, $3)`, parent, sub, superseded)
 		_, _ = pool.Exec(ctx, `DELETE FROM work_items WHERE product_id = $1`, product)
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, product)
 	})
@@ -75,6 +89,12 @@ func TestIntegration_HumanReviewApprovalAfterEscalationBecomesTheApproveVerifica
 	_ = json.Unmarshal(raw, &m)
 	if m["decision"] != "approve" || m["task_id"] != sub.String() || m["head_sha"] != head || m["implementation"] == nil || !strings.Contains(m["reason"].(string), "operator") {
 		t.Fatalf("re-enqueued payload = %s, want approve for the task with its implementation payload and the person named", raw)
+	}
+	var approvals, enqueued int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM verification_results WHERE work_item_id = $1 AND decision = 'approve'`, parent).Scan(&approvals)
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE aggregate_id = $1 AND topic = $2 AND published_at IS NULL`, parent, bus.TopicVerificationComplete).Scan(&enqueued)
+	if approvals != 1 || enqueued != 1 {
+		t.Fatalf("approve results = %d, re-enqueued events = %d; want one each — the superseded round-1 subtask is not part of the round (live: two pending changes for one branch)", approvals, enqueued)
 	}
 	var state string
 	var qaReady int
