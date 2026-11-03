@@ -86,10 +86,9 @@ func findingsSection(fs []CitedFinding) string {
 func RecordFinding() adapter.Tool {
 	return adapter.Tool{
 		Name: "record_finding",
-		Description: "Record one thing you learned, with the lines that show it. Call it after every read, before reading on: " +
-			"the read leaves your context after one turn and only your findings stay. The lines must be ones you have read; " +
-			"the excerpt is taken from the file for you. One claim per call, at most 60 lines.",
-		Parameters: json.RawMessage(`{"type":"object","properties":{"claim":{"type":"string","description":"One sentence stating what the cited lines show"},"path":{"type":"string","description":"Repo-relative path you read"},"start_line":{"type":"integer","description":"1-based first cited line"},"end_line":{"type":"integer","description":"1-based last cited line (default start_line)"},"repo":{"type":"string","description":"Repo name if the product has several"}},"required":["claim","path","start_line"]}`),
+		Description: "Record one thing you learned with the lines that show it, after each read and before the next: " +
+			"reads leave your context after one turn; findings stay. Lines you have read only; at most 60 per claim.",
+		Parameters: json.RawMessage(`{"type":"object","properties":{"claim":{"type":"string","description":"One sentence"},"path":{"type":"string"},"start_line":{"type":"integer"},"end_line":{"type":"integer","description":"Default start_line"},"repo":{"type":"string"}},"required":["claim","path","start_line"]}`),
 	}
 }
 
