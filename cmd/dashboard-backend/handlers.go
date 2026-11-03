@@ -1455,9 +1455,21 @@ func (h *Handlers) HandlePRDPromptAnswer(ctx context.Context, workItemID uuid.UU
 // state transition and qa.ready publish as ApproveWorkItem.
 func (h *Handlers) HandleHumanReviewPromptAnswer(ctx context.Context, workItemID uuid.UUID, action, answerText, userID string) error {
 	if action == "approve" {
-		// Same transition and qa.ready as ApproveWorkItem (the reviewed
-		// branch and the verified head SHA the review examined), committed
-		// together.
+		// R14: a verifier escalation approved by a person is the
+		// verification decision (human_review_verification.go); the PR
+		// coordinator opens the PR or the gate's pending change.
+		if handled, err := h.approveEscalatedVerification(ctx, workItemID, userID, answerText); err != nil {
+			var tf *transitionFailed
+			if errors.As(err, &tf) {
+				return fmt.Errorf("transition failed: %w", tf.err)
+			}
+			return fmt.Errorf("approve escalated verification: %w", err)
+		} else if handled {
+			return nil
+		}
+		// Pre-R14 review path: the same transition and qa.ready as
+		// ApproveWorkItem (the reviewed branch and the verified head SHA
+		// the review examined), committed together.
 		if err := h.approveToQA(ctx, workItemID, userID, "approved via prompt sheet"); err != nil {
 			var tf *transitionFailed
 			if errors.As(err, &tf) {
