@@ -1506,7 +1506,11 @@ func decomposeIntoTasks(ctx context.Context, llmSvc *llm.Service, workID uuid.UU
 				preview = preview[:300] + "..."
 			}
 			log.Printf("implementation-planner: decompose attempt %d returned unparseable JSON (preview: %s) — retrying with nudge", attempt+1, preview)
-			intent.Context["retry_nudge"] = "Your previous response could not be parsed as a JSON array. Respond with ONLY a valid JSON array, no markdown fences, no explanatory text, no thinking tags. Start with [ and end with ]."
+			nudge := "Your previous response could not be parsed as a JSON array. Respond with ONLY a valid JSON array, no markdown fences, no explanatory text, no thinking tags. Start with [ and end with ]. Escape double quotes inside string values (code, quoted names) as \\\"."
+			if hint := jsonErrorHint(result.Content); hint != "" {
+				nudge += " The parse error was: " + hint
+			}
+			intent.Context["retry_nudge"] = nudge
 			continue
 		}
 
@@ -1560,6 +1564,14 @@ func parseTaskArray(content string) ([]decomposedTask, error) {
 		if err := json.Unmarshal([]byte(stripped), &tasks); err == nil && len(tasks) > 0 {
 			log.Printf("implementation-planner: parsed decomposition after stripping JSON-style comments")
 			return tasks, nil
+		}
+		// 6. Inner quotes in string values (code quoted in a description;
+		// live, both attempts were valid task arrays but for that).
+		if fixed, n := repairJSONStrings(stripped); n > 0 {
+			if err := json.Unmarshal([]byte(fixed), &tasks); err == nil && len(tasks) > 0 {
+				log.Printf("implementation-planner: parsed decomposition after escaping %d inner quote(s) in string values", n)
+				return tasks, nil
+			}
 		}
 		if got := firstTaskArray(stripped); len(got) > 0 {
 			log.Printf("implementation-planner: parsed decomposition after stripping JSON-style comments")
