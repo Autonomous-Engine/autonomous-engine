@@ -147,20 +147,37 @@ func invalidRefsReprompt(probs []RefProblem) string {
 	return b.String()
 }
 
-// extractJSONObject returns the answer's JSON object: the whole trimmed
-// answer, or the body of one ```/```json fence that is the whole answer.
+// answerFenceRE is one ``` fence of the answer, with its body.
+var answerFenceRE = regexp.MustCompile("(?s)```([A-Za-z]*)[ \\t]*\\n?(.*?)```")
+
+// extractJSONObject returns the answer's JSON object: the body of the one
+// ```/```json fence that holds an object, whatever prose stands around it
+// (a local model's closing answer is "Here is my verdict: … Done."), or
+// the whole trimmed answer when nothing is fenced.
 func extractJSONObject(content string) ([]byte, error) {
 	s := strings.TrimSpace(content)
+	if fences := answerFenceRE.FindAllStringSubmatch(s, -1); len(fences) > 0 {
+		var objects []string
+		for _, f := range fences {
+			// A fence in another language (```go) is code, not the answer.
+			if lang := strings.TrimSpace(f[1]); lang != "" && lang != "json" {
+				continue
+			}
+			if body := strings.TrimSpace(f[2]); strings.HasPrefix(body, "{") && strings.HasSuffix(body, "}") {
+				objects = append(objects, body)
+			}
+		}
+		switch len(objects) {
+		case 1:
+			return []byte(objects[0]), nil
+		case 0:
+			return nil, errors.New("answer opens a code fence but no plain or json fence holds a JSON object")
+		default:
+			return nil, fmt.Errorf("answer holds %d fenced JSON objects, want exactly one", len(objects))
+		}
+	}
 	if strings.HasPrefix(s, "```") {
-		nl := strings.IndexByte(s, '\n')
-		if nl < 0 || !strings.HasSuffix(s, "```") {
-			return nil, errors.New("answer opens a code fence but is not exactly one fenced JSON object")
-		}
-		lang := strings.TrimSpace(s[3:nl])
-		if lang != "" && lang != "json" {
-			return nil, fmt.Errorf("answer is fenced as %q, want json", lang)
-		}
-		s = strings.TrimSpace(s[nl+1 : len(s)-3])
+		return nil, errors.New("answer opens a code fence that is never closed")
 	}
 	if s == "" {
 		return nil, errors.New("empty answer")
