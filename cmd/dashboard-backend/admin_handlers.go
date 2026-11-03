@@ -90,7 +90,18 @@ func (h *AdminHandlers) guardCredential(w http.ResponseWriter, r *http.Request, 
 	if !shapes {
 		return false, true
 	}
-	if !guardedChange(w, r, h.guardDB(), credentialChange(action, scope, target, category, key, overlay, write)) {
+	ch := credentialChange(action, scope, target, category, key, overlay, write)
+	// The "before" capture overlays the value currently stored, so writing
+	// the same value again is unchanged and only a real change is guarded
+	// (F10a). A missing credential overlays "" — the agents' real view.
+	current := ""
+	if h.store != nil {
+		if v, err := h.store.ResolveCredential(r.Context(), category, key, "", ""); err == nil {
+			current = v
+		}
+	}
+	ch.BeforeOverlay = rollout.OverlayForCredential(category, key, current)
+	if !guardedChange(w, r, h.guardDB(), ch) {
 		return true, false
 	}
 	// The write committed: drop the local cache entry again (F2). The one

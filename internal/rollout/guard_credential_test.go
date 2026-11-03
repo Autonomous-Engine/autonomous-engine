@@ -193,6 +193,7 @@ func TestApplyGuarded_FailedCredentialWriteRollsTheAuditBack(t *testing.T) {
 // A refused change rolls the credential write back with it.
 func TestApplyGuarded_RefusedCredentialWriteRollsBack(t *testing.T) {
 	fakeSurface(t)
+	bootstrapping(t, false) // production exists: the fake tx has no work_items to ask
 	cs := credentialStore()
 	tx := &guardTx{}
 	ch := credentialGuardChange(func(ctx context.Context, tx pgx.Tx) error {

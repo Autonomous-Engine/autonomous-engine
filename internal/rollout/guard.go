@@ -18,6 +18,10 @@ const (
 	GuardUnchanged = "unchanged"
 	GuardApproved  = "approved"
 	GuardOverride  = "override"
+	// GuardBootstrap: the change was allowed because the system has no
+	// production yet (no work item has ever existed), so there is no
+	// behaviour an approved rollout could protect (F10, F20).
+	GuardBootstrap = "bootstrap"
 )
 
 // SurfaceKeyDefault is the production default's key in a Surface.
@@ -161,6 +165,12 @@ type DefaultChange struct {
 	// RotateCredentialTx, F2), so the credential, its credential_audit_log
 	// row and any override row commit together or not at all.
 	Overlay *GlobalModelOverlay
+	// BeforeOverlay, when set, is applied to the "before" capture: the
+	// global-model effect of the credential value currently stored, which
+	// the capture cannot read either. Without it a credential write was
+	// compared against llm_providers, so re-saving the stored value was
+	// still a "change" (F10a).
+	BeforeOverlay *GlobalModelOverlay
 	// OverrideReason, when non-empty, allows a change without an approved
 	// rollout; each unapproved change is written to rollout_overrides with
 	// Actor in the change's transaction.
@@ -172,6 +182,22 @@ type DefaultChange struct {
 // captureSurface is ProductionSurface; tests replace it to drive
 // ApplyGuarded on a fake transaction.
 var captureSurface = ProductionSurface
+
+// isBootstrapping is productionBootstrapping; tests replace it.
+var isBootstrapping = productionBootstrapping
+
+// productionBootstrapping reports whether the system has no production
+// yet: no work item has ever existed. Until the first work item there is
+// no agent behaviour a rollout could protect, and the guard refusing the
+// very first provider, model or embedding default left a fresh install
+// unable to configure itself from the dashboard (F10, F19, F20).
+func productionBootstrapping(ctx context.Context, q configsnap.Querier) (bool, error) {
+	var none bool
+	if err := q.QueryRow(ctx, `SELECT NOT EXISTS (SELECT 1 FROM work_items)`).Scan(&none); err != nil {
+		return false, fmt.Errorf("rollout: bootstrap check: %w", err)
+	}
+	return none, nil
+}
 
 // Beginner starts a transaction (*pgxpool.Pool).
 type Beginner interface {
@@ -197,7 +223,11 @@ func ApplyGuarded(ctx context.Context, db Beginner, ch DefaultChange) (GuardResu
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, guardLockKey); err != nil {
 		return res, fmt.Errorf("rollout: guard lock: %w", err)
 	}
-	before, err := captureSurface(ctx, tx)
+	beforeCtx := ctx
+	if ch.BeforeOverlay != nil {
+		beforeCtx = WithGlobalModelOverlay(ctx, *ch.BeforeOverlay)
+	}
+	before, err := captureSurface(beforeCtx, tx)
 	if err != nil {
 		return res, fmt.Errorf("rollout: guard capture before: %w", err)
 	}
@@ -236,11 +266,19 @@ func ApplyGuarded(ctx context.Context, db Beginner, ch DefaultChange) (GuardResu
 		unapproved = append(unapproved, *c)
 	}
 	res.Changes = changes
+	bootstrap := false
+	if len(unapproved) > 0 && strings.TrimSpace(ch.OverrideReason) == "" {
+		if bootstrap, err = isBootstrapping(ctx, tx); err != nil {
+			return res, err
+		}
+	}
 	switch {
 	case len(changes) == 0:
 		res.Reason = GuardUnchanged
 	case len(unapproved) == 0:
 		res.Reason = GuardApproved
+	case bootstrap:
+		res.Reason = GuardBootstrap
 	case strings.TrimSpace(ch.OverrideReason) == "":
 		return res, &RefusedError{Action: ch.Action, Unapproved: unapproved}
 	default:
