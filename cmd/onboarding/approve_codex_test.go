@@ -43,3 +43,20 @@ func TestSessionForIsPerProductAndCreatedOnDemand(t *testing.T) {
 		t.Fatal("sessions must be distinct per product")
 	}
 }
+
+// A session started through /start has no product yet (the wizard learns
+// it later). The first product-scoped call must adopt that session, not
+// create an empty one beside it, or the conversation's draft is lost.
+func TestSessionForAdoptsTheStartedSession(t *testing.T) {
+	started := newSession()
+	started.CodexDraft["risk_zones"] = "internal/auth"
+	s := &server{session: started}
+	p := uuid.New()
+	got := s.sessionFor(p)
+	if got != started || got.ProductID != p {
+		t.Fatalf("sessionFor did not adopt the started session: got %p want %p (product %s)", got, started, got.ProductID)
+	}
+	if s.sessionFor(uuid.New()) == started {
+		t.Fatal("a session bound to one product must not be handed to another")
+	}
+}

@@ -90,7 +90,13 @@ func (s *server) sessionFor(productID uuid.UUID) *onboardingSession {
 	}
 	sess, ok := s.sessions[productID]
 	if !ok {
-		sess = newSession()
+		// A session started through /start has no product yet; the first
+		// product-scoped call adopts it so its conversation draft is kept.
+		if s.session != nil && (s.session.ProductID == uuid.Nil || s.session.ProductID == productID) {
+			sess = s.session
+		} else {
+			sess = newSession()
+		}
 		sess.ProductID = productID
 		s.sessions[productID] = sess
 	}
