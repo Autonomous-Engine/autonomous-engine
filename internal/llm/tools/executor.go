@@ -1549,6 +1549,29 @@ func (e *Executor) validateAfterWrite(ctx context.Context, callID, relPath strin
 		return nil
 	}
 
+	// Import-balance diagnostics (a package used before its import, an
+	// import not used yet) are transitional: the edit stands and the model
+	// is told what remains, so a change that needs an import and its use
+	// can land in two edits. The build still fails until it is balanced.
+	var fatal, transitional []lsp.Diagnostic
+	for _, d := range errorDiags {
+		if transitionalDiagnostic(d, newContent) {
+			transitional = append(transitional, d)
+		} else {
+			fatal = append(fatal, d)
+		}
+	}
+	if len(fatal) == 0 {
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "Edit applied to %s. It leaves %d import-balance diagnostic(s) for your next edit (the build fails until they are resolved):\n", relPath, len(transitional))
+		for _, d := range transitional {
+			fmt.Fprintf(&sb, "  [%s] line %d col %d: %s\n", diagSource(d, language), d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message)
+		}
+		log.Printf("tool-loop: post-write: %s left %d import-balance diagnostic(s) for the next edit", relPath, len(transitional))
+		return &adapter.ToolResult{ToolCallID: callID, Content: sb.String()}
+	}
+	errorDiags = fatal
+
 	// Revert the file so the model can try again with a clean baseline.
 	// oldContent is nil only when writeFile created a brand-new file; in
 	// that case, deleting the file is the correct revert.
@@ -1565,13 +1588,17 @@ func (e *Executor) validateAfterWrite(ctx context.Context, callID, relPath strin
 			fmt.Fprintf(&sb, "… and %d more\n", len(errorDiags)-10)
 			break
 		}
-		source := d.Source
-		if source == "" {
-			source = language
-		}
-		fmt.Fprintf(&sb, "  [%s] line %d col %d: %s\n", source, d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message)
+		fmt.Fprintf(&sb, "  [%s] line %d col %d: %s\n", diagSource(d, language), d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message)
 	}
 	return &adapter.ToolResult{ToolCallID: callID, Content: sb.String(), IsError: true}
+}
+
+// diagSource is the diagnostic's source, or the language when it has none.
+func diagSource(d lsp.Diagnostic, language string) string {
+	if d.Source != "" {
+		return d.Source
+	}
+	return language
 }
 
 // maybeMicrocompact trims the conversation in place when the input-token
