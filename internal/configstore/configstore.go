@@ -307,7 +307,7 @@ func (cs *ConfigStore) SetGlobalCredential(ctx context.Context, category, keyNam
 	return cs.SetCredential(ctx, "global", "default", category, keyName, value, isSecret, description, actorID)
 }
 
-// SetIntegrationCredential writes at scope='integration', scope_target=''
+// SetIntegrationCredential writes at scope='integration', scope_target=”
 // (the integration scope does not use a target — the resolver hardcodes "").
 // Use for shared integration keys where a single global-per-integration
 // works (today, nothing fits this — prefer SetGlobalCredential).

@@ -961,17 +961,17 @@ func (h *AdminHandlers) ReindexProduct(w http.ResponseWriter, r *http.Request) {
 
 // repositoryRow is the JSON shape returned by the repositories endpoints.
 type repositoryRow struct {
-	ID                string  `json:"id"`
-	ProductID         string  `json:"product_id"`
-	Name              string  `json:"name"`
-	GitHubURL         string  `json:"github_url"`
-	BaseBranch        string  `json:"base_branch"`
-	MergeStrategy     string  `json:"merge_strategy"`
-	BranchPrefix      string  `json:"branch_prefix"`
-	ClonePath         string  `json:"clone_path"`
-	LastIndexedCommit string  `json:"last_indexed_commit"`
-	Enabled           bool    `json:"enabled"`
-	CreatedAt         string  `json:"created_at"`
+	ID                string `json:"id"`
+	ProductID         string `json:"product_id"`
+	Name              string `json:"name"`
+	GitHubURL         string `json:"github_url"`
+	BaseBranch        string `json:"base_branch"`
+	MergeStrategy     string `json:"merge_strategy"`
+	BranchPrefix      string `json:"branch_prefix"`
+	ClonePath         string `json:"clone_path"`
+	LastIndexedCommit string `json:"last_indexed_commit"`
+	Enabled           bool   `json:"enabled"`
+	CreatedAt         string `json:"created_at"`
 }
 
 // ListRepositories handles GET /api/admin/repositories?product_id=<uuid>
@@ -1021,12 +1021,12 @@ func (h *AdminHandlers) ListRepositories(w http.ResponseWriter, r *http.Request)
 
 // addRepositoryRequest is the JSON body for AddRepository.
 type addRepositoryRequest struct {
-	ProductID      string `json:"product_id"`
-	Name           string `json:"name"`
-	URL            string `json:"url"`
-	GitHubURL      string `json:"github_url"`
-	BaseBranch     string `json:"base_branch"`
-	MergeStrategy  string `json:"merge_strategy"`
+	ProductID       string `json:"product_id"`
+	Name            string `json:"name"`
+	URL             string `json:"url"`
+	GitHubURL       string `json:"github_url"`
+	BaseBranch      string `json:"base_branch"`
+	MergeStrategy   string `json:"merge_strategy"`
 	GitHubAccountID string `json:"github_account_id"`
 }
 
@@ -1158,19 +1158,19 @@ func (h *AdminHandlers) AddRepository(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":            id.String(),
-		"name":          req.Name,
-		"github_url":    repoURL,
-		"base_branch":   baseBranch,
+		"id":             id.String(),
+		"name":           req.Name,
+		"github_url":     repoURL,
+		"base_branch":    baseBranch,
 		"merge_strategy": mergeStrategy,
-		"clone_path":    clonePath,
-		"product_id":    productID.String(),
-		"enabled":       true,
-		"created_at":    now.Format(time.RFC3339),
-		"status":        "created",
-		"clone_success": cloneSuccess,
-		"clone_message": cloneMessage,
-		"remote_kind":   string(remoteKind),
+		"clone_path":     clonePath,
+		"product_id":     productID.String(),
+		"enabled":        true,
+		"created_at":     now.Format(time.RFC3339),
+		"status":         "created",
+		"clone_success":  cloneSuccess,
+		"clone_message":  cloneMessage,
+		"remote_kind":    string(remoteKind),
 	})
 }
 
@@ -1331,10 +1331,10 @@ func (h *AdminHandlers) RepoCloneStatus(w http.ResponseWriter, r *http.Request) 
 
 	cloned := strings.TrimSpace(clonePath) != "" && strings.TrimSpace(lastIndexedCommit) != ""
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"cloned":               cloned,
-		"clone_path":           clonePath,
-		"last_indexed_commit":  lastIndexedCommit,
-		"name":                 name,
+		"cloned":              cloned,
+		"clone_path":          clonePath,
+		"last_indexed_commit": lastIndexedCommit,
+		"name":                name,
 	})
 }
 
@@ -1985,7 +1985,7 @@ func (ah *AdminHandlers) ListModelProfiles(w http.ResponseWriter, r *http.Reques
 		profiles = append(profiles, map[string]interface{}{
 			"id": id, "provider": provider, "model_id": modelID,
 			"effective_context_window": ctxWindow,
-			"instruction_following": instrFollow, "code_generation": codeGen,
+			"instruction_following":    instrFollow, "code_generation": codeGen,
 			"code_understanding": codeUnder, "reasoning": reasoning, "synthesis": synthesis,
 			"avg_inference_speed": speed, "concurrent_capacity": concurrent,
 			"operating_mode": opMode, "evaluated_at": evalAt,
@@ -2215,7 +2215,7 @@ func (h *AdminHandlers) PreviewResolution(w http.ResponseWriter, r *http.Request
 		entries[i] = chainEntry{Template: t, Wins: i == 0}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"chain":  entries,
+		"chain": entries,
 		"winner": func() *prompts.PromptTemplate {
 			if len(chain) > 0 {
 				return chain[0]
@@ -2958,7 +2958,7 @@ func (h *AdminHandlers) MigrateLegacyGitHubToken(w http.ResponseWriter, r *http.
 		"id":                accountID.String(),
 		"username":          username,
 		"avatar_url":        avatarURL,
-		"credential_id":    credentialID.String(),
+		"credential_id":     credentialID.String(),
 		"last_validated_at": now.Format(time.RFC3339),
 		"valid":             true,
 		"created_at":        now.Format(time.RFC3339),
