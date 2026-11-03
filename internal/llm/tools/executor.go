@@ -352,6 +352,27 @@ var sumWorkItemTokens = func(ctx context.Context, db *pgxpool.Pool, workItemID u
 // workItemCreatedMessage is the create_work_item tool result. It names the
 // dashboard path so the model can link the item; without it the chat
 // linked to "#" (F33).
+// resolveProduct resolves a product reference a model passes: the product's
+// id, or its name as list_products shows it (case-insensitive).
+func (e *Executor) resolveProduct(ctx context.Context, ref string) (uuid.UUID, string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return uuid.Nil, "", fmt.Errorf("product_id is required: the id or the name list_products shows")
+	}
+	var id uuid.UUID
+	var name string
+	if pid, err := uuid.Parse(ref); err == nil {
+		if err := e.db.QueryRow(ctx, `SELECT id, name FROM products WHERE id = $1`, pid).Scan(&id, &name); err != nil {
+			return uuid.Nil, "", fmt.Errorf("product not found: %s — list_products shows the products", ref)
+		}
+		return id, name, nil
+	}
+	if err := e.db.QueryRow(ctx, `SELECT id, name FROM products WHERE lower(name) = lower($1) ORDER BY created_at LIMIT 1`, ref).Scan(&id, &name); err != nil {
+		return uuid.Nil, "", fmt.Errorf("product not found: %q — list_products shows the products (pass the id or the exact name)", ref)
+	}
+	return id, name, nil
+}
+
 func workItemCreatedMessage(id uuid.UUID, title, workType, priority string, productID *uuid.UUID) string {
 	msg := fmt.Sprintf("Created work item %s: %s (type=%s, priority=%s, state=intake) — open it at /work-items/%s", id, title, workType, priority, id)
 	if productID != nil {
@@ -606,13 +627,9 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 			return adapter.ToolResult{ToolCallID: call.ID, Content: "database not available", IsError: true}
 		}
 		pidStr, _ := args["product_id"].(string)
-		pid, parseErr := uuid.Parse(pidStr)
-		if parseErr != nil {
-			return adapter.ToolResult{ToolCallID: call.ID, Content: "invalid product_id: " + parseErr.Error(), IsError: true}
-		}
-		var prodName string
-		if err := e.db.QueryRow(ctx, `SELECT name FROM products WHERE id = $1`, pid).Scan(&prodName); err != nil {
-			return adapter.ToolResult{ToolCallID: call.ID, Content: "product not found", IsError: true}
+		pid, prodName, err := e.resolveProduct(ctx, pidStr)
+		if err != nil {
+			return adapter.ToolResult{ToolCallID: call.ID, Content: err.Error(), IsError: true}
 		}
 		e.productID = &pid
 		if e.sessionID != nil {
@@ -664,14 +681,20 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 		if args.Priority == "" {
 			args.Priority = "medium"
 		}
+		// A work item without a product cannot be grounded or prompted
+		// about (product-agent blocks it, and a blocked prompt needs a
+		// product): the product is the session's context or the argument.
+		productID := e.productID
+		if args.ProductID == "" && productID == nil {
+			return adapter.ToolResult{ToolCallID: call.ID, Content: "a product is required: call set_product_context first, or pass product_id (the id or the name list_products shows)", IsError: true}
+		}
 		if e.db == nil {
 			return adapter.ToolResult{ToolCallID: call.ID, Content: "database not available for work item creation", IsError: true}
 		}
-		var productID *uuid.UUID
 		if args.ProductID != "" {
-			pid, parseErr := uuid.Parse(args.ProductID)
-			if parseErr != nil {
-				return adapter.ToolResult{ToolCallID: call.ID, Content: "invalid product_id: " + parseErr.Error(), IsError: true}
+			pid, _, err := e.resolveProduct(ctx, args.ProductID)
+			if err != nil {
+				return adapter.ToolResult{ToolCallID: call.ID, Content: err.Error(), IsError: true}
 			}
 			productID = &pid
 		}
