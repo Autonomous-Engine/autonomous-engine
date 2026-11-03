@@ -1425,10 +1425,14 @@ func (h *Handlers) HandlePRDPromptAnswer(ctx context.Context, workItemID uuid.UU
 		if strings.TrimSpace(answerText) != "" {
 			reason = "PRD rejected: " + answerText
 		}
-		if err := h.wg.TransitionState(ctx, workItemID, models.WorkItemStateRejected, userID, reason); err != nil {
-			return fmt.Errorf("transition failed: %w", err)
-		}
-		return nil
+		// The item is parked in awaiting_user while the prompt is pending
+		// (rerun NEW-10): the awaiting_user-aware path, as approve and revise.
+		return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+			if err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, workItemID, models.WorkItemStateRejected, userID, reason); err != nil {
+				return fmt.Errorf("transition failed: %w", err)
+			}
+			return nil
+		})
 	}
 
 	return nil
@@ -1457,7 +1461,10 @@ func (h *Handlers) HandleHumanReviewPromptAnswer(ctx context.Context, workItemID
 		if strings.TrimSpace(answerText) != "" {
 			reason = "rejected: " + answerText
 		}
-		if err := h.wg.TransitionState(ctx, workItemID, models.WorkItemStateRejected, userID, reason); err != nil {
+		// Parked in awaiting_user while the prompt is pending (rerun NEW-10).
+		if err := workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+			return h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, workItemID, models.WorkItemStateRejected, userID, reason)
+		}); err != nil {
 			return fmt.Errorf("transition failed: %w", err)
 		}
 		return nil
