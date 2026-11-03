@@ -1392,7 +1392,7 @@ func (h *AdminHandlers) ValidateProduct(w http.ResponseWriter, r *http.Request) 
 	if reposMissingClone > 0 {
 		out = append(out, result{Check: "Every enabled repo is cloned", Passed: false, Message: fmt.Sprintf("%d enabled repos lack a clone_path", reposMissingClone)})
 	} else if enabledRepos > 0 {
-		out = append(out, result{Check: "Every enabled repo is cloned", Passed: true, Message: "all repos have clone paths"})
+		out = append(out, result{Check: "Every enabled repo is cloned", Passed: true, Message: "clone path recorded for every repo"})
 	}
 
 	// 4. Codex has modules
@@ -1426,6 +1426,57 @@ func (h *AdminHandlers) ValidateProduct(w http.ResponseWriter, r *http.Request) 
 		} else {
 			out = append(out, result{Check: "Operator reviewed candidates", Passed: true, Message: fmt.Sprintf("%d of %d candidates reviewed", reviewedCount, candidateCount)})
 		}
+	}
+
+	// 7-11. What onboarding actually needs to have happened (F30): before
+	// these, "ready" was reported with no model, no embeddings, no policy,
+	// no zones and the reviewed answers never approved.
+	var defaultModel string
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT COALESCE(settings->>'model', '') FROM llm_providers WHERE is_default AND enabled ORDER BY name, id LIMIT 1`).Scan(&defaultModel)
+	if strings.TrimSpace(defaultModel) == "" {
+		out = append(out, result{Check: "Default LLM provider has a model", Passed: false, Message: "no default LLM provider with a model — add one under Admin → Providers (the model is what every agent runs on)"})
+	} else {
+		out = append(out, result{Check: "Default LLM provider has a model", Passed: true, Message: defaultModel})
+	}
+
+	var embeddingName string
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT name FROM embedding_providers WHERE is_default AND enabled ORDER BY name, id LIMIT 1`).Scan(&embeddingName)
+	if embeddingName == "" {
+		out = append(out, result{Check: "Default embedding provider", Passed: false, Message: "no default embedding provider — knowledge-indexer and codex search need one (Admin → Embeddings)"})
+	} else {
+		out = append(out, result{Check: "Default embedding provider", Passed: true, Message: embeddingName})
+	}
+
+	if enabledRepos > 0 {
+		var reposWithoutPolicy int
+		_ = h.db.QueryRow(r.Context(),
+			`SELECT COUNT(*) FROM repositories r WHERE r.product_id=$1 AND r.enabled=true
+			   AND NOT EXISTS (SELECT 1 FROM repository_verification_policies p WHERE p.repository_id = r.id)`, productID).Scan(&reposWithoutPolicy)
+		if reposWithoutPolicy > 0 {
+			out = append(out, result{Check: "Verification policy saved for every repo", Passed: false, Message: fmt.Sprintf("%d enabled repo(s) have no verification policy — save one in the Verification step", reposWithoutPolicy)})
+		} else {
+			out = append(out, result{Check: "Verification policy saved for every repo", Passed: true, Message: "every enabled repo has a policy"})
+		}
+
+		var reposWithoutZones int
+		_ = h.db.QueryRow(r.Context(),
+			`SELECT COUNT(*) FROM repositories WHERE product_id=$1 AND enabled=true AND zones_confirmed_at IS NULL`, productID).Scan(&reposWithoutZones)
+		if reposWithoutZones > 0 {
+			out = append(out, result{Check: "Zones confirmed for every repo", Passed: false, Message: fmt.Sprintf("%d enabled repo(s) have unconfirmed zones — confirm them in the Zones step", reposWithoutZones)})
+		} else {
+			out = append(out, result{Check: "Zones confirmed for every repo", Passed: true, Message: "zones confirmed"})
+		}
+	}
+
+	var approvedVersions int
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT COUNT(*) FROM codex_versions WHERE product_id=$1 AND change_source=$2`, productID, "onboarding" /* models.CodexChangeSourceOnboarding */).Scan(&approvedVersions)
+	if approvedVersions == 0 {
+		out = append(out, result{Check: "Codex approved", Passed: false, Message: "the reviewed onboarding answers were never approved — click Approve Codex in the Codex step"})
+	} else {
+		out = append(out, result{Check: "Codex approved", Passed: true, Message: fmt.Sprintf("%d onboarding version(s) committed", approvedVersions)})
 	}
 
 	writeJSON(w, http.StatusOK, out)
