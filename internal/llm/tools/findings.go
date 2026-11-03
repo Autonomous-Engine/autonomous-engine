@@ -35,9 +35,9 @@ type CitedFinding struct {
 const (
 	// findingClaimMax bounds a claim; a finding is a sentence, not a report.
 	findingClaimMax = 400
-	// findingRangeMax bounds a citation: a claim about more than 60 lines
-	// is several claims.
-	findingRangeMax = 60
+	// findingRangeMax bounds a citation: one research read window
+	// (SetReadWindow 120); a claim about more than that is several claims.
+	findingRangeMax = 120
 	// findingExcerptMax bounds the excerpt kept with a finding.
 	findingExcerptMax = 240
 	// findingRecordedPrefix opens every successful record_finding result;
@@ -87,7 +87,7 @@ func RecordFinding() adapter.Tool {
 	return adapter.Tool{
 		Name: "record_finding",
 		Description: "Record one thing you learned with the lines that show it, after each read and before the next: " +
-			"reads leave your context after one turn; findings stay. Lines you have read only; at most 60 per claim.",
+			"reads leave your context after one turn; findings stay. Lines you have read only; at most 120 per claim.",
 		Parameters: json.RawMessage(`{"type":"object","properties":{"claim":{"type":"string","description":"One sentence"},"path":{"type":"string"},"start_line":{"type":"integer"},"end_line":{"type":"integer","description":"Default start_line"},"repo":{"type":"string"}},"required":["claim","path","start_line"]}`),
 	}
 }
@@ -194,6 +194,14 @@ func (e *Executor) recordFinding(ctx context.Context, callID string, args map[st
 		Excerpt:   truncateRunes(strings.Join(cited, "\n"), findingExcerptMax),
 	}
 	e.observedMu.Lock()
+	for i, prev := range e.findings {
+		if prev.Claim == f.Claim && prev.Path == f.Path && prev.StartLine == f.StartLine && prev.EndLine == f.EndLine {
+			e.observedMu.Unlock()
+			// The same claim again is not a new finding (pattern_match
+			// recorded one claim four times live); nothing to store.
+			return adapter.ToolResult{ToolCallID: callID, Content: fmt.Sprintf("already recorded as #%d: %s (%s:%d-%d); record something new or write your answer", i+1, f.Claim, f.Path, f.StartLine, f.EndLine)}
+		}
+	}
 	e.findings = append(e.findings, f)
 	n := len(e.findings)
 	e.observedMu.Unlock()

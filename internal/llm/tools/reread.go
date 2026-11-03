@@ -201,11 +201,11 @@ func (e *Executor) readPlan(ctx context.Context, c adapter.ToolCall) (path strin
 			end = int(v)
 		}
 		if end == 0 || end < start {
-			end = start + readDefaultLines - 1
+			end = start + e.readDefault() - 1
 		}
-		end = min(end, start+readMaxLines-1, total)
+		end = min(end, start+e.readMax()-1, total)
 	} else {
-		start, end, _ = readWindow(args, total)
+		start, end, _ = readWindow(args, total, e.readDefault(), e.readMax())
 	}
 	if total == 0 || start > end {
 		return "", 0, 0, 0, false

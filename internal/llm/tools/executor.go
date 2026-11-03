@@ -181,6 +181,10 @@ type Executor struct {
 	findingResearchType string
 	// documents are what read_document serves (documents.go), by name.
 	documents map[string]string
+	// readWindowDefault / readWindowMax override readDefaultLines /
+	// readMaxLines (SetReadWindow): research reads in windows a finding can
+	// cite whole, at a third of the tokens.
+	readWindowDefault, readWindowMax int
 
 	// Branch scoping for commit-linked codex. When set, codex queries resolve
 	// to a materialized snapshot for the given branch+commit instead of the
@@ -1012,7 +1016,7 @@ func (e *Executor) readFile(callID string, args map[string]interface{}) adapter.
 	if window, n, ok := e.defaultWindow(path, args, fileLinesOf(strings.ReplaceAll(string(data), "\r\n", "\n"))); ok {
 		args, note = window, n
 	}
-	out, start, end, total := sliceLines(string(data), args)
+	out, start, end, total := sliceLines(string(data), args, e.readDefault(), e.readMax())
 	e.markRead(path, start, end, total)
 	if note != "" {
 		// The seeded note replaces sliceLines' own range hint.
@@ -1118,10 +1122,36 @@ const (
 	readMaxLines     = 2000
 )
 
+// SetReadWindow overrides the default and maximum lines a read returns
+// (readDefaultLines / readMaxLines). Research sets 120/240: a window a
+// finding can cite whole, at a third of the tokens of the 400-line default.
+func (e *Executor) SetReadWindow(defaultLines, maxLines int) {
+	if defaultLines > 0 {
+		e.readWindowDefault = defaultLines
+	}
+	if maxLines > 0 {
+		e.readWindowMax = maxLines
+	}
+}
+
+func (e *Executor) readDefault() int {
+	if e.readWindowDefault > 0 {
+		return e.readWindowDefault
+	}
+	return readDefaultLines
+}
+
+func (e *Executor) readMax() int {
+	if e.readWindowMax > 0 {
+		return e.readWindowMax
+	}
+	return readMaxLines
+}
+
 // readWindow resolves a read's start_line/end_line (1-based, inclusive)
 // against a file of total lines: no range is the first readDefaultLines,
 // an explicit range any slice up to readMaxLines.
-func readWindow(args map[string]interface{}, total int) (start, end int, explicit bool) {
+func readWindow(args map[string]interface{}, total, defaultLines, maxLines int) (start, end int, explicit bool) {
 	start, end = 1, 0
 	if v, ok := args["start_line"].(float64); ok && int(v) > 0 {
 		start, explicit = int(v), true
@@ -1131,12 +1161,12 @@ func readWindow(args map[string]interface{}, total int) (start, end int, explici
 	}
 	switch {
 	case end < start && explicit:
-		end = start + readMaxLines - 1
+		end = start + maxLines - 1
 	case end < start:
-		end = start + readDefaultLines - 1
+		end = start + defaultLines - 1
 	}
-	if end-start+1 > readMaxLines {
-		end = start + readMaxLines - 1
+	if end-start+1 > maxLines {
+		end = start + maxLines - 1
 	}
 	if end > total {
 		end = total
@@ -1147,13 +1177,13 @@ func readWindow(args map[string]interface{}, total int) (start, end int, explici
 // sliceLines is read_file's result: the requested lines verbatim and, when
 // the file goes on, a hint naming the next range; start..end of total are
 // the lines returned.
-func sliceLines(content string, args map[string]interface{}) (out string, start, end, total int) {
+func sliceLines(content string, args map[string]interface{}, defaultLines, maxLines int) (out string, start, end, total int) {
 	lines := strings.SplitAfter(content, "\n")
 	if n := len(lines); n > 0 && lines[n-1] == "" {
 		lines = lines[:n-1]
 	}
 	total = len(lines)
-	start, end, explicit := readWindow(args, total)
+	start, end, explicit := readWindow(args, total, defaultLines, maxLines)
 	if !explicit && end >= total {
 		return content, 1, total, total
 	}
@@ -3287,9 +3317,9 @@ func (e *Executor) codexReadFile(ctx context.Context, callID string, args map[st
 	if v, ok := args["end_line"].(float64); ok && int(v) > 0 {
 		endLine = int(v)
 	}
-	const hardCap = readMaxLines
+	hardCap := e.readMax()
 	if endLine == 0 || endLine < startLine {
-		endLine = startLine + readDefaultLines - 1 // T6
+		endLine = startLine + e.readDefault() - 1 // T6
 	}
 	// Enforce the hard cap regardless of what the caller asked for.
 	if endLine-startLine+1 > hardCap {

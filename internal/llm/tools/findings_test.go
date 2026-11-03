@@ -20,7 +20,7 @@ func findingsExecutor(t *testing.T) *Executor {
 	for i := 1; i <= 10; i++ {
 		fmt.Fprintf(&a, "line %d of a\n", i)
 	}
-	for i := 1; i <= 100; i++ {
+	for i := 1; i <= 200; i++ {
 		fmt.Fprintf(&long, "line %d of long\n", i)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte(a.String()), 0o644); err != nil {
@@ -51,13 +51,13 @@ func TestRecordFindingRefusesUnreadMissingAndBadClaims(t *testing.T) {
 	}
 	refuse("unread range", recordCall("x", "a.go", 1, 2), "read")
 	ex.markRead("a.go", 1, 10, 10)
-	ex.markRead("long.go", 1, 100, 100)
+	ex.markRead("long.go", 1, 200, 200)
 	refuse("missing file", recordCall("x", "missing.go", 1, 1), "missing.go")
 	refuse("empty claim", recordCall("   ", "a.go", 1, 1), "claim")
 	refuse("long claim", recordCall(strings.Repeat("c", findingClaimMax+1), "a.go", 1, 1), "claim")
 	refuse("line 0", recordCall("x", "a.go", 0, 1), "start_line")
 	refuse("past the end", recordCall("x", "a.go", 9, 11), "10 lines")
-	refuse("too wide", recordCall("x", "long.go", 1, 70), fmt.Sprint(findingRangeMax))
+	refuse("too wide", recordCall("x", "long.go", 1, findingRangeMax+10), fmt.Sprint(findingRangeMax))
 	if n := len(ex.Findings()); n != 0 {
 		t.Fatalf("refused findings were kept: %d", n)
 	}

@@ -19,8 +19,17 @@ func newResearchExecutor(primaryPath, repoName string, cx *codex.Codex, vs *vect
 	ex.SetCodexReadsFromWorktree(true)
 	ex.SetWorktreeRepo(repoName)
 	ex.SetFindingTask(taskID, researchType)
+	// Reads come in windows a finding can cite whole: the live code_trace
+	// task read 240 lines at 10k tokens a call, could not cite them under
+	// the finding cap, and re-read until the repeat guard ended it.
+	ex.SetReadWindow(researchReadWindow, researchReadWindowMax)
 	return ex
 }
+
+const (
+	researchReadWindow    = 120
+	researchReadWindowMax = 240
+)
 
 // primaryRepoName is the name of the repository whose read path is primary
 // (pinned.Paths parallels the selected repos); "" when it cannot be told,
