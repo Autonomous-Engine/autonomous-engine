@@ -29,7 +29,7 @@ const researchStrategy = `You are a read-only research agent. Investigate the co
 - Unknown names: codex_similar_code with a plain description. Conventions: codex_patterns_for.
 - Read last: codex_read_file only on files the graph or a search pointed at, in line ranges.
 - A read stays for one turn: record_finding what it showed (one claim + lines) before the next call; findings are your memory (listed in the ledger).
-- Known findings in the request are earlier research: cite them as they are; re-read only if you must.
+- Known findings in the request are earlier research: cite them as they are; re-read only if you must. The PRD's other sections: read_document name=prd.
 - Files or symbols the request names are starting points: go to them directly.
 - Never repeat a call already in the evidence ledger; use its recorded result.
 - Stop as soon as the request's acceptance criteria can be answered with file:line evidence, then write the answer from your findings with no further tool calls. If something cannot be found, say what is missing and stop.`
@@ -89,7 +89,11 @@ func buildResearchUserMessage(task researchTaskMessage, primaryPath, snapshotLin
 	fmt.Fprintf(&b, "Research task: %s\nWork ID: %s\nTask ID: %s\nRepository path: %s%s\n\n",
 		task.ResearchType, task.WorkID, task.TaskID, primaryPath, snapshotLine)
 	b.WriteString("## Request (PRD): answer its acceptance criteria\n")
-	b.WriteString(strings.TrimSpace(task.StartingContext))
+	kept, others := prdForTask(task.StartingContext)
+	b.WriteString(kept)
+	if len(others) > 0 {
+		b.WriteString("\n\nOther PRD sections, each one read_document name=prd section=<heading> away: " + strings.Join(others, "; ") + ".")
+	}
 	// The codex sections (task.CodexSections) are not inlined: 11.7k chars
 	// of module JSON on every call made the codex look "already in
 	// context", and the model went to raw reads instead of its tools.
@@ -99,7 +103,7 @@ func buildResearchUserMessage(task researchTaskMessage, primaryPath, snapshotLin
 
 // researchToolSet is the tool list one task is offered.
 func researchToolSet(researchType string, lspReady bool) []adapter.Tool {
-	return tools.ResearchToolsFor(researchType, tools.ResearchToolOptions{LSPReady: lspReady, Findings: true})
+	return tools.ResearchToolsFor(researchType, tools.ResearchToolOptions{LSPReady: lspReady, Findings: true, Documents: true})
 }
 
 // researchLoopOptions turns on the evidence ledger and the dead-tool guard,

@@ -469,6 +469,9 @@ func buildHandler(
 		// data. kb + workID enable codex.gap event emission.
 		executor := newResearchExecutor(primaryPath, primaryRepoName(selectedRepos, repoPaths, primaryPath), cx, vectorStore, productIDPtr, kb, &workID, task.TaskID, task.ResearchType)
 		findingsOf = executor.Findings
+		// The PRD is retrieved a section at a time (read_document), not
+		// carried whole in every call.
+		executor.SetDocuments(map[string]string{"prd": task.StartingContext})
 		// Research stops at its share of the work item's token budget so the
 		// later stages still have theirs (F36).
 		executor.SetIterationHook(researchStageHook(researchTokenShare(), researchSpent(pool, workID)))
