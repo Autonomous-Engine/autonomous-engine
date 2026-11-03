@@ -4461,7 +4461,13 @@ func RunToolLoopWithOptions(
 	unrecordedReads := 0            // Findings read gate: read turns since the last finding
 	uneditedReads := 0              // EditGate: read turns since the last edit (gate.go)
 	gateExempt := map[string]bool{} // paths a REJECTED edit asked the model to read: served through the gate
-	var repeats *readRepeats        // R17: repeated reads of a read-only tree
+	gateScope := map[string]bool{}  // the files in scope: what the task edits, never refused (gate.go)
+	for _, p := range opts.PinnedFiles {
+		if n := pinPath(p); n != "" {
+			gateScope[n] = true
+		}
+	}
+	var repeats *readRepeats // R17: repeated reads of a read-only tree
 	if opts.StuckControl {
 		stuck = newStuckTracker(opts.PriorStuck)
 		cycles = newCycleGuard()
@@ -5010,7 +5016,10 @@ func RunToolLoopWithOptions(
 				// The read a rejected edit asked for is served (live: the
 				// read-before-edit gate and the edit gate refused each other
 				// until the budget was gone).
-				if p := pinPath(toolPathArg(c)); p != "" && gateExempt[p] {
+				if p := pinPath(toolPathArg(c)); p != "" && (gateScope[p] || gateExempt[p]) {
+					// In scope: the file the task edits, read in whatever
+					// window the edit needs (live, ciblame: report.go
+					// refused twelve times for ~100k tokens).
 					delete(gateExempt, p)
 					continue
 				}
