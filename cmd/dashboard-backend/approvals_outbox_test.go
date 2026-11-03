@@ -95,6 +95,7 @@ type transitionCall struct {
 // transitions, which must arrive on the handler's transaction.
 type approvalsFake struct {
 	item        *models.WorkItem
+	children    []*models.WorkItem
 	artifacts   map[models.ArtifactType][]*models.WorkItemArtifact
 	transitions []transitionCall
 	transErr    error
@@ -106,6 +107,10 @@ func (f *approvalsFake) GetWorkItem(_ context.Context, id uuid.UUID) (*models.Wo
 	}
 	cp := *f.item
 	return &cp, nil
+}
+
+func (f *approvalsFake) GetChildren(_ context.Context, _ uuid.UUID) ([]*models.WorkItem, error) {
+	return f.children, nil
 }
 
 func (f *approvalsFake) GetArtifacts(_ context.Context, _ uuid.UUID, t models.ArtifactType) ([]*models.WorkItemArtifact, error) {
@@ -529,5 +534,41 @@ func TestDashboard_StartsOneNamedDispatcherAndWaits(t *testing.T) {
 	}
 	if !strings.Contains(code, "outboxDispatcher.Wait()") {
 		t.Error("main.go does not wait for the outbox dispatcher on shutdown")
+	}
+}
+
+// An implementation stop (budget exhausted, repeated failure) prompts the
+// parent with "Retry with a fresh attempt". Retry restarted the pipeline
+// from research — the research and the plan were thrown away, and the
+// stopped subtask's own Retry was refused because its parent was blocked.
+// A parent whose subtasks stopped resumes implementation: the parent and
+// each stopped subtask move to implementation and each subtask's
+// implementation.tasks retry is enqueued, all in one transaction.
+func TestBlockedPromptAnswer_ParentRetryWithStoppedSubtasksResumesImplementation(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateBlocked, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateAwaitingUser,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	done := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStatePassed, ParentID: &parent.ID}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{done, child}
+	a.g.artifacts[models.ArtifactTypePRD] = []*models.WorkItemArtifact{prdArtifact(t)} // a PRD exists; research is still not restarted
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), parent.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if a.db.begins != 1 || a.tx.commits != 1 || a.tx.rollbacks != 0 {
+		t.Fatalf("begins=%d commits=%d rollbacks=%d, want one committed transaction", a.db.begins, a.tx.commits, a.tx.rollbacks)
+	}
+	if len(a.g.transitions) != 2 || a.g.transitions[0].id != parent.ID || a.g.transitions[0].to != models.WorkItemStateImplementation ||
+		a.g.transitions[1].id != child.ID || a.g.transitions[1].to != models.WorkItemStateImplementation || a.g.transitions[1].tx != a.tx {
+		t.Fatalf("transitions = %+v, want the parent then the stopped subtask to implementation", a.g.transitions)
+	}
+	if a.tx.calls != 1 || a.tx.topic != bus.TopicImplementationTasks || a.tx.key != child.ID.String() || a.tx.aggregate != parent.ID {
+		t.Fatalf("events=%d topic=%s key=%s aggregate=%s, want one implementation.tasks for the subtask", a.tx.calls, a.tx.topic, a.tx.key, a.tx.aggregate)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(a.tx.payload, &body)
+	if body["work_id"] != parent.ID.String() || body["task_id"] != child.ID.String() || body["retry"] != true {
+		t.Errorf("payload = %v", body)
 	}
 }

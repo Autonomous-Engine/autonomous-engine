@@ -1650,6 +1650,18 @@ func (h *Handlers) HandleBlockedPromptAnswer(ctx context.Context, workItemID uui
 			}
 			return nil
 		}
+		// An implementation stop prompts the parent ("Retry with a fresh
+		// attempt"): the attempt is fresh, the research and the plan stand.
+		if stopped := h.stoppedSubtasks(ctx, item.ID); len(stopped) > 0 {
+			if err := h.resumeImplementation(ctx, item, stopped, userID, "retry via prompt sheet"); err != nil {
+				var tf *transitionFailed
+				if errors.As(err, &tf) {
+					return fmt.Errorf("transition failed: %w", tf.err)
+				}
+				return fmt.Errorf("record implementation.tasks retry: %w", err)
+			}
+			return nil
+		}
 		// Research only starts on prd.ready (research-coordinator), so the
 		// move to research and the prd.ready rebuilt from the newest PRD
 		// artifact commit together. Without a PRD research-coordinator would

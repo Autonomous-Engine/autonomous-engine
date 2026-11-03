@@ -38,6 +38,7 @@ type approvalGraph interface {
 	GetArtifacts(ctx context.Context, workItemID uuid.UUID, artifactType models.ArtifactType) ([]*models.WorkItemArtifact, error)
 	TransitionStateTx(ctx context.Context, tx pgx.Tx, itemID uuid.UUID, toState models.WorkItemState, agentID, reason string) (models.WorkItemState, error)
 	TransitionFromAwaitingUserToStateTx(ctx context.Context, tx pgx.Tx, itemID uuid.UUID, toState models.WorkItemState, agentID, reason string) error
+	GetChildren(ctx context.Context, parentID uuid.UUID) ([]*models.WorkItem, error)
 }
 
 // workGraphApprovals adapts *workgraph.WorkGraph to approvalGraph.
@@ -92,6 +93,60 @@ func (h *Handlers) retrySubtask(ctx context.Context, item *models.WorkItem, agen
 		}
 		return enqueueSubtaskRetry(ctx, tx, item)
 	})
+}
+
+// stoppedSubtasks is parentID's subtasks whose implementation stopped:
+// blocked, awaiting the user on their own stop prompt, or failed.
+func (h *Handlers) stoppedSubtasks(ctx context.Context, parentID uuid.UUID) []*models.WorkItem {
+	children, err := h.approvals.GetChildren(ctx, parentID)
+	if err != nil {
+		return nil
+	}
+	var stopped []*models.WorkItem
+	for _, c := range children {
+		switch c.State {
+		case models.WorkItemStateBlocked, models.WorkItemStateAwaitingUser, models.WorkItemStateFailed:
+			stopped = append(stopped, c)
+		}
+	}
+	return stopped
+}
+
+// resumeImplementation is the retry of an implementation stop (budget
+// exhausted, repeated failure) answered on the parent: the parent and each
+// stopped subtask move to implementation and each subtask's
+// implementation.tasks retry is enqueued, in one transaction. Research and
+// the plan stand; only the implementation attempt is fresh.
+func (h *Handlers) resumeImplementation(ctx context.Context, parent *models.WorkItem, stopped []*models.WorkItem, agentID, reason string) error {
+	return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+		if err := h.transitionTx(ctx, tx, parent, models.WorkItemStateImplementation, agentID, reason); err != nil {
+			return err
+		}
+		for _, c := range stopped {
+			if err := h.transitionTx(ctx, tx, c, models.WorkItemStateImplementation, agentID, reason); err != nil {
+				return err
+			}
+			if err := enqueueSubtaskRetry(ctx, tx, c); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// transitionTx moves item to `to` on tx; an item awaiting the user goes
+// through the path that clears its prompt.
+func (h *Handlers) transitionTx(ctx context.Context, tx pgx.Tx, item *models.WorkItem, to models.WorkItemState, agentID, reason string) error {
+	if item.State == models.WorkItemStateAwaitingUser {
+		if err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, item.ID, to, agentID, reason); err != nil {
+			return &transitionFailed{err: err}
+		}
+		return nil
+	}
+	if _, err := h.approvals.TransitionStateTx(ctx, tx, item.ID, to, agentID, reason); err != nil {
+		return &transitionFailed{err: err}
+	}
+	return nil
 }
 
 // buildQAReadyMessage is the qa.ready payload for workID with the reviewed
