@@ -179,6 +179,8 @@ type Executor struct {
 	findingStore        func(context.Context, CitedFinding) error
 	findingTaskID       string
 	findingResearchType string
+	// documents are what read_document serves (documents.go), by name.
+	documents map[string]string
 
 	// Branch scoping for commit-linked codex. When set, codex queries resolve
 	// to a materialized snapshot for the given branch+commit instead of the
@@ -588,6 +590,8 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 		result = e.recallContext(ctx, call.ID, args)
 	case "record_finding":
 		result = e.recordFinding(ctx, call.ID, args)
+	case "read_document":
+		result = e.readDocument(call.ID, args)
 	case "set_product_context":
 		if e.db == nil {
 			return adapter.ToolResult{ToolCallID: call.ID, Content: "database not available", IsError: true}

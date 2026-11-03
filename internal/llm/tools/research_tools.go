@@ -11,6 +11,8 @@ type ResearchToolOptions struct {
 	LSPReady bool
 	// Findings offers record_finding (LoopOptions.Findings).
 	Findings bool
+	// Documents offers read_document (Executor.SetDocuments).
+	Documents bool
 }
 
 // ResearchToolsFor returns the tool set one research task is offered. Every
@@ -33,6 +35,9 @@ func ResearchToolsFor(researchType string, opts ResearchToolOptions) []adapter.T
 	}
 	if opts.Findings {
 		out = append(out, RecordFinding())
+	}
+	if opts.Documents {
+		out = append(out, ReadDocument())
 	}
 	switch researchType {
 	case "history_analysis":
