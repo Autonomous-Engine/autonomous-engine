@@ -245,6 +245,8 @@ type functionChunk struct {
 	Signature string
 	Body      string
 	StartLine int
+	Exported  bool // part of the package's public interface
+	Test      bool // declared in a test file
 }
 
 // moduleInfo holds analysis results for a single package/module.
@@ -1476,6 +1478,10 @@ func analyzeModules(repoPath string, files []fileInfo, prog *IndexProgress) ([]m
 			// supported languages go through the deep langanalyzer package.
 			if fi.Language == "Rust" {
 				rustChunks, rustImports := extractRustSymbols(fi.Path, string(content))
+				for i := range rustChunks {
+					rustChunks[i].Exported = true // the Rust extractor does not track visibility
+					rustChunks[i].Test = fi.Category == "test"
+				}
 				mi.Functions = append(mi.Functions, rustChunks...)
 				mi.Imports = mergeUnique(mi.Imports, rustImports)
 			} else {
@@ -1497,11 +1503,16 @@ func analyzeModules(repoPath string, files []fileInfo, prog *IndexProgress) ([]m
 							Signature: sym.Signature,
 							Body:      sym.Signature, // full signature provides embedding context
 							StartLine: sym.Line,
+							Exported:  sym.Exported,
+							Test:      fi.Category == "test",
 						})
 					case langanalyzer.KindClass, langanalyzer.KindStruct,
 						langanalyzer.KindInterface, langanalyzer.KindEnum,
 						langanalyzer.KindType:
-						mi.Types = mergeUnique(mi.Types, []string{sym.Name})
+						// Only exported types are part of the public interface (F23).
+						if sym.Exported && fi.Category != "test" {
+							mi.Types = mergeUnique(mi.Types, []string{sym.Name})
+						}
 					}
 				}
 				// Convert langanalyzer Imports → module import paths.
@@ -1516,7 +1527,40 @@ func analyzeModules(repoPath string, files []fileInfo, prog *IndexProgress) ([]m
 		}
 	}
 
-	return modules, nil
+	return disambiguateModuleNames(modules), nil
+}
+
+// disambiguateModuleNames makes module names unique within a repository.
+// Modules are keyed by (product, branch, name); a Go repository with two
+// `package main` directories (or internal/x and pkg/x) collided and the
+// second silently overwrote the first (F22). A package name used by more
+// than one directory — and `main`, which always is — becomes the directory
+// path; a unique package name stays as it was.
+func disambiguateModuleNames(modules []moduleInfo) []moduleInfo {
+	count := make(map[string]int, len(modules))
+	for _, m := range modules {
+		count[m.Name]++
+	}
+	for i := range modules {
+		m := &modules[i]
+		if (m.Name == "main" || count[m.Name] > 1) && m.Path != "" && m.Path != "." {
+			m.Name = filepath.ToSlash(m.Path)
+		}
+	}
+	return modules
+}
+
+// publicFunctionNames is the module's public interface: exported functions
+// and methods declared outside test files. It listed every symbol before,
+// Test* functions, init and unexported helpers included (F23).
+func publicFunctionNames(chunks []functionChunk) []string {
+	names := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		if c.Exported && !c.Test {
+			names = append(names, c.Name)
+		}
+	}
+	return names
 }
 
 // extractRustSymbols is a lightweight fallback for Rust files (not yet covered
@@ -2125,7 +2169,13 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 	if branch == "" {
 		branch = "main"
 	}
-	log.Printf("knowledge-indexer: updating codex with %d modules (product=%v repo=%v branch=%s)", len(modules), productID, repoID, branch)
+	attempted := 0
+	for _, m := range modules {
+		if !m.IsTest {
+			attempted++
+		}
+	}
+	log.Printf("knowledge-indexer: updating codex with %d modules, %d test-only skipped (product=%v repo=%v branch=%s)", attempted, len(modules)-attempted, productID, repoID, branch)
 	upserted := 0
 	var errs []string
 	for _, m := range modules {
@@ -2137,7 +2187,7 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 		s.progress.setDetail(fmt.Sprintf("module %d/%d: %s", upserted+1, len(modules), m.Name))
 
 		pubInterface, _ := json.Marshal(map[string]interface{}{
-			"functions": functionNames(m.Functions),
+			"functions": publicFunctionNames(m.Functions),
 			"types":     m.Types,
 		})
 
@@ -2212,7 +2262,7 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 	if progRef := s.progress; progRef != nil {
 		progRef.addModules(upserted)
 	}
-	log.Printf("knowledge-indexer: upserted %d/%d modules (%d changed)", upserted, len(modules), len(changed))
+	log.Printf("knowledge-indexer: upserted %d/%d modules (%d changed)", upserted, attempted, len(changed))
 	if upserted == 0 && len(modules) > 0 {
 		return changed, fmt.Errorf("no modules successfully upserted out of %d attempted: %s",
 			len(modules), strings.Join(errs, "; "))
