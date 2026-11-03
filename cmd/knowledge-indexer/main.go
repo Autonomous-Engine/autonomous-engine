@@ -904,6 +904,38 @@ func (s *server) indexOneRepoBranch(ctx context.Context, prog *IndexProgress, rp
 // to a logged error + prog.Error entry rather than a silent skip. Still
 // publishes onboarding.prefill.completed at the end so the dashboard knows
 // the run finished even when individual steps failed.
+// prefillModuleLists is the prefill's view of the modules: the source
+// modules' names, and those with more than 5 source dependents as high
+// risk, on the same dependency graph the codex uses (updateCodexModules;
+// the old count keyed raw import strings by module name and never matched
+// for Go, F25). Test-only modules are left out on both sides, as the codex
+// leaves them out: counted in, the test helper package every test imports
+// came out "high-risk" and the module count was off by one (rerun NEW-4).
+func prefillModuleLists(modules []moduleInfo) (names, highRisk []string) {
+	source := make([]moduleInfo, 0, len(modules))
+	for _, m := range modules {
+		if !m.IsTest {
+			source = append(source, m)
+		}
+	}
+	names = make([]string, 0, len(source))
+	for _, m := range source {
+		names = append(names, m.Name)
+	}
+	dependentsByMod := map[string]int{}
+	for _, depList := range buildDependencyGraph(source) {
+		for _, dep := range depList {
+			dependentsByMod[dep]++
+		}
+	}
+	for _, m := range source {
+		if dependentsByMod[m.Name] > 5 {
+			highRisk = append(highRisk, m.Name)
+		}
+	}
+	return names, highRisk
+}
+
 func (s *server) runPrefill(
 	ctx context.Context,
 	prog *IndexProgress,
@@ -920,10 +952,7 @@ func (s *server) runPrefill(
 	for _, l := range languages {
 		langNames = append(langNames, l.Name)
 	}
-	moduleNames := make([]string, 0, len(modules))
-	for _, m := range modules {
-		moduleNames = append(moduleNames, m.Name)
-	}
+	moduleNames, highRisk := prefillModuleLists(modules)
 
 	// top-10 hotspots by commit count
 	sortedStats := append([]gitFileStats(nil), gitStats...)
@@ -950,24 +979,6 @@ func (s *server) runPrefill(
 			Count:    g.Count,
 			RefFiles: firstN(g.Files, 5),
 		})
-	}
-
-	// High-risk modules: dependents>5 on the same dependency graph the codex
-	// uses (updateCodexModules). The old count keyed raw import strings by
-	// module name, which never matched for Go (full import paths vs package
-	// names), so the prefill never saw a high-risk module (F25).
-	deps := buildDependencyGraph(modules)
-	dependentsByMod := map[string]int{}
-	for _, depList := range deps {
-		for _, dep := range depList {
-			dependentsByMod[dep]++
-		}
-	}
-	var highRisk []string
-	for _, m := range modules {
-		if dependentsByMod[m.Name] > 5 {
-			highRisk = append(highRisk, m.Name)
-		}
 	}
 
 	// Sibling repo URLs for cross_repo_imports (same product, this repo excluded).
