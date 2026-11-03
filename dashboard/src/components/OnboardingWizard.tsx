@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
+import { guarded } from '@/hooks/rolloutGuard'
 import { useApi } from '@/hooks/useApi'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import type { Product, Repository, RepoDependency, CredentialEntry, GraphResponse, RiskLevel, CodexModule, CodexPattern, CodexSection, GitHubAccount } from '@/types'
@@ -100,6 +101,74 @@ interface SelectProductStepProps {
   onProductSelected: (product: Product) => void
 }
 
+// ─── Prerequisites ────────────────────────────────────────────────────────────
+
+interface PrereqRow {
+  label: string
+  ok: boolean
+  optional?: boolean
+  to: string
+  linkLabel: string
+  hint: string
+}
+
+// Onboarding needs system setup from other admin pages: a default LLM
+// provider with a model and a default embedding provider (knowledge-indexer
+// refuses to start without one). The wizard used to depend on them
+// silently; a new user met raw 409s and "not connected" blockers (F15).
+export function PrerequisitesPanel({ onStatus }: { onStatus: (ready: boolean) => void }) {
+  const { get } = useApi()
+  const [rows, setRows] = useState<PrereqRow[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const [providers, embeddings, accounts] = await Promise.all([
+        get<Array<{ is_default: boolean; enabled: boolean; settings?: Record<string, unknown> }>>('/admin/providers').catch(() => []),
+        get<Array<{ is_default: boolean; enabled: boolean }>>('/admin/embedding-providers').catch(() => []),
+        get<GitHubAccount[]>('/admin/github/accounts').catch(() => []),
+      ])
+      if (cancelled) return
+      const llm = (providers ?? []).some(p => p.is_default && p.enabled && typeof p.settings?.model === 'string' && p.settings.model !== '')
+      const emb = (embeddings ?? []).some(p => p.is_default && p.enabled)
+      const gh = (accounts ?? []).length > 0
+      setRows([
+        { label: 'LLM provider with a model (set as default)', ok: llm, to: '/admin/providers', linkLabel: 'Admin → Providers', hint: 'Every agent runs on the default provider\'s model. Add Ollama (or another provider) with a model; the first one becomes the default.' },
+        { label: 'Embedding provider (set as default)', ok: emb, to: '/admin/embeddings', linkLabel: 'Admin → Embeddings', hint: 'The codebase scan and codex search need embeddings; knowledge-indexer does not start without a default.' },
+        { label: 'GitHub account', ok: gh, optional: true, to: '/admin/integrations', linkLabel: 'Admin → Integrations', hint: 'Needed only to browse and clone GitHub-hosted repositories. Local paths and mirrors work without one.' },
+      ])
+      onStatus(llm && emb)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [get]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="mb-5 rounded-sm border border-rule bg-surface-900 p-4">
+      <h3 className="text-sm font-semibold text-fg">Before you start</h3>
+      <p className="mt-1 text-xs text-muted">These are configured once for the whole system. The wizard cannot finish without the first two.</p>
+      {rows === null ? (
+        <p className="mt-3 text-xs text-dim">Checking…</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {rows.map(r => (
+            <li key={r.label} className="flex items-start gap-3 text-xs">
+              <span className={`w-28 shrink-0 ${r.ok ? 'text-emerald-400' : r.optional ? 'text-dim' : 'text-red-400'}`}>
+                {r.ok ? 'Ready' : r.optional ? 'Optional — none' : 'Missing'}
+              </span>
+              <span className="flex-1">
+                <span className="text-fg">{r.label}</span>
+                {!r.ok && <span className="block text-dim">{r.hint}</span>}
+              </span>
+              <Link to={r.to} className="shrink-0 text-accent-dim hover:text-accent">{r.linkLabel}</Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function SelectProductStep({ initialProductId, onProductSelected }: SelectProductStepProps) {
   const { get, post } = useApi()
   const [products, setProducts] = useState<Product[]>([])
@@ -110,6 +179,7 @@ function SelectProductStep({ initialProductId, onProductSelected }: SelectProduc
   const [newDesc, setNewDesc] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const [prereqReady, setPrereqReady] = useState(false)
 
   useEffect(() => {
     get<Product[]>('/admin/products')
@@ -164,6 +234,7 @@ function SelectProductStep({ initialProductId, onProductSelected }: SelectProduc
   return (
     <div className="space-y-6">
       <div>
+        <PrerequisitesPanel onStatus={setPrereqReady} />
         <h2 className="text-base font-semibold text-fg">Select or Create Product</h2>
         <p className="mt-1 text-sm text-muted">
           Choose an existing product or create a new one to begin setup.
@@ -188,7 +259,7 @@ function SelectProductStep({ initialProductId, onProductSelected }: SelectProduc
           <div className="flex items-center gap-3">
             <button
               onClick={handleContinue}
-              disabled={!selectedId}
+              disabled={!selectedId || !prereqReady}
               className="rounded bg-accent px-4 py-2 text-sm font-medium text-surface-900 hover:bg-accent-hover disabled:opacity-50"
             >
               Continue with Selected
@@ -232,7 +303,7 @@ function SelectProductStep({ initialProductId, onProductSelected }: SelectProduc
           <div className="flex items-center gap-3">
             <button
               onClick={handleCreateProduct}
-              disabled={creating}
+              disabled={creating || !prereqReady}
               className="rounded bg-accent px-4 py-2 text-sm font-medium text-surface-900 hover:bg-accent-hover disabled:opacity-50"
             >
               {creating ? 'Creating…' : 'Create Product'}
@@ -279,6 +350,14 @@ interface LLMForm {
   provider: LLMProvider
   endpoint: string
   api_key: string
+  model: string
+}
+
+interface ProbeResult {
+  reachable: boolean
+  latency_ms: number
+  error: string | null
+  models: string[]
 }
 
 interface JiraForm {
@@ -295,13 +374,18 @@ interface CredentialsStepProps {
 }
 
 function CredentialsStep({ onNext }: CredentialsStepProps) {
-  const { get, post } = useApi()
+  const { get, post, put } = useApi()
 
   const [llm, setLlm] = useState<LLMForm>({
     provider: 'ollama',
     endpoint: 'http://host.docker.internal:11434',
     api_key: '',
+    model: '',
   })
+  // Models the probe found at the endpoint, and the default provider row
+  // we are editing (if one exists already).
+  const [llmModels, setLlmModels] = useState<string[]>([])
+  const [existingProvider, setExistingProvider] = useState<{ id: string; name: string } | null>(null)
   const [jira, setJira] = useState<JiraForm>({ url: '', email: '', api_token: '', project_key: '' })
 
   // GitHub multi-account state
@@ -335,28 +419,21 @@ function CredentialsStep({ onNext }: CredentialsStepProps) {
   useEffect(() => {
     async function loadExisting() {
       try {
-        // Load LLM credentials
-        const llmCreds = await get<CredentialEntry[]>('/admin/credentials?category=llm')
-        if (llmCreds.length > 0) {
-          const findVal = (key: string) => {
-            const entry = llmCreds.find(c => c.key_name === key)
-            return entry ? (entry.is_secret ? '••••••••' : entry.value) : ''
-          }
-          const provider = findVal('provider')
-          const endpoint = findVal('endpoint')
-
-          setLlm({
-            provider: provider && provider !== '••••••••' ? provider as LLMProvider : 'ollama',
-            endpoint: endpoint && endpoint !== '••••••••' ? endpoint : 'http://host.docker.internal:11434',
-            api_key: '',
-          })
-
-          // LLM credentials exist — auto-test
-          try {
-            await post('/admin/credentials/test', { category: 'llm' })
-            setLlmTest({ result: 'ok', msg: 'Already configured — connection verified' })
-          } catch {
-            setLlmTest({ result: 'error', msg: 'Credentials exist but connection failed' })
+        // Load the default LLM provider (what agents actually run on) and
+        // verify it. Credentials are synced from it; editing them directly
+        // never set a model (F13).
+        const providers = await get<Array<{ id: string; name: string; provider_type: string; endpoint: string; is_default: boolean; enabled: boolean; settings?: Record<string, unknown> }>>('/admin/providers').catch(() => [])
+        const def = (providers ?? []).find(p => p.is_default && p.enabled)
+        if (def) {
+          const model = typeof def.settings?.model === 'string' ? def.settings.model : ''
+          setExistingProvider({ id: def.id, name: def.name })
+          setLlm({ provider: (def.provider_type as LLMProvider) || 'ollama', endpoint: def.endpoint, api_key: '', model })
+          const probe = await post<ProbeResult>('/admin/providers/probe', { provider_type: def.provider_type, endpoint: def.endpoint, api_key: '' }).catch(() => null)
+          if (probe?.reachable) {
+            setLlmModels(probe.models ?? [])
+            setLlmTest({ result: 'ok', msg: model ? 'Already configured — connection verified' : 'Connected — choose a model to continue' })
+          } else {
+            setLlmTest({ result: 'error', msg: `Provider is configured but unreachable: ${probe?.error ?? 'no response'}` })
           }
         }
 
@@ -397,15 +474,25 @@ function CredentialsStep({ onNext }: CredentialsStepProps) {
     } finally { setGhAdding(false) }
   }
 
-  const llmOk = llmTest.result === 'ok'
+  const llmOk = llmTest.result === 'ok' && llm.model.trim() !== ''
   const ghOk = accounts.length > 0
-  const canContinue = llmOk && ghOk
+  // A GitHub account is optional: local paths and mirrors need none (F4).
+  const canContinue = llmOk
 
+  // Probe the endpoint as typed (not the stored credentials) and list its
+  // models; "reachable" comes from the response body, which always
+  // arrives with HTTP 200.
   async function testLLM() {
     setLlmTest({ result: 'idle', msg: '' })
     try {
-      await post('/admin/credentials/test', { category: 'llm' })
-      setLlmTest({ result: 'ok', msg: 'Connection successful' })
+      const res = await post<ProbeResult>('/admin/providers/probe', { provider_type: llm.provider, endpoint: llm.endpoint, api_key: llm.api_key })
+      if (res?.reachable) {
+        setLlmModels(res.models ?? [])
+        setLlmTest({ result: 'ok', msg: res.models?.length ? `Connection successful — ${res.models.length} model(s) available` : 'Connection successful' })
+      } else {
+        setLlmModels([])
+        setLlmTest({ result: 'error', msg: res?.error ?? 'Connection failed' })
+      }
     } catch (e: unknown) {
       setLlmTest({ result: 'error', msg: e instanceof Error ? e.message : 'Connection failed' })
     }
@@ -474,13 +561,21 @@ function CredentialsStep({ onNext }: CredentialsStepProps) {
       // All credentials are stored at scope='global' / scope_target='default' —
       // the only place ResolveCredential's chain terminates. category
       // disambiguates llm vs github vs jira; scope_target does not.
+      // The LLM provider is saved as a provider row — the source agents are
+      // synced from — not as loose credentials. The first provider becomes
+      // the default and carries the model (F13). Updates go through the
+      // rollout guard's override prompt; a first-time setup is exempt.
+      const settings = { model: llm.model.trim() }
+      if (existingProvider) {
+        await guarded(`/admin/providers/update?id=${existingProvider.id}`, p => put(p, {
+          name: existingProvider.name, endpoint: llm.endpoint, api_key: llm.api_key, settings, enabled: true,
+        }))
+      } else {
+        await post('/admin/providers/create', {
+          name: `${llm.provider} (onboarding)`, provider_type: llm.provider, endpoint: llm.endpoint, api_key: llm.api_key, settings,
+        })
+      }
       const credentialPayloads = [
-        { scope: 'global', scope_target: 'default', key_name: 'provider', value: llm.provider, category: 'llm', is_secret: false, description: 'LLM provider' },
-        { scope: 'global', scope_target: 'default', key_name: 'endpoint', value: llm.endpoint, category: 'llm', is_secret: false, description: 'LLM endpoint' },
-        // Skip api_key if it's the placeholder (already stored in registry)
-        ...(llm.api_key && llm.api_key !== PLACEHOLDER
-          ? [{ scope: 'global', scope_target: 'default', key_name: 'api_key', value: llm.api_key, category: 'llm', is_secret: true, description: 'LLM API key' }]
-          : []),
         // GitHub accounts are managed via /admin/github/accounts — no legacy token payload needed.
         { scope: 'global', scope_target: 'default', key_name: 'url', value: jira.url, category: 'jira', is_secret: false, description: 'Jira URL' },
         { scope: 'global', scope_target: 'default', key_name: 'email', value: jira.email, category: 'jira', is_secret: false, description: 'Jira email' },
@@ -512,16 +607,15 @@ function CredentialsStep({ onNext }: CredentialsStepProps) {
       <div>
         <h2 className="text-base font-semibold text-fg">Configure Credentials</h2>
         <p className="mt-1 text-sm text-muted">
-          LLM and GitHub connections are required. Jira is optional.
+          An LLM provider with a model is required. GitHub and Jira are optional.
         </p>
       </div>
 
       {/* Blockers */}
-      {(!llmOk || !ghOk) && (
+      {!llmOk && (
         <div className="rounded-sm border border-red-700/50 bg-red-900/10 px-4 py-3 space-y-1">
-          <p className="text-xs font-semibold text-red-400">Blockers — must resolve to continue:</p>
-          {!llmOk && <p className="text-xs text-red-300">• LLM connection not verified</p>}
-          {!ghOk && <p className="text-xs text-red-300">• No GitHub account connected</p>}
+          <p className="text-xs font-semibold text-red-400">Blocker — must resolve to continue:</p>
+          <p className="text-xs text-red-300">• LLM provider not verified — test the connection and choose a model</p>
         </div>
       )}
 
@@ -578,6 +672,20 @@ function CredentialsStep({ onNext }: CredentialsStepProps) {
             </div>
           </div>
         </div>
+        <div className="mt-3">
+          <label className="mb-1 block text-xs text-muted">Model</label>
+          <input
+            type="text"
+            list="onboarding-llm-models"
+            value={llm.model}
+            onChange={e => setLlm(l => ({ ...l, model: e.target.value }))}
+            placeholder={llmModels.length ? 'Choose from the models found at this endpoint' : 'e.g. qwen3.6:35b — test the connection to list installed models'}
+            className={inputClass()}
+          />
+          <datalist id="onboarding-llm-models">
+            {llmModels.map(m => <option key={m} value={m} />)}
+          </datalist>
+        </div>
         {llmTest.msg && (
           <p className={`mt-2 text-xs ${llmTest.result === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
             {llmTest.msg}
@@ -594,9 +702,10 @@ function CredentialsStep({ onNext }: CredentialsStepProps) {
       {/* GitHub Accounts */}
       <div className="rounded-sm border border-rule bg-surface-900 p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-fg">GitHub Accounts</h3>
-          {ghOk ? <span className="text-xs text-emerald-400">Passed</span> : <span className="text-xs text-dim">Not connected</span>}
+          <h3 className="text-sm font-semibold text-fg">GitHub Accounts <span className="ml-1 rounded-full bg-surface-700/50 px-2 py-0.5 text-xs font-normal text-muted">Optional</span></h3>
+          {ghOk ? <span className="text-xs text-emerald-400">Connected</span> : <span className="text-xs text-dim">None — fine for local or mirror repositories</span>}
         </div>
+        <p className="mb-3 text-xs text-dim">Needed only to browse and clone GitHub-hosted repositories. A local path or mirror works without one.</p>
         <div className="space-y-3">
           {accounts.map(a => (
             <div key={a.id} className="flex items-center gap-3 rounded-sm border border-rule bg-surface-950 px-3 py-2">
@@ -839,7 +948,7 @@ function CredentialsStep({ onNext }: CredentialsStepProps) {
 
       {!canContinue && (
         <p className="text-xs text-dim">
-          Verify LLM connection and add at least one GitHub account to unlock Continue.
+          Test the LLM connection and choose a model to unlock Continue. A GitHub account is optional.
         </p>
       )}
 
@@ -1553,7 +1662,7 @@ function AddRepositoriesStep({ product, onNext }: AddRepositoriesStepProps) {
             </p>
           ) : (
             <p className="text-xs text-dim">
-              Background scan will start automatically after clone completes.
+              The codebase scan starts from the Analysis step (step 6). It needs a default embedding provider — see Admin → Embeddings.
             </p>
           )}
         </div>
@@ -2855,19 +2964,45 @@ const STEPS: Array<{ key: OnboardingPhase; label: string }> = [
 // ─── Wizard Shell ─────────────────────────────────────────────────────────────
 
 export default function OnboardingWizard() {
-  const [searchParams] = useSearchParams()
+  const { get } = useApi()
+  const [searchParams, setSearchParams] = useSearchParams()
   const initialProductId = searchParams.get('product_id')
+  const urlStep = searchParams.get('step')
+  const initialStep: OnboardingPhase =
+    initialProductId && STEPS.some(s => s.key === urlStep) ? (urlStep as OnboardingPhase) : 'product'
 
-  const [phase, setPhase] = useState<OnboardingPhase>('product')
+  const [phase, setPhaseState] = useState<OnboardingPhase>(initialStep)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [repos, setRepos] = useState<Repository[]>([])
+
+  // The step and product live in the URL so a reload resumes the wizard
+  // where it was instead of at step 1 (F12).
+  const setPhase = useCallback((p: OnboardingPhase) => {
+    setPhaseState(p)
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('step', p); return next }, { replace: true })
+  }, [setSearchParams])
+
+  useEffect(() => {
+    if (initialStep === 'product' || !initialProductId) return
+    let cancelled = false
+    Promise.all([
+      get<Product[]>('/admin/products').catch(() => [] as Product[]),
+      get<Repository[]>(`/admin/repositories?product_id=${initialProductId}`).catch(() => [] as Repository[]),
+    ]).then(([products, r]) => {
+      if (cancelled) return
+      const p = (products ?? []).find(x => x.id === initialProductId)
+      if (p) { setSelectedProduct(p); setRepos(r ?? []) } else { setPhaseState('product') }
+    })
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentIndex = STEPS.findIndex(s => s.key === phase)
 
   const handleProductSelected = useCallback((product: Product) => {
     setSelectedProduct(product)
-    setPhase('credentials')
-  }, [])
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('product_id', product.id); next.set('step', 'credentials'); return next }, { replace: true })
+    setPhaseState('credentials')
+  }, [setSearchParams])
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-6">
