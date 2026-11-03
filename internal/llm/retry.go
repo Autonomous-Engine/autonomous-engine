@@ -123,6 +123,7 @@ func IsTransientLLMError(err error) bool {
 		"status 504",
 		"status 529",                      // anthropic capacity
 		"overloaded",                      // anthropic capacity text
+		"xml syntax error",                // ollama 500: the model's tool-call XML was malformed on this call (rerun NEW-11)
 	}
 	for _, sub := range transientSubstrings {
 		if strings.Contains(msg, sub) {
