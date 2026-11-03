@@ -201,10 +201,14 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 			lowRiskCount, totalMods, riskNotes,
 		)
 	} else if totalMods > 0 {
+		// Never propose blanket autonomy: "no module has more than 5
+		// dependents" is what a library looks like, and its root package is
+		// the public API every consumer depends on (F25).
 		scopeValue = fmt.Sprintf(
-			"All %d modules are low-risk (none have >5 dependents). "+
-				"Autonomous changes allowed across the codebase. "+
-				"Consider restricting auth, database, and API boundary modules once identified.",
+			"The dependency heuristic found no high-risk module among %d (none has more than 5 dependents). "+
+				"That is normal for a library: its root package is the exported API every consumer depends on. "+
+				"Require human review for changes to the exported API and to parsing or encoding logic; "+
+				"describe which paths the agent may change on its own.",
 			totalMods,
 		)
 		scopeConf = onboarding.ConfidenceLow
@@ -222,7 +226,7 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 
 	// 13. review_triggers — specific to what was detected
 	var triggerParts []string
-	triggerParts = append(triggerParts, "auth/security modules", "database schema changes", "public API surfaces")
+	triggerParts = append(triggerParts, "auth/security modules", "database schema changes", "the exported API of the root package", "dependency manifests (go.mod, package.json)")
 	if len(in.HighRiskModules) > 0 {
 		triggerParts = append(triggerParts, fmt.Sprintf("high-risk modules: %s", riskNotes))
 	}
@@ -250,8 +254,9 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 		)
 	} else if totalMods > 0 {
 		riskValue = fmt.Sprintf(
-			"No high-risk modules detected across %d modules. "+
-				"All modules have 5 or fewer dependents. Risk profile is flat.",
+			"No module has more than 5 dependents across %d modules, so the heuristic flags none. "+
+				"Treat the root package (the exported API) and the packages it relies on for parsing, encoding or persistence as highest risk; "+
+				"list the paths that need human review.",
 			totalMods,
 		)
 	} else {

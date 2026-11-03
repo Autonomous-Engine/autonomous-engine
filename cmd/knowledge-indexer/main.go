@@ -952,11 +952,15 @@ func (s *server) runPrefill(
 		})
 	}
 
-	// High-risk modules: dependents>5 (mirrors updateCodexModules).
+	// High-risk modules: dependents>5 on the same dependency graph the codex
+	// uses (updateCodexModules). The old count keyed raw import strings by
+	// module name, which never matched for Go (full import paths vs package
+	// names), so the prefill never saw a high-risk module (F25).
+	deps := buildDependencyGraph(modules)
 	dependentsByMod := map[string]int{}
-	for _, m := range modules {
-		for _, imp := range m.Imports {
-			dependentsByMod[imp]++
+	for _, depList := range deps {
+		for _, dep := range depList {
+			dependentsByMod[dep]++
 		}
 	}
 	var highRisk []string
