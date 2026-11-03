@@ -1,6 +1,21 @@
 package tools
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/autonomousengine/autonomous-engine/internal/llm/adapter"
+)
+
+// toolPathArg is a file tool call's path argument ("" when it has none).
+func toolPathArg(c adapter.ToolCall) string {
+	var args map[string]any
+	if json.Unmarshal([]byte(c.Arguments), &args) != nil {
+		return ""
+	}
+	p, _ := args["path"].(string)
+	return p
+}
 
 // The edit gate (LoopOptions.EditGate). Live, the implementation agent
 // spent 21 calls (243k tokens) reading files and describing what it would

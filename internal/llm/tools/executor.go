@@ -4457,10 +4457,11 @@ func RunToolLoopWithOptions(
 		}
 	}
 	var stuck *stuckTracker
-	var cycles *cycleGuard   // R17: whole-turn cycles
-	unrecordedReads := 0     // Findings read gate: read turns since the last finding
-	uneditedReads := 0       // EditGate: read turns since the last edit (gate.go)
-	var repeats *readRepeats // R17: repeated reads of a read-only tree
+	var cycles *cycleGuard          // R17: whole-turn cycles
+	unrecordedReads := 0            // Findings read gate: read turns since the last finding
+	uneditedReads := 0              // EditGate: read turns since the last edit (gate.go)
+	gateExempt := map[string]bool{} // paths a REJECTED edit asked the model to read: served through the gate
+	var repeats *readRepeats        // R17: repeated reads of a read-only tree
 	if opts.StuckControl {
 		stuck = newStuckTracker(opts.PriorStuck)
 		cycles = newCycleGuard()
@@ -5006,6 +5007,13 @@ func RunToolLoopWithOptions(
 				if !isReadTool(c.Name) {
 					continue
 				}
+				// The read a rejected edit asked for is served (live: the
+				// read-before-edit gate and the edit gate refused each other
+				// until the budget was gone).
+				if p := pinPath(toolPathArg(c)); p != "" && gateExempt[p] {
+					delete(gateExempt, p)
+					continue
+				}
 				if shortReads == nil {
 					shortReads = map[int]adapter.ToolResult{}
 				}
@@ -5084,6 +5092,10 @@ func RunToolLoopWithOptions(
 				switch {
 				case (IsFileEditTool(c.Name) || isWriteTool(c.Name)) && !validResults[k].IsError:
 					edited = true
+				case (IsFileEditTool(c.Name) || isWriteTool(c.Name)) && strings.HasPrefix(strings.TrimSpace(validResults[k].Content), "REJECTED"):
+					if p := pinPath(toolPathArg(c)); p != "" {
+						gateExempt[p] = true
+					}
 				case isReadTool(c.Name) && !validResults[k].IsError:
 					readServed = true
 				}

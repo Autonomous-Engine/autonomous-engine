@@ -123,6 +123,9 @@ func replayAttempt12(t *testing.T, rp attempt12Replay, dedup bool) (chars []int,
 	o := implementationLoopOptions(req.Tools, func() bool { return false }, rp.Scope, nil)
 	o.CheckpointStore = func(context.Context, uuid.UUID, uuid.UUID, string, int, []byte, string, int) error { return nil }
 	o.DedupReads = dedup
+	if !dedup {
+		o.EditGate = 0 // the "before" replay reproduces the recorded run: no gate either
+	}
 	if _, err := tools.RunToolLoopWithOptions(context.Background(), model, req, ex, 60, nil, nil, o); err != nil {
 		t.Logf("loop ended: %v", err)
 	}
