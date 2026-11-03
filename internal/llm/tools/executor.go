@@ -4511,6 +4511,7 @@ func RunToolLoopWithOptions(
 	unrecordedReads := 0     // Findings read gate: read turns since the last finding
 	uneditedReads := 0       // EditGate: read turns since the last edit (gate.go)
 	sent := newSentTracker() // work tokens: input not sent before (work_tokens.go)
+	rec := &loopRecorder{db: db, workItemID: workItemID, sent: sent}
 	progress := newProgressTracker()
 	gateExempt := map[string]bool{} // paths a REJECTED edit asked the model to read: served through the gate
 	gateScope := map[string]bool{}  // the files in scope: what the task edits, never refused (gate.go)
@@ -4563,7 +4564,7 @@ func RunToolLoopWithOptions(
 				// Something ran: close with what it showed (the ledger
 				// and any findings), not an error for the whole round.
 				if opts.Findings && (len(executor.Findings()) > 0 || toolsRun > 0) {
-					return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("stopped after %d iterations: %v", i, err))
+					return closingAnswer(ctx, llmAdapter, rec, req, fmt.Sprintf("stopped after %d iterations: %v", i, err))
 				}
 				return nil, fmt.Errorf("tool loop stopped after %d iterations: %w", i, err)
 			}
@@ -4601,92 +4602,29 @@ func RunToolLoopWithOptions(
 			req.Tools = filtered
 		}
 
-		// Insert the inference_logs row BEFORE the LLM call so the dashboard
-		// can show it as "running" while it's in flight. Update at the end.
-		// latency_ms=0 is the dashboard's "still running" marker.
-		var logID string
-		if db != nil && workItemID != nil {
-			// agent_id is a UUID column; passing the literal string "tool-agent"
-			// triggered a silent INSERT failure (errors swallowed below). Leave
-			// it NULL — the intent_type="tool_loop" is enough to identify these
-			// rows for the dashboard.
-			// M4-05: the caller's inference tags (role, agent type, config
-			// snapshot, resolved model) come from ctx (llm.WithInferenceTags).
-			tags := llm.InferenceTagsFrom(ctx)
-			provider, modelID := llm.ModelIdentity(llmAdapter.Name(), tags)
-			insertErr := db.QueryRow(ctx,
-				`INSERT INTO inference_logs (model_provider, model_id, intent_type, input_tokens, output_tokens, latency_ms, success, error_message, work_item_id, agent_id, created_at,
-				                             role, agent_type, config_snapshot_id)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NOW(), $10, $11, $12)
-				 RETURNING id::text`,
-				provider, modelID, "tool_loop", 0, 0,
-				int64(0), false, "", workItemID,
-				llm.NullIfEmpty(tags.Role), llm.NullIfEmpty(tags.AgentType), llm.NullIfEmpty(tags.ConfigSnapshotID),
-			).Scan(&logID)
-			if insertErr != nil {
-				fmt.Printf("tool-executor: insert in-progress inference_logs row failed: %v\n", insertErr)
-			}
-			if logID != "" {
-				_, _ = db.Exec(ctx, "SELECT pg_notify('inference_started', $1)", logID)
-			}
-		}
-
-		callStart := time.Now()
-		var resp *adapter.CompletionResponse
-		var err error
-		newInput := sent.newInputTokens(req)
-		for attempt := 0; attempt < 3; attempt++ {
-			resp, err = llmAdapter.Complete(ctx, req)
-			if err == nil || !llm.IsTransientLLMError(err) {
-				break
-			}
-			if attempt < 2 {
-				delay := time.Duration(5*(1<<uint(attempt))) * time.Second // 5s, 10s
-				log.Printf("tool-loop: transient error on LLM call %d attempt %d/3 (%v); retrying in %s", i, attempt+1, err, delay)
-				select {
-				case <-time.After(delay):
-				case <-ctx.Done():
+		// The call is recorded in inference_logs around its execution
+		// (loop_recorder.go: a "running" row before, the outcome, the
+		// conversation and the work after).
+		resp, work, err := rec.complete(ctx, llmAdapter, req, func() (*adapter.CompletionResponse, error) {
+			var r *adapter.CompletionResponse
+			var e error
+			for attempt := 0; attempt < 3; attempt++ {
+				r, e = llmAdapter.Complete(ctx, req)
+				if e == nil || !llm.IsTransientLLMError(e) {
 					break
 				}
-			}
-		}
-		latency := time.Since(callStart)
-
-		// Update the row with the real outcome + conversation content.
-		if db != nil && workItemID != nil && logID != "" {
-			errMsg := ""
-			if err != nil {
-				errMsg = err.Error()
-			}
-			var inputTokens, outputTokens int
-			var workTokens int64
-			responseText := ""
-			if resp != nil {
-				inputTokens = resp.InputTokens
-				outputTokens = resp.OutputTokens
-				if resp.InputTokens > 0 && newInput > int64(resp.InputTokens) {
-					newInput = int64(resp.InputTokens)
+				if attempt < 2 {
+					delay := time.Duration(5*(1<<uint(attempt))) * time.Second // 5s, 10s
+					log.Printf("tool-loop: transient error on LLM call %d attempt %d/3 (%v); retrying in %s", i, attempt+1, e, delay)
+					select {
+					case <-time.After(delay):
+					case <-ctx.Done():
+						break
+					}
 				}
-				workTokens = newInput + int64(resp.OutputTokens) // work_tokens.go
-				responseText = resp.Content
 			}
-			messagesJSON := []byte("[]")
-			if b, mErr := json.Marshal(req.Messages); mErr == nil {
-				messagesJSON = b
-			}
-			_, _ = db.Exec(ctx,
-				`UPDATE inference_logs
-				 SET input_tokens = $1, output_tokens = $2, latency_ms = $3,
-				     success = $4, error_message = $5,
-				     prompt_messages = $6::jsonb, response_content = $7,
-				     work_tokens = $9
-				 WHERE id = $8::uuid`,
-				inputTokens, outputTokens, latency.Milliseconds(),
-				err == nil, errMsg, string(messagesJSON), responseText, logID,
-				workTokens,
-			)
-			_, _ = db.Exec(ctx, "SELECT pg_notify('inference_completed', $1)", logID)
-		}
+			return r, e
+		})
 
 		if err != nil {
 			return nil, fmt.Errorf("LLM call %d failed: %w", i, err)
@@ -4698,11 +4636,6 @@ func RunToolLoopWithOptions(
 			metrics.LLMTokensUsed.Add(int64(resp.InputTokens + resp.OutputTokens))
 			// The budget counts what the call added (work_tokens.go), not
 			// the whole resent prompt.
-			// A call cannot add more input than the prompt it sent.
-			if resp.InputTokens > 0 && newInput > int64(resp.InputTokens) {
-				newInput = int64(resp.InputTokens)
-			}
-			work := newInput + int64(resp.OutputTokens)
 			cumulativeTokens += work
 			loopTokens += work
 		}
@@ -5197,7 +5130,7 @@ func RunToolLoopWithOptions(
 			reason := fmt.Sprintf("no progress in %d tool turns: no edit or write applied, no command run, no finding recorded, no call the loop had not made before", noProgressWindow)
 			log.Printf("tool-loop: %s — ending the loop", reason)
 			if opts.Findings && toolsRun > 0 {
-				return closingAnswer(ctx, llmAdapter, req, reason)
+				return closingAnswer(ctx, llmAdapter, rec, req, reason)
 			}
 			return nil, &LoopStuck{Tool: "(none)", Kind: StuckKindNoProgress, Reason: reason, Attempts: noProgressWindow}
 		}
@@ -5324,10 +5257,10 @@ func RunToolLoopWithOptions(
 	}
 
 	if opts.Findings && (len(executor.Findings()) > 0 || toolsRun > 0) {
-		return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("iteration cap %d reached", maxIterations))
+		return closingAnswer(ctx, llmAdapter, rec, req, fmt.Sprintf("iteration cap %d reached", maxIterations))
 	}
 	if opts.CloseAtLimit && toolsRun > 0 {
-		return closingAnswerWith(ctx, llmAdapter, req, closeAtLimitMessage, fmt.Sprintf("iteration cap %d reached", maxIterations))
+		return closingAnswerWith(ctx, llmAdapter, rec, req, closeAtLimitMessage, fmt.Sprintf("iteration cap %d reached", maxIterations))
 	}
 	return nil, fmt.Errorf("%w: %d iterations", ErrSafetyLimit, maxIterations)
 }

@@ -253,21 +253,22 @@ const closingAnswerMessage = "You have reached this task's limit. Write your ans
 // budget with an answer written from the findings it recorded: one call,
 // no tools, FinishReason "closed_at_limit". Live, pattern_match explored
 // for 25 iterations, recorded 13 findings and returned nothing.
-func closingAnswer(ctx context.Context, llmAdapter adapter.ModelAdapter, req adapter.CompletionRequest, why string) (*adapter.CompletionResponse, error) {
-	return closingAnswerWith(ctx, llmAdapter, req, closingAnswerMessage, why)
+func closingAnswer(ctx context.Context, llmAdapter adapter.ModelAdapter, rec *loopRecorder, req adapter.CompletionRequest, why string) (*adapter.CompletionResponse, error) {
+	return closingAnswerWith(ctx, llmAdapter, rec, req, closingAnswerMessage, why)
 }
 
 // closeAtLimitMessage closes a CloseAtLimit loop (no findings ledger).
 const closeAtLimitMessage = "Your tool-call budget for this task is used up. Answer now from what you have already read and run, in the format the task asks for; no more tool calls."
 
 // closingAnswerWith is closingAnswer with its own closing message.
-func closingAnswerWith(ctx context.Context, llmAdapter adapter.ModelAdapter, req adapter.CompletionRequest, message, why string) (*adapter.CompletionResponse, error) {
+func closingAnswerWith(ctx context.Context, llmAdapter adapter.ModelAdapter, rec *loopRecorder, req adapter.CompletionRequest, message, why string) (*adapter.CompletionResponse, error) {
 	req.Tools = nil
 	req.ToolChoice = ""
 	req.ToolResults = nil
 	req.Messages = append(append([]adapter.ChatMessage(nil), req.Messages...), adapter.ChatMessage{Role: adapter.RoleUser, Content: message})
 	log.Printf("tool-loop: %s — closing with an answer", why)
-	resp, err := llmAdapter.Complete(ctx, req)
+	// Recorded like every other call of the loop (loop_recorder.go).
+	resp, _, err := rec.complete(ctx, llmAdapter, req, func() (*adapter.CompletionResponse, error) { return llmAdapter.Complete(ctx, req) })
 	if err != nil {
 		return nil, fmt.Errorf("closing answer after %s: %w", why, err)
 	}
