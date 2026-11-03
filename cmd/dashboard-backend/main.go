@@ -118,6 +118,7 @@ func main() {
 	wsHub := NewWSHub(pool)
 	adminHandlers := NewAdminHandlers(configStore, pool)
 	authHandlers := NewAuthHandlers(authManager, pool)
+	authHandlers.invalidate = authSvc.Invalidate
 	userHandlers := NewUserHandlers(pool)
 	ollamaHandlers := NewOllamaHandlers(pool, configStore)
 	providerHandlers := NewProviderHandlers(pool, configStore)

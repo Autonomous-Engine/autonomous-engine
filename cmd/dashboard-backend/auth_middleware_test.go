@@ -102,3 +102,26 @@ func TestMiddlewareCachesTheLookupForTTL(t *testing.T) {
 		t.Fatalf("lookup called %d times with TTL 0, want a fresh lookup", calls)
 	}
 }
+
+// Right after the mandatory password change the cached record still said
+// "must change", so the dashboard got 403s for up to the cache TTL
+// (rerun NEW-1). Changing the password drops that user's cached record.
+func TestInvalidateDropsTheCachedUserRecord(t *testing.T) {
+	jwtSecret = []byte("test-secret")
+	mustChange := true
+	a := &AuthService{cacheTTL: time.Minute, lookup: func(context.Context, string) (userRecord, bool, error) {
+		return userRecord{Role: "admin", MustChangePassword: mustChange}, true, nil
+	}}
+	ok := func(http.ResponseWriter, *http.Request) {}
+	if rec := call(t, a, "/api/products", ok); rec.Code != http.StatusForbidden {
+		t.Fatalf("before the change: %d, want 403", rec.Code)
+	}
+	mustChange = false // the handler cleared the flag in the database
+	if rec := call(t, a, "/api/products", ok); rec.Code != http.StatusForbidden {
+		t.Fatalf("stale cache should still answer 403 within the TTL, got %d (test premise)", rec.Code)
+	}
+	a.Invalidate("u1")
+	if rec := call(t, a, "/api/products", ok); rec.Code != http.StatusOK {
+		t.Fatalf("after Invalidate: %d, want 200", rec.Code)
+	}
+}

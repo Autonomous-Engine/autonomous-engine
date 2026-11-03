@@ -21,6 +21,16 @@ import (
 type AuthHandlers struct {
 	manager *auth.Manager
 	db      *pgxpool.Pool
+	// invalidate drops the API middleware's cached record for a user; set
+	// by main to AuthService.Invalidate. A password change or a fresh login
+	// must be seen at once, not after the cache TTL (rerun NEW-1).
+	invalidate func(userID string)
+}
+
+func (h *AuthHandlers) dropCached(userID string) {
+	if h.invalidate != nil && userID != "" {
+		h.invalidate(userID)
+	}
 }
 
 // NewAuthHandlers creates an AuthHandlers using the provided Manager and pool.
@@ -72,6 +82,7 @@ func (h *AuthHandlers) issueSessionAndRespond(w http.ResponseWriter, r *http.Req
 		http.Error(w, `{"error":"user upsert failed"}`, http.StatusInternalServerError)
 		return
 	}
+	h.dropCached(userID)
 
 	token, err := h.manager.IssueToken(result)
 	if err != nil {
@@ -287,8 +298,8 @@ type responseRecorder struct {
 	body   []byte
 }
 
-func (rr *responseRecorder) Header() http.Header        { return rr.header }
-func (rr *responseRecorder) WriteHeader(code int)       { rr.code = code }
+func (rr *responseRecorder) Header() http.Header  { return rr.header }
+func (rr *responseRecorder) WriteHeader(code int) { rr.code = code }
 func (rr *responseRecorder) Write(b []byte) (int, error) {
 	rr.body = append(rr.body, b...)
 	return len(b), nil
@@ -383,6 +394,7 @@ func (h *AuthHandlers) HandleChangePassword(w http.ResponseWriter, r *http.Reque
 		http.Error(w, `{"error":"failed to update password"}`, http.StatusInternalServerError)
 		return
 	}
+	h.dropCached(userID)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "changed"})
 }
@@ -721,15 +733,15 @@ func (h *AuthHandlers) HandleLoginAudit(w http.ResponseWriter, r *http.Request) 
 	defer rows.Close()
 
 	type auditRow struct {
-		ID            string     `json:"id"`
-		UserID        *string    `json:"user_id"`
-		Email         string     `json:"email"`
-		Provider      string     `json:"provider"`
-		Success       bool       `json:"success"`
-		FailureReason *string    `json:"failure_reason"`
-		IPAddress     string     `json:"ip_address"`
-		UserAgent     string     `json:"user_agent"`
-		CreatedAt     time.Time  `json:"created_at"`
+		ID            string    `json:"id"`
+		UserID        *string   `json:"user_id"`
+		Email         string    `json:"email"`
+		Provider      string    `json:"provider"`
+		Success       bool      `json:"success"`
+		FailureReason *string   `json:"failure_reason"`
+		IPAddress     string    `json:"ip_address"`
+		UserAgent     string    `json:"user_agent"`
+		CreatedAt     time.Time `json:"created_at"`
 	}
 
 	results := []auditRow{}

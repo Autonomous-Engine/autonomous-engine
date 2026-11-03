@@ -119,6 +119,15 @@ func (a *AuthService) dbLookup(ctx context.Context, userID string) (userRecord, 
 	return rec, true, nil
 }
 
+// Invalidate drops the user's cached record so the next request reads the
+// database: after the mandatory password change the stale record kept
+// answering 403 for the rest of the TTL (rerun NEW-1).
+func (a *AuthService) Invalidate(userID string) {
+	a.mu.Lock()
+	delete(a.cache, userID)
+	a.mu.Unlock()
+}
+
 // lookupCached is lookup with a per-user cache of cacheTTL.
 func (a *AuthService) lookupCached(ctx context.Context, userID string) (userRecord, bool, error) {
 	a.mu.Lock()
