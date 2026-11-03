@@ -17,11 +17,11 @@ import (
 func TestResearchStageHookMeasuresResearchSpendOnly(t *testing.T) {
 	spent := int64(100)
 	hook := researchStageHook(0.4, func(context.Context) (int64, bool) { return spent, true }, nil)
-	if err := hook(context.Background(), 600_000, 500_000); err != nil {
+	if err := hook(context.Background(), 600_000, 500_000, 600_000); err != nil {
 		t.Fatalf("lifetime total is over budget but research spent 100: %v", err)
 	}
 	spent = 200_001
-	err := hook(context.Background(), 200_001, 500_000)
+	err := hook(context.Background(), 200_001, 500_000, 200_001)
 	if !errors.Is(err, tools.ErrTokenBudgetExceeded) {
 		t.Fatalf("over the share: err = %v, want ErrTokenBudgetExceeded", err)
 	}
@@ -29,10 +29,10 @@ func TestResearchStageHookMeasuresResearchSpendOnly(t *testing.T) {
 
 func TestResearchStageHookFallsBackToTheLoopTotal(t *testing.T) {
 	hook := researchStageHook(0.4, func(context.Context) (int64, bool) { return 0, false }, nil)
-	if err := hook(context.Background(), 199_999, 500_000); err != nil {
+	if err := hook(context.Background(), 199_999, 500_000, 199_999); err != nil {
 		t.Fatalf("under the share: %v", err)
 	}
-	if err := hook(context.Background(), 200_001, 500_000); !errors.Is(err, tools.ErrTokenBudgetExceeded) {
+	if err := hook(context.Background(), 200_001, 500_000, 200_001); !errors.Is(err, tools.ErrTokenBudgetExceeded) {
 		t.Fatalf("over the share: err = %v", err)
 	}
 }
@@ -60,20 +60,20 @@ func TestResearchTokenShareDefaultsAndParses(t *testing.T) {
 func TestResearchStageHookCapsEachTaskAtItsSlice(t *testing.T) {
 	spent := int64(100_000)
 	hook := researchStageHook(0.4, func(context.Context) (int64, bool) { return spent, true }, func(context.Context) int { return 3 })
-	if err := hook(context.Background(), 50_000, 500_000); err != nil {
+	if err := hook(context.Background(), 220_000, 500_000, 50_000); err != nil {
 		t.Fatalf("under the slice (50k of 66k) and the share: %v", err)
 	}
-	err := hook(context.Background(), 70_000, 500_000)
+	err := hook(context.Background(), 220_000, 500_000, 70_000)
 	if !errors.Is(err, tools.ErrTokenBudgetExceeded) || !strings.Contains(err.Error(), "slice") {
 		t.Fatalf("over the task's slice: err = %v, want ErrTokenBudgetExceeded naming the slice", err)
 	}
 	spent = 201_000
-	if err := hook(context.Background(), 10_000, 500_000); !errors.Is(err, tools.ErrTokenBudgetExceeded) {
+	if err := hook(context.Background(), 220_000, 500_000, 10_000); !errors.Is(err, tools.ErrTokenBudgetExceeded) {
 		t.Fatalf("over the round's share: err = %v", err)
 	}
 	// An unknown task count is one task: the whole share.
 	hook = researchStageHook(0.4, func(context.Context) (int64, bool) { return 0, true }, func(context.Context) int { return 0 })
-	if err := hook(context.Background(), 150_000, 500_000); err != nil {
+	if err := hook(context.Background(), 150_000, 500_000, 150_000); err != nil {
 		t.Fatalf("unknown count: %v", err)
 	}
 }

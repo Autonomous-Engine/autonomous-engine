@@ -35,16 +35,17 @@ func researchTokenShare() float64 {
 // retry after a costly implementation must still be able to research, so
 // the lifetime total is not what is compared (review I1).
 func researchStageHook(share float64, spent func(ctx context.Context) (int64, bool), taskCount func(ctx context.Context) int) tools.IterationHook {
-	return func(ctx context.Context, cumulative, budget int64) error {
+	return func(ctx context.Context, cumulative, budget, loopSpend int64) error {
 		limit := int64(float64(budget) * share)
 		// Each task of the round gets its slice of the share, measured on
-		// its own loop's spend: a task that started last found the share
-		// spent by the other two and failed after 3 iterations (live).
+		// its own loop's spend (not the work item's total, which the loop
+		// refreshes from the database): a task that started last found the
+		// share spent by the other two and failed after 3 iterations (live).
 		if taskCount != nil {
 			if n := taskCount(ctx); n > 1 {
-				if slice := limit / int64(n); cumulative > slice {
+				if slice := limit / int64(n); loopSpend > slice {
 					return fmt.Errorf("%w: this research task used %d of its %d-token slice (the %d-token share over %d tasks)",
-						tools.ErrTokenBudgetExceeded, cumulative, slice, limit, n)
+						tools.ErrTokenBudgetExceeded, loopSpend, slice, limit, n)
 				}
 			}
 		}

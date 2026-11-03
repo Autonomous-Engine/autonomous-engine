@@ -38,7 +38,7 @@ func (stopErr) Error() string { return "budget says stop" }
 func TestIterationHookStopsTheLoopBeforeTheNextCall(t *testing.T) {
 	ex := NewExecutor(t.TempDir())
 	var seen []int64
-	ex.SetIterationHook(func(_ context.Context, cumulative, budget int64) error {
+	ex.SetIterationHook(func(_ context.Context, cumulative, budget, _ int64) error {
 		seen = append(seen, cumulative)
 		if budget != TokenBudget() {
 			t.Errorf("budget %d, want %d", budget, TokenBudget())

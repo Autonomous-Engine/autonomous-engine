@@ -86,7 +86,7 @@ func TestLoopClosesWithAnAnswerFromFindingsAtTheIterationCap(t *testing.T) {
 func TestLoopClosesWithAnAnswerWhenTheHookStops(t *testing.T) {
 	ex := NewExecutor(closingTree(t))
 	calls := 0
-	ex.SetIterationHook(func(context.Context, int64, int64) error {
+	ex.SetIterationHook(func(context.Context, int64, int64, int64) error {
 		calls++
 		if calls > 4 {
 			return fmt.Errorf("%w: research stage used its share", ErrTokenBudgetExceeded)
@@ -102,7 +102,7 @@ func TestLoopClosesWithAnAnswerWhenTheHookStops(t *testing.T) {
 	}
 	// Without findings there is nothing to answer from: the error stands.
 	ex2 := NewExecutor(closingTree(t))
-	ex2.SetIterationHook(func(context.Context, int64, int64) error { return fmt.Errorf("%w: share", ErrTokenBudgetExceeded) })
+	ex2.SetIterationHook(func(context.Context, int64, int64, int64) error { return fmt.Errorf("%w: share", ErrTokenBudgetExceeded) })
 	_, err = RunToolLoopWithOptions(context.Background(), &exploringAdapter{}, req, ex2, 50, nil, nil,
 		LoopOptions{Findings: true, EvidenceLedger: true, KeepRecent: 1, ReadOnly: true, StuckControl: true})
 	if !errors.Is(err, ErrTokenBudgetExceeded) {

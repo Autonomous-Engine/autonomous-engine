@@ -300,7 +300,9 @@ func (e *Executor) SetResultAnnotator(a ResultAnnotator) {
 // token budget counts them) and that budget. A non-nil error stops the
 // loop; RunToolLoop returns it wrapped (errors.Is/As see through). The
 // implementation agent checks its D4 budgets here (M3-06).
-type IterationHook func(ctx context.Context, cumulativeTokens, tokenBudget int64) error
+// cumulativeTokens is the work item's total (refreshed from the database
+// before every call); loopTokens is what this loop alone has spent.
+type IterationHook func(ctx context.Context, cumulativeTokens, tokenBudget, loopTokens int64) error
 
 // SetIterationHook registers the iteration hook (nil clears it).
 func (e *Executor) SetIterationHook(h IterationHook) { e.iterationHook = h }
@@ -4330,6 +4332,7 @@ func RunToolLoopWithOptions(
 	// Sonnet pricing). Override via WORK_ITEM_TOKEN_BUDGET env var.
 	tokenBudget := TokenBudget()
 	var cumulativeTokens int64
+	var loopTokens int64 // this loop's own spend, for per-task caps
 	if workItemID != nil {
 		if sum, ok := sumWorkItemTokens(ctx, db, *workItemID); ok {
 			cumulativeTokens = sum
@@ -4489,7 +4492,7 @@ func RunToolLoopWithOptions(
 		// The caller's budget check (M3-06): between iterations, before the
 		// next LLM call is paid for.
 		if executor.iterationHook != nil {
-			if err := executor.iterationHook(ctx, cumulativeTokens, tokenBudget); err != nil {
+			if err := executor.iterationHook(ctx, cumulativeTokens, tokenBudget, loopTokens); err != nil {
 				if opts.Findings && len(executor.Findings()) > 0 {
 					return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("stopped after %d iterations: %v", i, err))
 				}
@@ -4617,6 +4620,7 @@ func RunToolLoopWithOptions(
 		if resp.InputTokens > 0 || resp.OutputTokens > 0 {
 			metrics.LLMTokensUsed.Add(int64(resp.InputTokens + resp.OutputTokens))
 			cumulativeTokens += int64(resp.InputTokens + resp.OutputTokens)
+			loopTokens += int64(resp.InputTokens + resp.OutputTokens)
 		}
 
 		// Token budget kill switch.
