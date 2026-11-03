@@ -178,6 +178,7 @@ func (d *detailRecorder) eventsOf(tool string) []controller.EventRow {
 // origin) whose base ships repairRunner, a controller run, a budget and
 // the production executor and callback.
 type repairHarness struct {
+	maxIters int
 	f        *finalizeFixture
 	workID   uuid.UUID
 	taskID   uuid.UUID
@@ -229,6 +230,7 @@ func newRepairHarness(t *testing.T, model *queueAdapter, clock *fakeClock, run *
 		now = clock.Now
 	}
 	h.budget = newAttemptBudget(now, h.run, logging.New("implementation-agent-test"), h.taskID.String())
+	h.maxIters = 30
 	kb := &consoleBus{}
 	h.executor = tools.NewExecutorWithCodex(f.worktree, nil, nil, &h.product, kb, &h.workID)
 	h.executor.SetAskingAgent(agentID)
@@ -262,7 +264,7 @@ func (h *repairHarness) attempt(t *testing.T, pool *pgxpool.Pool, sink completio
 			Messages: []adapter.ChatMessage{{Role: adapter.RoleSystem, Content: "sys"}, {Role: adapter.RoleUser, Content: "make feature.txt say done"}},
 			Tools:    tools.SafeImplementationTools(), ToolChoice: "auto",
 		},
-		systemPrompt: "sys", maxIters: 30, llmAdapter: h.model, executor: h.executor, pool: pool,
+		systemPrompt: "sys", maxIters: h.maxIters, llmAdapter: h.model, executor: h.executor, pool: pool,
 		turnToolCalls: &h.calls, logger: logger, budget: h.budget, run: h.run,
 	}, sink)
 	if gen.stopped != nil {

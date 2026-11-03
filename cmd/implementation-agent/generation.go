@@ -175,6 +175,16 @@ func runGeneration(ctx context.Context, in generationInputs, sink completionSink
 				resp, loopErr = &adapter.CompletionResponse{Content: ls.Error()}, nil
 				break
 			}
+			if errors.Is(loopErr, tools.ErrSafetyLimit) {
+				// The iteration cap is a stop, not a failure: the pass ends
+				// and what it did is tested and committed, as a stuck
+				// pass's work is. Churn is the progress window's to end.
+				logger.Warn(ctx, "tool loop reached its iteration cap — ending the pass, keeping its work", map[string]interface{}{
+					"task_id": taskID.String(), "max_iterations": maxIters,
+				})
+				resp, loopErr = &adapter.CompletionResponse{Content: loopErr.Error()}, nil
+				break
+			}
 			if errors.Is(loopErr, tools.ErrToolCallingNotSupported) {
 				log.Printf("implementation-agent: model does not support tool calling: %v", loopErr)
 				reportOutcome(sink, completionOutcome{
