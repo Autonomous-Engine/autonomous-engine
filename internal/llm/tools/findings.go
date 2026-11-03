@@ -43,7 +43,43 @@ const (
 	// findingRecordedPrefix opens every successful record_finding result;
 	// the loop recognises a productive turn by it.
 	findingRecordedPrefix = "recorded finding #"
+	// findingsHeader opens the ledger's findings section.
+	findingsHeader = "## Findings so far"
+	// findingsSectionMax bounds that section; the oldest findings fall off
+	// (they are in the store) and a count line says how many.
+	findingsSectionMax = 2500
 )
+
+// findingsSection renders the findings for the ledger message, newest last,
+// de-duplicated by claim and citation, within findingsSectionMax.
+func findingsSection(fs []CitedFinding) string {
+	if len(fs) == 0 {
+		return ""
+	}
+	seen := map[string]bool{}
+	var lines []string
+	for _, f := range fs {
+		line := fmt.Sprintf("- %s (%s:%d-%d)", f.Claim, f.Path, f.StartLine, f.EndLine)
+		if seen[line] {
+			continue
+		}
+		seen[line] = true
+		lines = append(lines, line)
+	}
+	dropped := 0
+	for {
+		body := strings.Join(lines, "\n")
+		head := findingsHeader + "\n"
+		if dropped > 0 {
+			head += fmt.Sprintf("(+%d earlier findings, kept in the store)\n", dropped)
+		}
+		if len(head)+len(body) <= findingsSectionMax || len(lines) <= 1 {
+			return head + body
+		}
+		lines = lines[1:]
+		dropped++
+	}
+}
 
 // RecordFinding is the tool definition offered to loops with
 // LoopOptions.Findings.

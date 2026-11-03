@@ -180,6 +180,9 @@ type evidenceLedger struct {
 	// stays centred on the one or the other (R12 review).
 	lastEdit map[string]int
 	seedOf   func(path string) int
+	// findings, when set (LoopOptions.Findings), supplies the loop's
+	// findings for the message's "Findings so far" section.
+	findings func() []CitedFinding
 }
 
 // pinnedRange is one pin a ledger message showed: lines start..end of path
@@ -488,6 +491,11 @@ func (l *evidenceLedger) message(pinned string) string {
 	msg := ledgerHeaderParagraph + strings.Join(l.lines, "\n")
 	if pinned != "" {
 		msg += "\n\n" + pinned
+	}
+	if l.findings != nil {
+		if s := findingsSection(l.findings()); s != "" {
+			msg += "\n\n" + s
+		}
 	}
 	return msg
 }

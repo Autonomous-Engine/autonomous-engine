@@ -393,3 +393,21 @@ func TestHandlerDoesNotDiscardCodexErrors(t *testing.T) {
 		}
 	}
 }
+
+// Research keeps one turn of tool results and records findings: the
+// transcript is not the memory, the findings store is.
+func TestResearchLoopKeepsOneTurnAndRecordsFindings(t *testing.T) {
+	o := researchLoopOptions("code_trace", func() bool { return false })
+	if o.KeepRecent != 1 || !o.Findings {
+		t.Fatalf("KeepRecent=%d Findings=%v, want 1 and true", o.KeepRecent, o.Findings)
+	}
+	found := false
+	for _, tl := range researchToolSet("code_trace", false) {
+		if tl.Name == "record_finding" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("research tool set must offer record_finding")
+	}
+}

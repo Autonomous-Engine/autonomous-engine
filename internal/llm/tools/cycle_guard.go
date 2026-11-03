@@ -275,6 +275,17 @@ func (r *readRepeats) check(tc []turnCall, allowed map[string]bool) (map[int]int
 	return prior, nil
 }
 
+// productive forgets the repeats of every read made before turn: a finding
+// was recorded in turn, so a read that comes back after it is the model
+// citing more of what compaction took away, not a loop (findings.go).
+func (r *readRepeats) productive(turn int) {
+	for fp, first := range r.turn {
+		if first < turn {
+			r.count[fp] = 0
+		}
+	}
+}
+
 // annotate rewrites the results of repeated reads once they ran: the first
 // repeat keeps its content and says so; the second gets a one-line answer
 // (with dedup on) that says the next repeat ends the task. Then it counts

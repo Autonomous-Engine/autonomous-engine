@@ -97,7 +97,7 @@ func buildResearchUserMessage(task researchTaskMessage, primaryPath, snapshotLin
 
 // researchToolSet is the tool list one task is offered.
 func researchToolSet(researchType string, lspReady bool) []adapter.Tool {
-	return tools.ResearchToolsFor(researchType, tools.ResearchToolOptions{LSPReady: lspReady})
+	return tools.ResearchToolsFor(researchType, tools.ResearchToolOptions{LSPReady: lspReady, Findings: true})
 }
 
 // researchLoopOptions turns on the evidence ledger and the dead-tool guard,
@@ -117,11 +117,16 @@ func researchToolSet(researchType string, lspReady bool) []adapter.Tool {
 func researchLoopOptions(researchType string, lspReady func() bool) tools.LoopOptions {
 	return tools.LoopOptions{
 		EvidenceLedger: true,
-		DeadToolGuard:  true,
-		StuckControl:   true,
-		DedupReads:     true,
-		ReadOnly:       true,
-		EvidenceNudge:  evidenceNudge(nil),
+		// Findings are the task's memory: a tool result stays for one
+		// turn, what the model recorded from it stays in the ledger and
+		// the store; a re-read after a finding is productive, not stuck.
+		Findings:      true,
+		KeepRecent:    1,
+		DeadToolGuard: true,
+		StuckControl:  true,
+		DedupReads:    true,
+		ReadOnly:      true,
+		EvidenceNudge: evidenceNudge(nil),
 		RefreshTools: func() []adapter.Tool {
 			return researchToolSet(researchType, lspReady())
 		},

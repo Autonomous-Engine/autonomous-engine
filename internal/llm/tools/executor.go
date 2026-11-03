@@ -4358,6 +4358,9 @@ func RunToolLoopWithOptions(
 	}
 	if opts.EvidenceLedger {
 		ledger = newEvidenceLedger()
+		if opts.Findings {
+			ledger.findings = executor.Findings
+		}
 		if opts.PinReads {
 			ledger.enablePins(opts.PinnedFiles, executor.currentLines)
 			ledger.seedOf = executor.readSeed
@@ -4967,6 +4970,14 @@ func RunToolLoopWithOptions(
 				vt = append(vt, turnFPs[k])
 			}
 			repeats.annotate(vt, vp, validResults, toolTurn, rereads != nil)
+			if opts.Findings {
+				for _, r := range validResults {
+					if isFindingRecorded(r) {
+						repeats.productive(toolTurn)
+						break
+					}
+				}
+			}
 		}
 		if rereads != nil {
 			rereads.record(executor, validCalls, validResults, toolTurn)
