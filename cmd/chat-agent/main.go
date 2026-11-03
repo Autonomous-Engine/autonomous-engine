@@ -40,6 +40,12 @@ const (
 	vectorCollection = "codebase"
 )
 
+// chatLoopOptions: at the iteration cap the agent answers from what it
+// did (CloseAtLimit) instead of failing the turn with no reply.
+func chatLoopOptions() tools.LoopOptions {
+	return tools.LoopOptions{CloseAtLimit: true}
+}
+
 // chatMessage is received from chat.message.
 type chatMessage struct {
 	SessionID   string          `json:"session_id"`
@@ -411,7 +417,7 @@ func buildChatHandler(
 			Temperature: 0.3,
 		}
 
-		resp, err := tools.RunToolLoop(msgCtx, llmAdapter, req, executor, maxIterations, pool, workItemID)
+		resp, err := tools.RunToolLoopWithOptions(msgCtx, llmAdapter, req, executor, maxIterations, pool, workItemID, chatLoopOptions())
 		if err != nil {
 			log.Printf("chat-agent: tool loop error for session=%s: %v", sessionID, err)
 			publishError(ctx, kb, sessionID,
