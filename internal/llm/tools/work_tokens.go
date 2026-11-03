@@ -62,6 +62,9 @@ const noProgressWindow = 12
 type progressTracker struct {
 	seen map[string]bool
 	idle int
+	// worked is set by observe when the turn did work — an edit applied,
+	// a command run, a finding recorded — as opposed to a merely new call.
+	worked bool
 }
 
 func newProgressTracker() *progressTracker { return &progressTracker{seen: map[string]bool{}} }
@@ -70,6 +73,7 @@ func newProgressTracker() *progressTracker { return &progressTracker{seen: map[s
 // window is now full.
 func (p *progressTracker) observe(calls []adapter.ToolCall, results []adapter.ToolResult) (full bool) {
 	progress := false
+	p.worked = false
 	for k, c := range calls {
 		if k >= len(results) {
 			break
@@ -83,14 +87,17 @@ func (p *progressTracker) observe(calls []adapter.ToolCall, results []adapter.To
 		}
 		why := ""
 		switch {
-		case IsFileEditTool(c.Name) || isWriteTool(c.Name):
-			why = "edit applied"
 		case c.Name == "run_command":
 			why = "command run"
+		case IsFileEditTool(c.Name) || isWriteTool(c.Name):
+			why = "edit applied"
 		case c.Name == "record_finding" && isFindingRecorded(r):
 			why = "finding recorded"
 		case novel:
 			why = "new call"
+		}
+		if why != "" && why != "new call" {
+			p.worked = true
 		}
 		if why != "" {
 			progress = true

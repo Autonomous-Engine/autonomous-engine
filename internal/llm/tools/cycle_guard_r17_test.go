@@ -191,3 +191,28 @@ func TestRepeatNoteKeepsJSONParseable(t *testing.T) {
 		t.Fatalf("plain = %q", got)
 	}
 }
+
+// The sliding-window detector's recovery count is a count of warnings,
+// not of churn: live, a model paged through a 427-line file (three
+// warnings), applied three edits, paged again and was ended "after 3
+// recovery attempts" — the edits between the warnings did not count. Work
+// that lands (an edit applied, a command run, a finding recorded) resets
+// the count; a fourth warning after real work warns again instead of
+// ending the pass.
+func TestSlidingWindowRecoveriesResetWhenWorkLands(t *testing.T) {
+	var calls []scriptedCall
+	for i := 1; i <= 24; i++ { // three windows of reads: three warnings
+		calls = append(calls, linesOfA(i, i+1))
+	}
+	calls = append(calls, scriptedCall{"edit_file", `{"path":"a.ts","old_string":"export const v1 = 1;","new_string":"export const v1 = 100;"}`})
+	for i := 25; i <= 32; i++ { // a fourth window of reads after the edit
+		calls = append(calls, linesOfA(i, i+1))
+	}
+	model, err := stuckLoop(t, cycleTree(t), calls, LoopOptions{StuckControl: true})
+	if err != nil {
+		t.Fatalf("err = %v, want the loop to run to its answer: the edit before the fourth warning is work", err)
+	}
+	if got := userMessages(model.reqs[len(model.reqs)-1], "WARNING: You have been calling the same tools"); got != 4 {
+		t.Fatalf("sliding-window warnings = %d, want 4 (the fourth warns, it does not end)", got)
+	}
+}

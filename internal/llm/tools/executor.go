@@ -5134,6 +5134,12 @@ func RunToolLoopWithOptions(
 			}
 		}
 		full := progress.observe(validCalls, validResults)
+		if progress.worked && recoveryAttempts > 0 {
+			// Work landed: the stuck detectors' recovery count is a count
+			// of churn, and this turn was not churn.
+			log.Printf("tool-loop: work landed — recovery attempts reset (was %d)", recoveryAttempts)
+			recoveryAttempts = 0
+		}
 		if progress.idle > 0 {
 			log.Printf("tool-loop: no progress for %d tool turn(s) (window %d)", progress.idle, noProgressWindow)
 		}
