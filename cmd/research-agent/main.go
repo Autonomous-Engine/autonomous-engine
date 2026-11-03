@@ -125,6 +125,9 @@ type researchResultMessage struct {
 	// Note is the model's tool-less answer on a no_evidence result (R18),
 	// kept for the reader; it is not evidence.
 	Note string `json:"note,omitempty"`
+	// Findings are the claims the task recorded with verified citations
+	// (record_finding); stored per work item and recalled by later tasks.
+	Findings []tools.CitedFinding `json:"findings,omitempty"`
 
 	// Criteria are this task's acceptance criteria and evidence map (M2-04),
 	// grounded against the tool calls it made. Present on every ok result
@@ -314,8 +317,14 @@ func buildHandler(
 		var resultBaseSHAs map[string]string
 		// Both are set where the codex branch is resolved (codex grounding).
 		resultCodexVersion, resultCodexBranch := 0, ""
+		// findingsOf is the executor's findings once it exists: every result
+		// carries what the task recorded (findings_recall.go).
+		var findingsOf func() []tools.CitedFinding
 		report := func(status models.AssignmentStatus, result researchResultMessage) {
 			result.BaseSHAs = resultBaseSHAs
+			if findingsOf != nil {
+				result.Findings = findingsOf()
+			}
 			result.CodexVersion = resultCodexVersion
 			result.CodexBranch = resultCodexBranch
 			// M1-05: the result's transaction carries the processed-event
@@ -459,6 +468,8 @@ func buildHandler(
 		// store + product_id wired in so the codex_* tools can serve real
 		// data. kb + workID enable codex.gap event emission.
 		executor := tools.NewExecutorWithCodex(primaryPath, cx, vectorStore, productIDPtr, kb, &workID)
+		executor.SetFindingTask(task.TaskID, task.ResearchType)
+		findingsOf = executor.Findings
 		// Research stops at its share of the work item's token budget so the
 		// later stages still have theirs (F36).
 		executor.SetIterationHook(researchStageHook(researchTokenShare(), researchSpent(pool, workID)))
@@ -559,6 +570,12 @@ func buildHandler(
 		go executor.WarmLSP(ctx)
 
 		userMessage += seedsSection(task)
+		// The work item's earlier findings are where this task starts.
+		if known, kerr := loadKnownFindings(msgCtx, pool, workID, task.TaskID); kerr != nil {
+			log.Printf("research-agent: task_id=%s: %v", task.TaskID, kerr)
+		} else {
+			userMessage += knownFindingsSection(known)
+		}
 
 		req := adapter.CompletionRequest{
 			Messages: []adapter.ChatMessage{

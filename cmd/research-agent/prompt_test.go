@@ -23,11 +23,12 @@ import (
 // and a 4,783-char user message carrying the PRD again.
 const floorBefore = 8720
 
-// floorCeiling is the R1 acceptance (3,200) plus the record_finding schema
-// (~100 tokens): the findings store is what lets the task message drop the
+// floorCeiling is the R1 acceptance (3,200) plus the findings store's
+// share: the record_finding schema, two strategy lines and the codex
+// pointer (~150 tokens). The store is what lets the task message drop the
 // codex-sections dump (11.7k chars in the rerun), which this floor does
 // not model since the fixture never carried one.
-const floorCeiling = 3300 // estimated tokens
+const floorCeiling = 3350 // estimated tokens
 
 // testPRD is a 4.6k-char PRD with a unique marker on its first line.
 func testPRD() string {

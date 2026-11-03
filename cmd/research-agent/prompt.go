@@ -28,9 +28,11 @@ const researchStrategy = `You are a read-only research agent. Investigate the co
 - Files by name: codex_list_tree. codex_grep searches file contents, not file names.
 - Unknown names: codex_similar_code with a plain description. Conventions: codex_patterns_for.
 - Read last: codex_read_file only on files the graph or a search pointed at, in line ranges.
+- A read stays for one turn: record_finding what it showed (one claim + lines) before the next call; findings are your memory (listed in the ledger).
+- Known findings in the request are earlier research: cite them as they are; re-read only if you must.
 - Files or symbols the request names are starting points: go to them directly.
 - Never repeat a call already in the evidence ledger; use its recorded result.
-- Stop as soon as the request's acceptance criteria can be answered with file:line evidence, then write the answer with no further tool calls. If something cannot be found, say what is missing and stop.`
+- Stop as soon as the request's acceptance criteria can be answered with file:line evidence, then write the answer from your findings with no further tool calls. If something cannot be found, say what is missing and stop.`
 
 // researchTypeGuidance is the per-type task statement. At most 8 lines each.
 func researchTypeGuidance(researchType string) string {
@@ -88,10 +90,10 @@ func buildResearchUserMessage(task researchTaskMessage, primaryPath, snapshotLin
 		task.ResearchType, task.WorkID, task.TaskID, primaryPath, snapshotLine)
 	b.WriteString("## Request (PRD): answer its acceptance criteria\n")
 	b.WriteString(strings.TrimSpace(task.StartingContext))
-	if cs := strings.TrimSpace(task.CodexSections); cs != "" {
-		b.WriteString("\n\n## Codex sections (project knowledge)\n")
-		b.WriteString(cs)
-	}
+	// The codex sections (task.CodexSections) are not inlined: 11.7k chars
+	// of module JSON on every call made the codex look "already in
+	// context", and the model went to raw reads instead of its tools.
+	b.WriteString("\n\nProject knowledge: codex_find_module, codex_patterns_for, codex_similar_code, codex_dependents_of — the codex is indexed; query it.")
 	return b.String()
 }
 
