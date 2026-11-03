@@ -14,6 +14,24 @@ import (
 	"github.com/google/uuid"
 )
 
+// prdRevisionPayload is the intake event that makes the product agent
+// regenerate the PRD against the reviewer's feedback. Shared by RevisePRD
+// (item in prd_approval) and the prompt-answer path (item parked in
+// awaiting_user while the approval prompt is pending — rerun NEW-5).
+func prdRevisionPayload(id uuid.UUID, item *models.WorkItem, feedback string) map[string]interface{} {
+	productID := ""
+	if item.ProductID != nil {
+		productID = item.ProductID.String()
+	}
+	return map[string]interface{}{
+		"work_id":     id.String(),
+		"product_id":  productID,
+		"description": item.Description,
+		"source":      "dashboard",
+		"metadata":    map[string]interface{}{"user_guidance": feedback, "revision": true},
+	}
+}
+
 // RevisePRD handles POST /api/work-items/revise-prd?id=<uuid> with body
 // {"reason": "<feedback>"} ("feedback" is accepted too). A PRD awaiting
 // approval goes back through intake with the feedback in
@@ -62,17 +80,7 @@ func (h *Handlers) RevisePRD(w http.ResponseWriter, r *http.Request) {
 	if userID == "" {
 		userID = "dashboard"
 	}
-	productID := ""
-	if item.ProductID != nil {
-		productID = item.ProductID.String()
-	}
-	payload := map[string]interface{}{
-		"work_id":     id.String(),
-		"product_id":  productID,
-		"description": item.Description,
-		"source":      "dashboard",
-		"metadata":    map[string]interface{}{"user_guidance": feedback, "revision": true},
-	}
+	payload := prdRevisionPayload(id, item, feedback)
 	// prd_approval → prd is the state machine's "admin requested changes →
 	// regenerate" edge; the intake event makes the product agent run again.
 	reason := "PRD changes requested: " + feedback

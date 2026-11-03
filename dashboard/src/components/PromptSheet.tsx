@@ -11,7 +11,6 @@ import {
   answerPrompt,
 } from '@/hooks/usePrompts'
 import Markdown from './Markdown'
-import { useApi } from '@/hooks/useApi'
 
 interface PromptSheetProps {
   open: boolean
@@ -141,7 +140,6 @@ export function PromptDetailPane({
   prompt: Prompt
   onSubmitted: () => void
 }) {
-  const { post } = useApi()
   const [actionId, setActionId] = useState<string>('')
   const [answerText, setAnswerText] = useState('')
   // Default to "just this run": a codex fact is an explicit choice. Every
@@ -172,7 +170,10 @@ export function PromptDetailPane({
     setError(null)
     try {
       if (isRevise) {
-        await post(`/admin/work-items/revise-prd?id=${prompt.work_item_id}`, { reason: answerText.trim() })
+        // The revise travels as the prompt's answer: while the prompt is
+        // pending the item sits in awaiting_user, and the answer path
+        // restores its state before acting (rerun NEW-5).
+        await answerPrompt(prompt.id, { action_chosen: 'revise', answer_text: answerText.trim(), save_as_override: 'ephemeral' })
         onSubmitted()
         return
       }

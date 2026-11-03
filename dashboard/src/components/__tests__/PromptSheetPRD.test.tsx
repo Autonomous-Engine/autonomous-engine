@@ -22,7 +22,7 @@ const prdPrompt: Prompt = {
 // PRD review offered Approve or Reject only, and the submit button was a
 // second "Approve" (F34). A reviewer can now request changes with feedback.
 describe('PromptDetailPane PRD request changes', () => {
-  it('sends the feedback to revise-prd and does not answer the prompt itself', async () => {
+  it('answers the prompt with action revise and the feedback', async () => {
     const { PromptDetailPane } = await import('../PromptSheet')
     const onSubmitted = vi.fn()
     render(<PromptDetailPane prompt={prdPrompt} onSubmitted={onSubmitted} />)
@@ -32,8 +32,11 @@ describe('PromptDetailPane PRD request changes', () => {
     fireEvent.change(screen.getByLabelText(/what should change/i), { target: { value: 'Use the existing Option type.' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send back for changes' }))
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/work-items/revise-prd?id=w1', { reason: 'Use the existing Option type.' }))
-    expect(answerPrompt).not.toHaveBeenCalled()
+    // While the prompt is pending the item sits in awaiting_user, so the
+    // revise must travel as the prompt's answer (the orchestrator restores
+    // the state first), not as a direct revise-prd call (rerun NEW-5).
+    await waitFor(() => expect(answerPrompt).toHaveBeenCalledWith('p1', { action_chosen: 'revise', answer_text: 'Use the existing Option type.', save_as_override: 'ephemeral' }))
+    expect(post).not.toHaveBeenCalled()
     await waitFor(() => expect(onSubmitted).toHaveBeenCalled())
   })
 })

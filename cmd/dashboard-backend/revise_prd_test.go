@@ -78,3 +78,41 @@ func TestRevisePRDRequiresFeedback(t *testing.T) {
 		t.Fatalf("%d %s, want 400 for empty feedback", rec.Code, rec.Body.String())
 	}
 }
+
+// While the approval prompt is pending the orchestrator parks the item in
+// awaiting_user, so "Request changes" arrives as the prompt's answer with
+// action "revise" (rerun NEW-5). It must regenerate like RevisePRD.
+func TestIntegration_PRDPromptAnswerReviseRegenerates(t *testing.T) {
+	pool := runsIntegrationPool(t)
+	ctx := context.Background()
+	productID, workID := uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO products (id, name) VALUES ($1, $2)`, productID, "revise2-"+productID.String()[:8]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO work_items (id, type, state, title, description, product_id) VALUES ($1, 'feature', 'awaiting_user', 'Add parser option', 'Custom charset mappings', $2)`, workID, productID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM outbox_events WHERE aggregate_id = $1`, workID)
+		_, _ = pool.Exec(ctx, `DELETE FROM work_items WHERE id = $1`, workID)
+		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, productID)
+	})
+	h := NewHandlers(workgraph.New(pool), nil, nil, nil, nil, nil)
+	if err := h.HandlePRDPromptAnswer(ctx, workID, "revise", "   ", "u1"); err == nil {
+		t.Fatal("empty feedback must be refused")
+	}
+	feedback := "Record an unsupported target charset on Envelope.Errors instead of failing the parse."
+	if err := h.HandlePRDPromptAnswer(ctx, workID, "revise", feedback, "u1"); err != nil {
+		t.Fatalf("revise via prompt answer: %v", err)
+	}
+	var state, guidance string
+	if err := pool.QueryRow(ctx, `SELECT state FROM work_items WHERE id = $1`, workID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != string(models.WorkItemStatePRD) {
+		t.Fatalf("state = %q, want prd", state)
+	}
+	if err := pool.QueryRow(ctx, `SELECT payload->'metadata'->>'user_guidance' FROM outbox_events WHERE aggregate_id = $1 AND topic = 'intake' ORDER BY created_at DESC LIMIT 1`, workID).Scan(&guidance); err != nil || guidance != feedback {
+		t.Fatalf("intake guidance = %q err=%v, want the feedback", guidance, err)
+	}
+}

@@ -1402,6 +1402,24 @@ func (h *Handlers) HandlePRDPromptAnswer(ctx context.Context, workItemID uuid.UU
 		})
 	}
 
+	if action == "revise" {
+		// "Request changes" from the prompt sheet: the item is parked in
+		// awaiting_user while the prompt is pending, so RevisePRD's
+		// prd_approval check would refuse it (rerun NEW-5). Same effect as
+		// RevisePRD: back to prd with the feedback, intake re-enqueued.
+		feedback := strings.TrimSpace(answerText)
+		if feedback == "" {
+			return fmt.Errorf("request changes needs feedback: say what should change")
+		}
+		payload := prdRevisionPayload(workItemID, item, feedback)
+		return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+			if err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, workItemID, models.WorkItemStatePRD, userID, "PRD changes requested: "+feedback); err != nil {
+				return fmt.Errorf("transition failed: %w", err)
+			}
+			return outbox.EnqueueJSON(ctx, tx, aggregateFor(workItemID, item), bus.TopicIntake, workItemID.String(), payload)
+		})
+	}
+
 	if action == "reject" {
 		reason := "PRD rejected via prompt sheet"
 		if strings.TrimSpace(answerText) != "" {
