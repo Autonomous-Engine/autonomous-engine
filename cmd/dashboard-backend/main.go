@@ -285,6 +285,7 @@ func main() {
 	mux.HandleFunc("/api/admin/credentials/resolve", authSvc.Middleware(AdminOnly(adminHandlers.ResolveCredentialPreview)))
 	mux.HandleFunc("/api/admin/config", authSvc.Middleware(AdminOnly(adminHandlers.ListConfig)))
 	mux.HandleFunc("/api/admin/config/update", authSvc.Middleware(AdminOnly(adminHandlers.UpdateConfig)))
+	mux.HandleFunc("/api/admin/config/jira-ingest", authSvc.Middleware(AdminOnly(adminHandlers.GetJiraIngestConfig)))
 	mux.HandleFunc("/api/admin/audit", authSvc.Middleware(AdminOnly(adminHandlers.ListAudit)))
 
 	// Admin-only product management routes

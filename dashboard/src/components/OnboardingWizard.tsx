@@ -101,6 +101,25 @@ interface SelectProductStepProps {
   onProductSelected: (product: Product) => void
 }
 
+// ─── Repository access ────────────────────────────────────────────────────────
+
+export interface RepoAccessResult {
+  accessible?: boolean
+  status_code?: number
+  remote_kind?: string
+  error?: string
+}
+
+// The backend always answers test-access with HTTP 200 and says what it
+// found in the body; treating any 200 as "Access OK" hid every failure (F21).
+export function accessStatusFrom(res: RepoAccessResult | null | undefined): { status: 'ok' | 'error'; msg: string } {
+  if (!res) return { status: 'error', msg: 'No response' }
+  if (res.accessible) return { status: 'ok', msg: 'Access verified' }
+  if (res.error) return { status: 'error', msg: res.error }
+  if (res.status_code) return { status: 'error', msg: `GitHub answered ${res.status_code}` }
+  return { status: 'error', msg: 'Not accessible' }
+}
+
 // ─── Prerequisites ────────────────────────────────────────────────────────────
 
 interface PrereqRow {
@@ -1268,8 +1287,9 @@ function AddRepositoriesStep({ product, onNext }: AddRepositoriesStepProps) {
     const repo = repoList[idx]
     setRepoList(prev => prev.map((r, i) => i === idx ? { ...r, accessStatus: 'pending', accessMsg: '' } : r))
     try {
-      await post('/admin/repositories/test-access', { github_url: repo.github_url })
-      setRepoList(prev => prev.map((r, i) => i === idx ? { ...r, accessStatus: 'ok', accessMsg: 'Access verified' } : r))
+      const res = await post<RepoAccessResult>('/admin/repositories/test-access', { github_url: repo.github_url })
+      const s = accessStatusFrom(res)
+      setRepoList(prev => prev.map((r, i) => i === idx ? { ...r, accessStatus: s.status, accessMsg: s.msg } : r))
     } catch (e: unknown) {
       setRepoList(prev => prev.map((r, i) => i === idx ? { ...r, accessStatus: 'error', accessMsg: e instanceof Error ? e.message : 'Access denied' } : r))
     }

@@ -45,6 +45,14 @@ function defaultJiraIngest(): JiraIngestConfig {
 // What /admin/credentials returns in place of a secret value (crypto.MaskValue).
 const MASKED_VALUE = '••••••••'
 
+// A legacy token is a global github credential with a token-like key name.
+// Its value is always masked by the API, so only the row's existence can
+// be checked; the old value check could never be true (F9).
+export function hasLegacyGitHubToken(creds: Array<{ scope: string; category: string; key_name: string; value?: string }>): boolean {
+  const tokenKeys = new Set(['token', 'github_token', 'pat', 'github_pat', 'personal_access_token', 'access_token'])
+  return creds.some(c => c.scope === 'global' && c.category === 'github' && tokenKeys.has(c.key_name.trim().toLowerCase().replace(/[ -]/g, '_')))
+}
+
 function credVal(creds: CredentialEntry[], key: string): string {
   return creds.find(c => c.key_name === key)?.value ?? ''
 }
@@ -100,7 +108,7 @@ export default function IntegrationConfig() {
         setAccounts(accts)
         if (accts.length === 0) {
           const ghCreds = await get<CredentialEntry[]>('/admin/credentials?category=github')
-          if (ghCreds?.some(c => c.key_name === 'token' && c.value && c.value !== MASKED_VALUE)) {
+          if (hasLegacyGitHubToken(ghCreds ?? [])) {
             setHasLegacyToken(true)
           }
         }

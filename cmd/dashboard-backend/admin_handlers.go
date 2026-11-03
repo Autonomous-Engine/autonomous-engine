@@ -303,6 +303,19 @@ func (h *AdminHandlers) CreateCredential(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// A GitHub token is a GitHub account, not a registry row: the wizard,
+	// repo picker and pipeline read github_accounts only, so a token saved
+	// here under any key name was silently ignored (F7, F8).
+	if strings.EqualFold(req.Category, "github") && req.Scope == "global" && looksLikeGitHubTokenKey(req.KeyName) {
+		acct, status, err := h.createGitHubAccount(r.Context(), req.Value, strings.TrimSpace(req.Description))
+		if err != nil {
+			writeError(w, status, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]interface{}{"status": "created", "github_account": acct})
+		return
+	}
+
 	actorID := actorIDFromCtx(r)
 	guarded, ok := h.guardCredential(w, r, "credentials.create", req.Scope, req.ScopeTarget, req.Category, req.KeyName, req.Value,
 		func(ctx context.Context, tx pgx.Tx) error {
@@ -1830,54 +1843,18 @@ func (h *AdminHandlers) ListAudit(w http.ResponseWriter, r *http.Request) {
 // Tests whether the configured GitHub token can access the given repository.
 func (ah *AdminHandlers) TestRepoAccess(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		GithubURL string `json:"github_url"`
+		GithubURL       string `json:"github_url"`
+		GitHubAccountID string `json:"github_account_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	// The GitHub API only knows GitHub remotes (G1).
-	if _, kind, err := products.ClassifyRemote(body.GithubURL); err != nil || !kind.IsGitHub() {
-		msg := "repository has no GitHub remote; access is not checked through the GitHub API"
-		if err != nil {
-			msg = err.Error()
-		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"accessible":  false,
-			"remote_kind": string(kind),
-			"error":       msg,
-		})
-		return
-	}
-
-	// Resolve GitHub token from credential registry
-	token, err := ah.store.ResolveCredential(r.Context(), "github", "token", "", "")
-	if err != nil || token == "" {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"accessible": false,
-			"error":      "No GitHub token configured",
-		})
-		return
-	}
-
-	// Test access: GET https://api.github.com/repos/{owner}/{repo}
-	req, _ := http.NewRequestWithContext(r.Context(), "GET",
-		"https://api.github.com/repos/"+body.GithubURL, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"accessible": false,
-			"error":      err.Error(),
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"accessible":  resp.StatusCode == 200,
-		"status_code": resp.StatusCode,
-	})
+	// The GitHub API path is built from owner/repo, never the raw input
+	// (F5); the token comes from the repository's GitHub account, not the
+	// legacy global credential; the answer is always 200 with accessible.
+	token := ah.githubTokenForAccess(r.Context(), body.GitHubAccountID)
+	writeJSON(w, http.StatusOK, checkRepoAccess(r.Context(), githubAPIBase, token, body.GithubURL))
 }
 
 // ─── Model evaluation handlers ────────────────────────────────────────────────
@@ -2770,52 +2747,58 @@ func (h *AdminHandlers) AddGitHubAccount(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	username, avatarURL, err := resolveGitHubUser(r.Context(), req.Token)
+	acct, status, err := h.createGitHubAccount(r.Context(), req.Token, req.Label)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid token: "+err.Error())
+		writeError(w, status, err.Error())
 		return
 	}
+	writeJSON(w, http.StatusCreated, acct)
+}
 
-	label := strings.TrimSpace(req.Label)
+// createGitHubAccount validates token against GitHub and stores it as a
+// github_accounts row with its own credential. It is the one way a GitHub
+// token enters the system: Admin → Credentials routes github tokens here
+// too, since the wizard, repo picker and pipeline read github_accounts
+// only (F7). The int is the HTTP status to answer on error.
+func (h *AdminHandlers) createGitHubAccount(ctx context.Context, token, label string) (map[string]interface{}, int, error) {
+	username, avatarURL, err := resolveGitHubUser(ctx, token)
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid token: %w", err)
+	}
+	label = strings.TrimSpace(label)
 
 	var exists bool
-	_ = h.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM github_accounts WHERE username = $1 AND label = $2)`, username, label).Scan(&exists)
+	_ = h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM github_accounts WHERE username = $1 AND label = $2)`, username, label).Scan(&exists)
 	if exists {
-		writeError(w, http.StatusConflict, fmt.Sprintf("account already exists: %s (label: %s)", username, label))
-		return
+		return nil, http.StatusConflict, fmt.Errorf("account already exists: %s (label: %s)", username, label)
 	}
 
 	id := uuid.New()
 	scopeTarget := "github_account:" + id.String()
-	if err := h.store.SetCredential(r.Context(),
-		"github_account", scopeTarget, "github", "token", req.Token,
+	if err := h.store.SetCredential(ctx,
+		"github_account", scopeTarget, "github", "token", token,
 		true, fmt.Sprintf("GitHub PAT for %s (%s)", username, label), nil,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "store credential: "+err.Error())
-		return
+		return nil, http.StatusInternalServerError, fmt.Errorf("store credential: %w", err)
 	}
 
 	var credentialID uuid.UUID
-	err = h.db.QueryRow(r.Context(), `
+	if err := h.db.QueryRow(ctx, `
 		SELECT id FROM credential_registry
 		WHERE scope = 'github_account' AND scope_target = $1 AND key_name = 'token' AND category = 'github'
-	`, scopeTarget).Scan(&credentialID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "lookup credential: "+err.Error())
-		return
+	`, scopeTarget).Scan(&credentialID); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("lookup credential: %w", err)
 	}
 
 	now := time.Now().UTC()
-	_, err = h.db.Exec(r.Context(), `
+	if _, err := h.db.Exec(ctx, `
 		INSERT INTO github_accounts (id, username, avatar_url, credential_id, label, last_validated_at, valid, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, true, $7, $7)
-	`, id, username, avatarURL, credentialID, label, now, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "create account: "+err.Error())
-		return
+	`, id, username, avatarURL, credentialID, label, now, now); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("create account: %w", err)
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	return map[string]interface{}{
 		"id":                id.String(),
 		"username":          username,
 		"label":             label,
@@ -2824,7 +2807,7 @@ func (h *AdminHandlers) AddGitHubAccount(w http.ResponseWriter, r *http.Request)
 		"last_validated_at": now.Format(time.RFC3339),
 		"valid":             true,
 		"created_at":        now.Format(time.RFC3339),
-	})
+	}, http.StatusCreated, nil
 }
 
 // MigrateLegacyGitHubToken converts the legacy global GitHub token (from the
@@ -2838,14 +2821,9 @@ func (h *AdminHandlers) MigrateLegacyGitHubToken(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// 1. Find the legacy credential.
-	var legacyCredID uuid.UUID
-	err := h.db.QueryRow(r.Context(), `
-		SELECT id FROM credential_registry
-		WHERE scope = 'global' AND key_name = 'token' AND category = 'github'
-		LIMIT 1
-	`).Scan(&legacyCredID)
-	if err != nil {
+	// 1. Find the legacy credential, under any token-like key name (F8).
+	legacyCredID, found, err := findLegacyGitHubToken(r.Context(), h.db)
+	if err != nil || !found {
 		writeError(w, http.StatusNotFound, "no legacy GitHub token found")
 		return
 	}

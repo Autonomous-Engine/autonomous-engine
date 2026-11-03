@@ -416,7 +416,8 @@ func (cs *ConfigStore) ListCredentials(ctx context.Context, category, scope stri
 	query := `
 		SELECT id, scope, scope_target, key_name, is_secret, category, description,
 		       created_by, created_at, updated_at,
-		       expires_at, last_validated_at, last_validation_status, last_validation_error
+		       expires_at, last_validated_at, last_validation_status, last_validation_error,
+		       encrypted_value, nonce
 		FROM credential_registry
 		WHERE 1=1
 	`
@@ -446,11 +447,13 @@ func (cs *ConfigStore) ListCredentials(ctx context.Context, category, scope stri
 		e := &CredentialEntry{}
 		var expiresAt, lastValidatedAt pgtype.Timestamptz
 		var lastStatus, lastErr pgtype.Text
+		var ciphertext, nonce []byte
 		if err := rows.Scan(
 			&e.ID, &e.Scope, &e.ScopeTarget, &e.KeyName,
 			&e.IsSecret, &e.Category, &e.Description,
 			&e.CreatedBy, &e.CreatedAt, &e.UpdatedAt,
 			&expiresAt, &lastValidatedAt, &lastStatus, &lastErr,
+			&ciphertext, &nonce,
 		); err != nil {
 			return nil, fmt.Errorf("scan credential row: %w", err)
 		}
@@ -468,7 +471,14 @@ func (cs *ConfigStore) ListCredentials(ctx context.Context, category, scope stri
 		if lastErr.Valid {
 			e.LastValidationError = lastErr.String
 		}
+		// Secrets stay masked; a non-secret value (endpoint, project key,
+		// provider name) is what the page is for, and came back "" (F9).
 		e.Value = crypto.MaskValue("", e.IsSecret)
+		if !e.IsSecret {
+			if v, err := crypto.Decrypt(cs.masterKey, e.ID, ciphertext, nonce); err == nil {
+				e.Value = v
+			}
+		}
 		results = append(results, e)
 	}
 	if err := rows.Err(); err != nil {
