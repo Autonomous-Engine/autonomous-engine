@@ -1604,6 +1604,10 @@ type subtaskRetryMessage struct {
 	Description   string   `json:"description"`
 	FilesToChange []string `json:"files_to_change"`
 	Retry         bool     `json:"retry"`
+	// A review-fix subtask keeps its identity on retry: the agent starts
+	// it from the parent's implementation branch with the feedback.
+	IsReviewFix    bool   `json:"is_review_fix,omitempty"`
+	ReviewFeedback string `json:"review_feedback,omitempty"`
 }
 
 // buildSubtaskRetryMessage builds the retry payload for a subtask work item.
@@ -1626,6 +1630,9 @@ func buildSubtaskRetryMessage(item *models.WorkItem) subtaskRetryMessage {
 	}
 	if item.RepositoryID != nil {
 		msg.RepositoryID = item.RepositoryID.String()
+	}
+	if item.IsReviewFix() {
+		msg.IsReviewFix, msg.ReviewFeedback = true, item.Description
 	}
 	return msg
 }

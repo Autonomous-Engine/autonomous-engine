@@ -626,3 +626,21 @@ func TestBlockedPromptAnswer_ParentRetryFallsBackWhenTheOrchestratorRestoredItFi
 		t.Fatalf("commits=%d transitions=%+v events=%d, want the parent and subtask resumed through the ordinary transition", a.tx.commits, a.g.transitions, a.tx.calls)
 	}
 }
+
+// A review-fix subtask (the orchestrator's "Address review feedback",
+// branched from the parent's implementation branch) retried through the
+// prompt sheet was dispatched as a plain task: no is_review_fix, no
+// review_feedback, so the fresh attempt started from main and its
+// "passing" head had lost the feature. The retry carries both.
+func TestBlockedPromptAnswer_ReviewFixSubtaskRetryKeepsItsIdentity(t *testing.T) {
+	item := blockedSubtask()
+	item.Title, item.Description = models.ReviewFixSubtaskTitle, "INDEPENDENT VERIFIER REQUESTED CHANGES: fix the override"
+	a := newApprovalHarness(item)
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), item.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	body := a.assertOneCommittedEvent(t, models.WorkItemStateImplementation, bus.TopicImplementationTasks, item.ID.String(), *item.ParentID)
+	if body["is_review_fix"] != true || body["review_feedback"] != item.Description {
+		t.Errorf("payload = %v, want is_review_fix and the feedback", body)
+	}
+}
