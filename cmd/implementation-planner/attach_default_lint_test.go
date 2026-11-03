@@ -123,3 +123,61 @@ func TestDefaultTestCommandIsAttachedWhenThePlansCommandsAreScoped(t *testing.T)
 		t.Fatalf("task 2 verification = %+v, want the repository's go test command attached by the planner", out.build.raw[1].Verification)
 	}
 }
+
+// The repair round's output can omit repository_id (live, ciblame #8:
+// attempt 2's tasks carried ""), which left the default command without a
+// clone to look at. A single-repository plan uses that repository.
+func TestDefaultCommandUsesTheOnlyRepositoryWhenTheStepNamesNone(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "x_test.go"), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	brief := orphanBrief("A", "B")
+	brief.Criteria[1].RequiredChecks = []evidence.CheckKind{evidence.CheckKindTest}
+	steps := []decomposedTask{
+		orphanStep("A", []string{"AC-1"}, "a.go"),
+		orphanStep("B", []string{"AC-2"}, "b.go"),
+	}
+	steps[0].Verification = []plan.VerificationStep{{CheckKind: evidence.CheckKindTest, Command: "go test ./internal/x/..."}}
+	steps[1].Verification = []plan.VerificationStep{{CheckKind: evidence.CheckKindOther, Command: "go run ./cmd/x --demo"}}
+	steps[1].RepositoryID = ""
+	base := capturedBuilder(brief)
+	build := func(ts []decomposedTask) *planBuild {
+		b := base(ts)
+		if b != nil {
+			b.statRoots = map[string]string{}
+			for _, s := range b.activeSteps() {
+				if s.RepositoryID != "" {
+					b.statRoots[s.RepositoryID] = root
+				}
+			}
+		}
+		return b
+	}
+	out := planWithRepair(uuid.Nil, func(string) ([]decomposedTask, error) {
+		cp := copySteps(steps)
+		for i := range cp {
+			cp[i].Verification = append([]plan.VerificationStep(nil), steps[i].Verification...)
+			cp[i].RepositoryID = steps[i].RepositoryID
+		}
+		return cp, nil
+	}, build)
+	if out.decomposeErr != nil {
+		t.Fatal(out.decomposeErr)
+	}
+	if out.rejected() {
+		t.Fatalf("rejected: violations=%+v", out.violations)
+	}
+	found := false
+	for _, v := range out.build.raw[1].Verification {
+		if v.CheckKind == evidence.CheckKindTest && v.AttachedBy == plan.AttachedByPlanner && strings.HasPrefix(v.Command, "go test ./...") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("task 2 verification = %+v, want the repository's test command attached", out.build.raw[1].Verification)
+	}
+}

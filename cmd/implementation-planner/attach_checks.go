@@ -134,6 +134,8 @@ func defaultCommand(b *planBuild, repoID string, k evidence.CheckKind) string {
 		return testdetect.DetectLintCommand(root)
 	case evidence.CheckKindTest:
 		return testdetect.DetectTestCommand(root)
+	case evidence.CheckKindBuild:
+		return testdetect.DetectBuildCommand(root)
 	}
 	return ""
 }

@@ -36,3 +36,25 @@ func TestDetectLintCommand(t *testing.T) {
 		t.Fatalf("empty repo = %q, want none", got)
 	}
 }
+
+// A criterion may require a build check (live: AC-7 on ciblame #8); the
+// toolchain names the command.
+func TestDetectBuildCommand(t *testing.T) {
+	goRepo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(goRepo, "go.mod"), []byte("module x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectBuildCommand(goRepo); got != "go build ./..." {
+		t.Fatalf("go repo build = %q, want go build ./...", got)
+	}
+	node := t.TempDir()
+	if err := os.WriteFile(filepath.Join(node, "package.json"), []byte(`{"scripts":{"build":"tsc"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectBuildCommand(node); got != "npm run build" {
+		t.Fatalf("node repo with a build script = %q, want npm run build", got)
+	}
+	if got := DetectBuildCommand(t.TempDir()); got != "" {
+		t.Fatalf("empty repo = %q, want none", got)
+	}
+}
