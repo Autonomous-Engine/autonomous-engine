@@ -139,6 +139,12 @@ RUN wget -q -O /tmp/jdtls.tar.gz \
     && rm /tmp/jdtls.tar.gz \
     && ln -s "${JDTLS_HOME}/bin/jdtls" /usr/local/bin/jdtls
 
+# Go toolchain: the verifier builds and tests the implementation's branch
+# in this container (`go vet`, `go test`), which the LSP-only image could
+# not run at all. GOTOOLCHAIN=auto lets a go.mod newer than the image's Go
+# download its toolchain.
+COPY --from=golang:1.25-alpine /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:/go/bin:$PATH GOPATH=/go GOTOOLCHAIN=auto
 COPY --from=builder /service /service
 COPY --from=builder /go/bin/gopls /usr/local/bin/gopls
 COPY --from=asm-lsp-builder /out/bin/asm-lsp /usr/local/bin/asm-lsp
