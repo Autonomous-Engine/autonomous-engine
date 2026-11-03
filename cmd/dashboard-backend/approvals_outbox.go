@@ -135,13 +135,19 @@ func (h *Handlers) resumeImplementation(ctx context.Context, parent *models.Work
 }
 
 // transitionTx moves item to `to` on tx; an item awaiting the user goes
-// through the path that clears its prompt.
+// through the path that clears its prompt. status-orchestrator restores an
+// item awaiting_user → previous_state on the same answer, so an item that
+// has already moved on takes the ordinary transition instead (that path
+// fails before any statement, so the transaction is still usable).
 func (h *Handlers) transitionTx(ctx context.Context, tx pgx.Tx, item *models.WorkItem, to models.WorkItemState, agentID, reason string) error {
 	if item.State == models.WorkItemStateAwaitingUser {
-		if err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, item.ID, to, agentID, reason); err != nil {
+		err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, item.ID, to, agentID, reason)
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "invalid transition: state is") {
 			return &transitionFailed{err: err}
 		}
-		return nil
 	}
 	if _, err := h.approvals.TransitionStateTx(ctx, tx, item.ID, to, agentID, reason); err != nil {
 		return &transitionFailed{err: err}

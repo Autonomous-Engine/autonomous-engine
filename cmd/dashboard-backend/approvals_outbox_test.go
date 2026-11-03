@@ -99,6 +99,9 @@ type approvalsFake struct {
 	artifacts   map[models.ArtifactType][]*models.WorkItemArtifact
 	transitions []transitionCall
 	transErr    error
+	// awaitingErr makes the awaiting_user path fail without recording,
+	// the way the real one does when the item has already moved on.
+	awaitingErr error
 }
 
 func (f *approvalsFake) GetWorkItem(_ context.Context, id uuid.UUID) (*models.WorkItem, error) {
@@ -126,6 +129,9 @@ func (f *approvalsFake) TransitionStateTx(_ context.Context, tx pgx.Tx, id uuid.
 }
 
 func (f *approvalsFake) TransitionFromAwaitingUserToStateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, to models.WorkItemState, agentID, reason string) error {
+	if f.awaitingErr != nil {
+		return f.awaitingErr
+	}
 	f.transitions = append(f.transitions, transitionCall{tx: tx, id: id, to: to, reason: reason})
 	return f.transErr
 }
@@ -595,5 +601,28 @@ func TestRetryWorkItem_ParentWithStoppedSubtasksResumesImplementation(t *testing
 	}
 	if a.tx.calls != 1 || a.tx.topic != bus.TopicImplementationTasks || a.tx.key != child.ID.String() {
 		t.Fatalf("events=%d topic=%s key=%s, want one implementation.tasks for the subtask", a.tx.calls, a.tx.topic, a.tx.key)
+	}
+}
+
+// The answer handler and status-orchestrator race: the orchestrator
+// restores the parent awaiting_user → blocked on the same answer, and the
+// handler's awaiting_user transition then failed ("invalid transition:
+// state is blocked, expected awaiting_user") — the retry was recorded as
+// answered and nothing resumed. An item that has moved on takes the
+// ordinary transition instead.
+func TestBlockedPromptAnswer_ParentRetryFallsBackWhenTheOrchestratorRestoredItFirst(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateAwaitingUser, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateBlocked,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{child}
+	a.g.awaitingErr = errors.New("invalid transition: state is blocked, expected awaiting_user or prd_approval")
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), parent.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if a.tx.commits != 1 || len(a.g.transitions) != 2 || a.g.transitions[0].id != parent.ID || a.g.transitions[0].to != models.WorkItemStateImplementation ||
+		a.g.transitions[1].id != child.ID || a.tx.calls != 1 || a.tx.topic != bus.TopicImplementationTasks {
+		t.Fatalf("commits=%d transitions=%+v events=%d, want the parent and subtask resumed through the ordinary transition", a.tx.commits, a.g.transitions, a.tx.calls)
 	}
 }
