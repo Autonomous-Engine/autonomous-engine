@@ -119,6 +119,15 @@ func run(ctx context.Context, r Runner, in Input) Verdict {
 			r.OnTool(callID, toolName, arguments, result, isError, meta)
 		}
 	})
+	// The transport's tool_call_id never reaches a local model (a chat
+	// template renders a tool result as its content alone), so a result the
+	// verifier sees ends with its id: that is what a "met" cites.
+	r.Executor.SetResultAnnotator(func(_, _ string, res adapter.ToolResult) string {
+		if res.IsError || res.ToolCallID == "" {
+			return ""
+		}
+		return "tool call id: " + res.ToolCallID
+	})
 	snapshot := func() map[string]bool {
 		mu.Lock()
 		defer mu.Unlock()

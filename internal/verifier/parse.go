@@ -141,7 +141,7 @@ func invalidRefsReprompt(probs []RefProblem) string {
 	for _, p := range probs {
 		fmt.Fprintf(&b, "- %s: %q %s\n", p.ID, string(p.Ref), p.Reason)
 	}
-	b.WriteString("Each evidence entry must be a tool call id from this run, a path:line reference, or the path of a file that exists at head. " +
+	b.WriteString("Each evidence entry must be a tool call id from this run (the id a tool result ends with, after \"tool call id:\"; not a description of a command or its output), a path:line reference, or the path of a file that exists at head. " +
 		"Reply again with ONLY the JSON object described under Output, with just these citations corrected (or that criterion marked not_verifiable with a note). " +
 		"Keep everything else as it was. Do not call more tools unless you must.")
 	return b.String()
