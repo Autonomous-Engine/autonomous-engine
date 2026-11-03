@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/autonomousengine/autonomous-engine/internal/bus"
-	"github.com/autonomousengine/autonomous-engine/internal/models"
 	"github.com/autonomousengine/autonomous-engine/internal/workgraph"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -228,10 +227,13 @@ func RunAll(checks ...ValidationResult) ValidationResult {
 	return ValidationResult{Valid: true}
 }
 
-// BlockWorkItem transitions a work item to the blocked state. Agents call
-// this when a context check fails so that a human can take corrective
-// action. The dashboard queries work_items WHERE state='blocked' directly,
-// so no Kafka publish is required — the DB transition IS the signal.
+// BlockWorkItem transitions a work item to the blocked state and enqueues
+// the work.blocked event in the same transaction, exactly as BlockWorkItemTx
+// does. Agents call this when a context check fails so that a human can
+// take corrective action. The event is what the status-orchestrator turns
+// into the "Blocked:" prompt on the Approvals page; a block that only set
+// state='blocked' was invisible there (rerun NEW-7). msgBus stays in the
+// signature for the call sites; the outbox is the publish path.
 func BlockWorkItem(
 	ctx context.Context,
 	wg *workgraph.WorkGraph,
@@ -240,26 +242,16 @@ func BlockWorkItem(
 	agentID string,
 	reason string,
 ) error {
-	// Idempotency: if the work item is already blocked, don't re-transition.
-	// Previously two sibling subtasks that both failed would each call
-	// BlockWorkItem on the parent, and the second call emitted a scary-
-	// looking "invalid transition from blocked to blocked" error in the
-	// log. The block signal is already delivered; a repeat is a no-op.
-	if wi, err := wg.GetWorkItem(ctx, workItemID); err == nil && wi != nil && wi.State == models.WorkItemStateBlocked {
-		return nil
-	}
-	if err := wg.TransitionState(ctx, workItemID, models.WorkItemStateBlocked, agentID, reason); err != nil {
-		// If the state transition fails, the work item is still in its previous
-		// state. Returning the error lets the caller retry or surface the
-		// underlying failure rather than silently losing the block signal.
-		log.Printf("guards: BlockWorkItem: transition %s to blocked failed: %v", workItemID, err)
-		return fmt.Errorf("block work item %s: transition to blocked failed: %w", workItemID, err)
-	}
-	// msgBus is retained in the signature for backwards compatibility with
-	// call sites — some intended to publish follow-up events in future and
-	// the parameter avoids churn. Mark it used to keep lint happy.
 	_ = msgBus
-	return nil
+	// Already blocked is a no-op inside BlockWorkItemTx: two sibling subtasks
+	// that both fail block the parent once, without a second event.
+	err := workgraph.WithTx(ctx, wg.DB(), func(tx pgx.Tx) error {
+		return BlockWorkItemTx(ctx, tx, workItemID, workItemID, agentID, reason)
+	})
+	if err != nil {
+		log.Printf("guards: BlockWorkItem: %s: %v", workItemID, err)
+	}
+	return err
 }
 
 // WorkBlockedPayload is the work.blocked message: the shape change-reconciler
