@@ -185,18 +185,18 @@ func attachChecks(workID uuid.UUID, b *planBuild, vs []plan.Violation, build fun
 		}
 		cmds := repositoryCommands(b, target.RepositoryID, k)
 		source := "the repository's one whole-suite %s command"
-		if len(cmds) == 0 {
-			// No step runs a command of the kind at all: the repository's
-			// own default (go vet, npm run lint; its test command), when its
-			// toolchain names one. Live, three godoc criteria required a
-			// lint check, no step ran any, and the repair round did not add
-			// one: the plan was rejected.
-			if d := defaultCommand(b, target.RepositoryID, k); d != "" {
-				cmds, source = []string{d}, "the repository's default %s command"
+		if len(cmds) != 1 || !wholeSuiteCommand(cmds[0]) {
+			// No step runs a command of the kind, or none that qualifies
+			// (two candidates, a scoped one): the repository's own default
+			// (go vet, npm run lint; its test command), when its toolchain
+			// names one. Live, three godoc criteria required a lint check no
+			// step ran, and a step owning a test criterion sat next to
+			// scoped test commands; both plans were rejected after repair.
+			d := defaultCommand(b, target.RepositoryID, k)
+			if d == "" {
+				continue
 			}
-		}
-		if len(cmds) != 1 || (!wholeSuiteCommand(cmds[0]) && source != "the repository's default %s command") {
-			continue
+			cmds, source = []string{d}, "the repository's default %s command"
 		}
 		i, ok := byIndex[target.Index]
 		if !ok {
