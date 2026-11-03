@@ -233,9 +233,9 @@ func (v Verdict) validate(criterionIDs []string, g Grounding) ([]RefProblem, err
 			// A met criterion's path:line evidence must name a file that
 			// exists at head (a not_met may well cite a file that is
 			// missing). A bare path is valid only when it exists.
-			s := strings.TrimSpace(string(ref))
+			s := leadingRef(string(ref))
 			if r.Status == StatusMet && !g.CallIDs[s] && g.PathExists != nil && fileLineRE.MatchString(s) {
-				if p := refPath(ref); !g.PathExists(p) {
+				if p := refPath(Ref(s)); !g.PathExists(p) {
 					probs = append(probs, RefProblem{Index: i, ID: r.ID, Ref: ref, Reason: fmt.Sprintf("names %s, which does not exist in the tree at head", p)})
 				}
 			}
@@ -313,7 +313,7 @@ func TreePathExists(root string) func(string) bool {
 // the bare path of a file that exists at head — file-level evidence, a
 // lower grade than path:line (see criterionActionable).
 func validRef(ref Ref, g Grounding) bool {
-	s := strings.TrimSpace(string(ref))
+	s := leadingRef(string(ref))
 	if s == "" {
 		return false
 	}
@@ -324,6 +324,25 @@ func validRef(ref Ref, g Grounding) bool {
 		return true
 	}
 	return isBarePathRef(s, g)
+}
+
+// leadingLineRE is a path:line reference at the start of a citation, ended
+// by a colon, whitespace or the end.
+var leadingLineRE = regexp.MustCompile(`^([^\s:]+:[1-9][0-9]*(?:-[1-9][0-9]*)?)(?:[:\s]|$)`)
+
+// leadingRef is the reference a citation starts with: a path:line, or the
+// citation up to its first space (a trailing colon dropped). A local model
+// writes `path:line: what is there` and `call_1 (go test output)`; the
+// note after the reference is for the reader and does not void it.
+func leadingRef(citation string) string {
+	s := strings.TrimSpace(citation)
+	if m := leadingLineRE.FindStringSubmatch(s); m != nil {
+		return m[1]
+	}
+	if i := strings.IndexAny(s, " \t"); i > 0 {
+		return strings.TrimSuffix(s[:i], ":")
+	}
+	return s
 }
 
 // barePathRE is a repository path with no line: no spaces or colon, and a
