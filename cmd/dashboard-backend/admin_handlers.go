@@ -811,7 +811,16 @@ func (h *AdminHandlers) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "status": "created"})
+	// The wizard lists and names the product from this response; {id,
+	// status} alone left it nameless until a reload (rerun NEW-3).
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":          id.String(),
+		"name":        req.Name,
+		"description": req.Description,
+		"created_at":  now,
+		"updated_at":  now,
+		"status":      "created",
+	})
 }
 
 // updateProductRequest is the JSON body for UpdateProduct.
