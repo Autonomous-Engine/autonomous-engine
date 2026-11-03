@@ -313,6 +313,24 @@ var ErrTokenBudgetExceeded = errors.New("token budget exceeded")
 
 // TokenBudget is the per-work-item token ceiling RunToolLoop enforces:
 // WORK_ITEM_TOKEN_BUDGET, default 500,000 (D4).
+// sumWorkItemTokens is the work item's token total across every agent and
+// stage, read from inference_logs. ok is false when there is no database
+// or the query failed; the loop then falls back to counting its own calls.
+// A variable so tests can stand in a database.
+var sumWorkItemTokens = func(ctx context.Context, db *pgxpool.Pool, workItemID uuid.UUID) (int64, bool) {
+	if db == nil {
+		return 0, false
+	}
+	var sum int64
+	if err := db.QueryRow(ctx,
+		`SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM inference_logs WHERE work_item_id = $1`,
+		workItemID,
+	).Scan(&sum); err != nil {
+		return 0, false
+	}
+	return sum, true
+}
+
 func TokenBudget() int64 {
 	var tokenBudget int64 = 500_000
 	if s := os.Getenv("WORK_ITEM_TOKEN_BUDGET"); s != "" {
@@ -4259,11 +4277,10 @@ func RunToolLoopWithOptions(
 	// Sonnet pricing). Override via WORK_ITEM_TOKEN_BUDGET env var.
 	tokenBudget := TokenBudget()
 	var cumulativeTokens int64
-	if db != nil && workItemID != nil {
-		_ = db.QueryRow(ctx,
-			`SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM inference_logs WHERE work_item_id = $1`,
-			*workItemID,
-		).Scan(&cumulativeTokens)
+	if workItemID != nil {
+		if sum, ok := sumWorkItemTokens(ctx, db, *workItemID); ok {
+			cumulativeTokens = sum
+		}
 	}
 
 	// Stuck detection: track the last tool-call fingerprint and repeat count.
@@ -4382,6 +4399,19 @@ func RunToolLoopWithOptions(
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("tool loop aborted after %d iterations: %w", i, err)
 		}
+		// The budget is per work item and shared by every agent on it (F36):
+		// re-read the total before paying for the next call, so parallel
+		// loops stop within one iteration of each other instead of each
+		// trusting a total it read at start.
+		if workItemID != nil {
+			if sum, ok := sumWorkItemTokens(ctx, db, *workItemID); ok && sum > cumulativeTokens {
+				cumulativeTokens = sum
+			}
+		}
+		if cumulativeTokens > tokenBudget {
+			log.Printf("tool-loop: token budget exceeded (%d > %d) for work_item=%v before iteration %d — terminating", cumulativeTokens, tokenBudget, workItemID, i)
+			return nil, fmt.Errorf("%w: %d tokens used (limit %d) — work item is too expensive, investigate before retrying", ErrTokenBudgetExceeded, cumulativeTokens, tokenBudget)
+		}
 		// The caller's budget check (M3-06): between iterations, before the
 		// next LLM call is paid for.
 		if executor.iterationHook != nil {
@@ -4438,11 +4468,12 @@ func RunToolLoopWithOptions(
 			insertErr := db.QueryRow(ctx,
 				`INSERT INTO inference_logs (model_provider, model_id, intent_type, input_tokens, output_tokens, latency_ms, success, error_message, work_item_id, agent_id, created_at,
 				                             role, agent_type, config_snapshot_id)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NOW(), $10, $11, $12)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $13, NOW(), $10, $11, $12)
 				 RETURNING id::text`,
 				provider, modelID, "tool_loop", 0, 0,
 				int64(0), false, "", workItemID,
 				llm.NullIfEmpty(tags.Role), llm.NullIfEmpty(tags.AgentType), llm.NullIfEmpty(tags.ConfigSnapshotID),
+				llm.NullIfEmpty(tags.AgentType),
 			).Scan(&logID)
 			if insertErr != nil {
 				fmt.Printf("tool-executor: insert in-progress inference_logs row failed: %v\n", insertErr)

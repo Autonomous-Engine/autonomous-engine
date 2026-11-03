@@ -459,6 +459,9 @@ func buildHandler(
 		// store + product_id wired in so the codex_* tools can serve real
 		// data. kb + workID enable codex.gap event emission.
 		executor := tools.NewExecutorWithCodex(primaryPath, cx, vectorStore, productIDPtr, kb, &workID)
+		// Research stops at its share of the work item's token budget so the
+		// later stages still have theirs (F36).
+		executor.SetIterationHook(researchStageHook(researchTokenShare()))
 
 		// Scope codex queries to the work item's branch snapshot.
 		if branch, headSHA := tools.ResolveWorkItemBranch(ctx, pool, workID); branch != "" {
