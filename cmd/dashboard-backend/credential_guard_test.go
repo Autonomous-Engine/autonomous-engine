@@ -67,6 +67,7 @@ func TestCredentialHandlers_GuardedWriteIsTransactional(t *testing.T) {
 // allowed one leaves all three. Rotation is guarded the same way.
 func TestIntegration_GuardedCredentialWriteCommitsWithItsAudit(t *testing.T) {
 	pool := runsIntegrationPool(t)
+	seedProductionWorkItem(t, pool) // production exists: the guard must refuse, not bootstrap
 	ctx := context.Background()
 	const reason = "f2-guard-test"
 	var existing int
