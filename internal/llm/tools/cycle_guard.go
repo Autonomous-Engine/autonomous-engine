@@ -77,7 +77,7 @@ func (e *Executor) turnCalls(calls []adapter.ToolCall) []turnCall {
 	for _, c := range calls {
 		fp, p := e.callFingerprint(c)
 		if fp == "" {
-			fp = c.Name + "\x00" + canonicalArgs(c.Arguments)
+			fp = c.Name + fingerprintSep + canonicalArgs(c.Arguments)
 		}
 		out = append(out, turnCall{call: c, fp: fp, path: p, desc: describeCall(c)})
 	}
@@ -219,7 +219,7 @@ func (g *cycleGuard) warning(counts map[string]int) string {
 	allReads := true
 	for k := range counts {
 		for _, fp := range strings.Split(k, "\x01") {
-			if !isReadTool(strings.SplitN(fp, "\x00", 2)[0]) {
+			if !isReadTool(strings.SplitN(fp, fingerprintSep, 2)[0]) {
 				allReads = false
 			}
 		}
