@@ -132,7 +132,9 @@ func run(ctx context.Context, r Runner, in Input) Verdict {
 	loop := r.loop
 	if loop == nil {
 		loop = func(ctx context.Context, a adapter.ModelAdapter, req adapter.CompletionRequest, ex *tools.Executor, max int) (*adapter.CompletionResponse, error) {
-			return tools.RunToolLoop(ctx, a, req, ex, max, r.DB, r.WorkItemID)
+			// At the cap the verifier gives its verdict from what it read
+			// and ran (CloseAtLimit) instead of failing as not verifiable.
+			return tools.RunToolLoopWithOptions(ctx, a, req, ex, max, r.DB, r.WorkItemID, tools.LoopOptions{CloseAtLimit: true})
 		}
 	}
 

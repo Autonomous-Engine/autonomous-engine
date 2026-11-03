@@ -107,6 +107,11 @@ type LoopOptions struct {
 	// after a read makes a repeat of that read productive rather than
 	// stuck. Research sets it.
 	Findings bool
+	// CloseAtLimit: at the iteration cap, after tools ran, the loop ends
+	// with one call that offers no tools and asks for the answer from
+	// what was read and run, instead of ErrSafetyLimit (the verifier's
+	// verdict; Findings loops close from their findings instead).
+	CloseAtLimit bool
 }
 
 // pinnedRead is the latest compacted read of one file.

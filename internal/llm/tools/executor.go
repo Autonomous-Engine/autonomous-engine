@@ -5276,5 +5276,8 @@ func RunToolLoopWithOptions(
 	if opts.Findings && (len(executor.Findings()) > 0 || toolsRun > 0) {
 		return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("iteration cap %d reached", maxIterations))
 	}
+	if opts.CloseAtLimit && toolsRun > 0 {
+		return closingAnswerWith(ctx, llmAdapter, req, closeAtLimitMessage, fmt.Sprintf("iteration cap %d reached", maxIterations))
+	}
 	return nil, fmt.Errorf("%w: %d iterations", ErrSafetyLimit, maxIterations)
 }
