@@ -1531,17 +1531,24 @@ func parseTaskArray(content string) ([]decomposedTask, error) {
 	var tasks []decomposedTask
 
 	// 1. Direct parse
-	if err := json.Unmarshal([]byte(content), &tasks); err == nil && len(tasks) > 0 {
+	if err := json.Unmarshal([]byte(content), &tasks); err == nil && allTasks(tasks) {
 		return tasks, nil
 	}
 
 	// 2. Strip <think>...</think> tags (reasoning models sometimes leak these into content)
 	cleaned := stripThinkingTags(content)
 	if cleaned != content {
-		if err := json.Unmarshal([]byte(cleaned), &tasks); err == nil && len(tasks) > 0 {
+		if err := json.Unmarshal([]byte(cleaned), &tasks); err == nil && allTasks(tasks) {
 			log.Printf("implementation-planner: parsed decomposition after stripping thinking tags")
 			return tasks, nil
 		}
+	}
+
+	// 2b. One task object (a repair round answered with the task it
+	// repaired): a one-task plan, never its inner "files" array.
+	if one, ok := singleTaskObject(cleaned); ok {
+		log.Printf("implementation-planner: parsed decomposition from a single task object")
+		return []decomposedTask{one}, nil
 	}
 
 	// 3. The first balanced top-level array that decodes to tasks: prose,
@@ -1556,19 +1563,19 @@ func parseTaskArray(content string) ([]decomposedTask, error) {
 	end := lastIndexOf(cleaned, ']')
 	if start >= 0 && end > start {
 		snippet := cleaned[start : end+1]
-		if err := json.Unmarshal([]byte(snippet), &tasks); err == nil && len(tasks) > 0 {
+		if err := json.Unmarshal([]byte(snippet), &tasks); err == nil && allTasks(tasks) {
 			return tasks, nil
 		}
 		// 5. Strip JS-style comments
 		stripped := stripJSONComments(snippet)
-		if err := json.Unmarshal([]byte(stripped), &tasks); err == nil && len(tasks) > 0 {
+		if err := json.Unmarshal([]byte(stripped), &tasks); err == nil && allTasks(tasks) {
 			log.Printf("implementation-planner: parsed decomposition after stripping JSON-style comments")
 			return tasks, nil
 		}
 		// 6. Inner quotes in string values (code quoted in a description;
 		// live, both attempts were valid task arrays but for that).
 		if fixed, n := repairJSONStrings(stripped); n > 0 {
-			if err := json.Unmarshal([]byte(fixed), &tasks); err == nil && len(tasks) > 0 {
+			if err := json.Unmarshal([]byte(fixed), &tasks); err == nil && allTasks(tasks) {
 				log.Printf("implementation-planner: parsed decomposition after escaping %d inner quote(s) in string values", n)
 				return tasks, nil
 			}
@@ -1587,11 +1594,50 @@ func parseTaskArray(content string) ([]decomposedTask, error) {
 func firstTaskArray(s string) []decomposedTask {
 	for _, a := range modeljson.Arrays(s) {
 		var tasks []decomposedTask
-		if err := json.Unmarshal([]byte(a), &tasks); err == nil && len(tasks) > 0 {
+		if err := json.Unmarshal([]byte(a), &tasks); err == nil && allTasks(tasks) {
 			return tasks
 		}
 	}
 	return nil
+}
+
+// allTasks reports a non-empty list whose every element is a task (has a
+// title): a task's own "files" array decodes into this type too, as
+// elements with nothing in them.
+func allTasks(tasks []decomposedTask) bool {
+	if len(tasks) == 0 {
+		return false
+	}
+	for _, t := range tasks {
+		if strings.TrimSpace(t.Title) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// singleTaskObject decodes s, or its first { to last } span, as one task —
+// only when the answer is an object, not an array that was cut short (a
+// truncated array must still fail, R6).
+func singleTaskObject(s string) (decomposedTask, bool) {
+	if i, j := strings.Index(s, "["), strings.Index(s, "{"); j < 0 || (i >= 0 && i < j) {
+		return decomposedTask{}, false
+	}
+	try := func(b string) (decomposedTask, bool) {
+		var one decomposedTask
+		if err := json.Unmarshal([]byte(b), &one); err == nil && strings.TrimSpace(one.Title) != "" {
+			return one, true
+		}
+		return decomposedTask{}, false
+	}
+	if one, ok := try(s); ok {
+		return one, true
+	}
+	start, end := strings.Index(s, "{"), strings.LastIndex(s, "}")
+	if start >= 0 && end > start {
+		return try(s[start : end+1])
+	}
+	return decomposedTask{}, false
 }
 
 // stripThinkingTags removes <think>...</think> blocks from content.

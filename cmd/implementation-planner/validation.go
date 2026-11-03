@@ -843,10 +843,17 @@ func planWithPolicy(workID uuid.UUID, decompose func(repair string, reserved []s
 	roundNote := ""
 	// R13 D2: the derived criteria of earlier rounds stay known.
 	carried := newCarriedDerived()
+	var prevRaw []decomposedTask
 	for attempt := 1; ; attempt++ {
 		raw, err := decompose(repair, carried.reservedIDs())
 		if err != nil {
 			return planOutcome{attempts: attempt, decomposeErr: err, previous: previous}
+		}
+		if repair != "" {
+			if merged, ok := mergeRepairedTasks(prevRaw, raw); ok {
+				log.Printf("implementation-planner: work_id=%s: plan attempt %d: the repair answered with %d of %d tasks — merged into the previous plan", workID, attempt, len(raw), len(prevRaw))
+				raw = merged
+			}
 		}
 		for _, note := range carried.restore(raw) {
 			log.Printf("implementation-planner: work_id=%s: plan attempt %d: %s", workID, attempt, note)
@@ -895,6 +902,7 @@ func planWithPolicy(workID uuid.UUID, decompose func(repair string, reserved []s
 			return planOutcome{build: fb, violations: fvs, attempts: attempt, previous: previous, orphanNote: note, roundNote: roundNote}
 		}
 		previous = nvs
+		prevRaw = nb.raw
 		repair = repairPrompt(nvs, nb.raw, repairHints(nb, nvs))
 		log.Printf("implementation-planner: work_id=%s: plan rejected with %d violation(s) — repair round %d", workID, len(plan.Errors(nvs)), attempt)
 	}
