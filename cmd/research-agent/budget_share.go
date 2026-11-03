@@ -51,14 +51,20 @@ func researchStageHook(share float64, spent func(ctx context.Context) (int64, bo
 	}
 }
 
-// researchSpent sums the work item's research-stage inference rows.
+// researchSpent sums the work item's research-stage inference rows for the
+// current research round: rows logged since the latest transition into
+// research. Measured over the lifetime, a round that spent the share left
+// every Retry blocking after 0 iterations (rerun NEW-8); the lifetime is
+// still capped by WORK_ITEM_TOKEN_BUDGET in the tool loop.
 func researchSpent(pool *pgxpool.Pool, workID uuid.UUID) func(ctx context.Context) (int64, bool) {
 	return func(ctx context.Context) (int64, bool) {
 		if pool == nil {
 			return 0, false
 		}
 		var n int64
-		if err := pool.QueryRow(ctx, `SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM inference_logs WHERE work_item_id = $1 AND role = 'research'`, workID).Scan(&n); err != nil {
+		if err := pool.QueryRow(ctx, `SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM inference_logs
+			WHERE work_item_id = $1 AND role = 'research'
+			  AND created_at >= COALESCE((SELECT MAX("timestamp") FROM work_item_transitions WHERE work_item_id = $1 AND to_state = 'research'), '-infinity'::timestamptz)`, workID).Scan(&n); err != nil {
 			return 0, false
 		}
 		return n, true
