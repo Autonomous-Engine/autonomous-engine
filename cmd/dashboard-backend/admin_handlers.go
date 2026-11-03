@@ -1472,7 +1472,10 @@ func (h *AdminHandlers) ValidateProduct(w http.ResponseWriter, r *http.Request) 
 
 	var approvedVersions int
 	_ = h.db.QueryRow(r.Context(),
-		`SELECT COUNT(*) FROM codex_versions WHERE product_id=$1 AND change_source=$2`, productID, "onboarding" /* models.CodexChangeSourceOnboarding */).Scan(&approvedVersions)
+		`SELECT COUNT(*) FROM codex_versions
+		  WHERE product_id=$1 AND change_source=$2
+		    AND EXISTS (SELECT 1 FROM unnest(sections_changed) s WHERE s LIKE 'section:%' AND s <> 'section:zones')`,
+		productID, "onboarding" /* models.CodexChangeSourceOnboarding; zone confirmations use it too */).Scan(&approvedVersions)
 	if approvedVersions == 0 {
 		out = append(out, result{Check: "Codex approved", Passed: false, Message: "the reviewed onboarding answers were never approved — click Approve Codex in the Codex step"})
 	} else {

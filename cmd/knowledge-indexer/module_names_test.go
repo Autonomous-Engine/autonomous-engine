@@ -83,3 +83,37 @@ func keys(m map[string]moduleInfo) []string {
 	}
 	return out
 }
+
+// An incremental run analyses only the changed modules, so collisions must
+// be counted over the whole repository, not over the run (review I2):
+// internal/x changed alone must still be stored as internal/x when pkg/x
+// exists.
+func TestDisambiguateUsesRepositoryWideCollisions(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("internal/x/a.go", "package x\n\nfunc A() {}\n")
+	write("pkg/x/b.go", "package x\n\nfunc B() {}\n")
+	write("internal/coding/c.go", "package coding\n\nfunc C() {}\n")
+	all := []fileInfo{
+		{Path: "internal/x/a.go", Category: "source", Language: "Go"},
+		{Path: "pkg/x/b.go", Category: "source", Language: "Go"},
+		{Path: "internal/coding/c.go", Category: "source", Language: "Go"},
+	}
+	counts := packageNameCounts(root, all)
+	if counts["x"] != 2 || counts["coding"] != 1 {
+		t.Fatalf("counts = %v", counts)
+	}
+	// Only internal/x was analysed this run.
+	only := []moduleInfo{{Name: "x", Path: "internal/x"}}
+	got := disambiguateModuleNamesWith(only, counts)
+	if got[0].Name != "internal/x" {
+		t.Fatalf("incremental name = %q, want internal/x", got[0].Name)
+	}
+}

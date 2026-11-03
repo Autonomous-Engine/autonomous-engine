@@ -150,7 +150,7 @@ export function PromptDetailPane({
   // "Request changes" on a PRD approval: the item goes back through intake
   // with the feedback instead of being approved as-is or killed (F34).
   const isRevise = prompt.prompt_type === 'approval' && actionId === 'revise'
-  const canRequestChanges = prompt.prompt_type === 'approval' && Boolean(prompt.work_item_id)
+  const canRequestChanges = prompt.prompt_type === 'approval' && prompt.trigger === 'approval:prd' && Boolean(prompt.work_item_id)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

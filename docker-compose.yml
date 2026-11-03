@@ -174,6 +174,9 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+      # /health is unhealthy until the migrations are applied (F1); a large
+      # existing database can take minutes, and the other services wait.
+      start_period: 300s
 
   webhook-listener:
     <<: *migrated-service-defaults

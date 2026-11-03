@@ -4475,12 +4475,11 @@ func RunToolLoopWithOptions(
 			insertErr := db.QueryRow(ctx,
 				`INSERT INTO inference_logs (model_provider, model_id, intent_type, input_tokens, output_tokens, latency_ms, success, error_message, work_item_id, agent_id, created_at,
 				                             role, agent_type, config_snapshot_id)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $13, NOW(), $10, $11, $12)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NOW(), $10, $11, $12)
 				 RETURNING id::text`,
 				provider, modelID, "tool_loop", 0, 0,
 				int64(0), false, "", workItemID,
 				llm.NullIfEmpty(tags.Role), llm.NullIfEmpty(tags.AgentType), llm.NullIfEmpty(tags.ConfigSnapshotID),
-				llm.NullIfEmpty(tags.AgentType),
 			).Scan(&logID)
 			if insertErr != nil {
 				fmt.Printf("tool-executor: insert in-progress inference_logs row failed: %v\n", insertErr)

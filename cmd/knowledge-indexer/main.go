@@ -1095,6 +1095,9 @@ func (s *server) runIncrementalIndex(ctx context.Context, prog *IndexProgress, s
 	// 4. Re-analyze only changed modules
 	prog.setPhase(PhaseAnalyzeAST)
 	modules, err := analyzeModules(indexRepoPath, changedFileInfos, prog)
+	if err == nil {
+		modules = disambiguateModuleNamesWith(modules, packageNameCounts(indexRepoPath, allFiles))
+	}
 	if err != nil {
 		return fmt.Errorf("analyze changed modules: %w", err)
 	}
@@ -1545,6 +1548,44 @@ func disambiguateModuleNames(modules []moduleInfo) []moduleInfo {
 	for _, m := range modules {
 		count[m.Name]++
 	}
+	return disambiguateModuleNamesWith(modules, count)
+}
+
+// goPackageLine finds the package clause of a Go file.
+var goPackageLine = regexp.MustCompile(`(?m)^package\s+(\w+)`)
+
+// packageNameCounts counts, over every source directory of the repository,
+// how many directories declare each Go package name. An incremental run
+// analyses only the changed modules, so collisions must be counted over
+// the whole repository or a lone internal/x is stored as x beside pkg/x
+// (review I2).
+func packageNameCounts(repoPath string, files []fileInfo) map[string]int {
+	firstGo := map[string]string{}
+	for _, f := range files {
+		if f.Category != "source" || f.Language != "Go" {
+			continue
+		}
+		dir := filepath.Dir(f.Path)
+		if _, seen := firstGo[dir]; !seen {
+			firstGo[dir] = f.Path
+		}
+	}
+	counts := map[string]int{}
+	for _, rel := range firstGo {
+		content, err := os.ReadFile(filepath.Join(repoPath, rel))
+		if err != nil {
+			continue
+		}
+		if m := goPackageLine.FindSubmatch(content); m != nil {
+			counts[string(m[1])]++
+		}
+	}
+	return counts
+}
+
+// disambiguateModuleNamesWith is disambiguateModuleNames with the collision
+// counts supplied (repository-wide for an incremental run).
+func disambiguateModuleNamesWith(modules []moduleInfo, count map[string]int) []moduleInfo {
 	for i := range modules {
 		m := &modules[i]
 		if (m.Name == "main" || count[m.Name] > 1) && m.Path != "" && m.Path != "." {

@@ -13,7 +13,7 @@ vi.mock('@/hooks/usePrompts', () => ({
 
 const prdPrompt: Prompt = {
   id: 'p1', work_item_id: 'w1', product_id: 'prod', asking_agent: 'product-agent',
-  trigger: 'prd_approval' as Prompt['trigger'], prompt_type: 'approval',
+  trigger: 'approval:prd', prompt_type: 'approval',
   headline: 'PRD ready: Add parser option', question: '# PRD\n\n…',
   actions: [{ id: 'approve', label: 'Approve', semantic: 'positive' as never }, { id: 'reject', label: 'Reject', semantic: 'negative' as never }],
   state: 'pending' as Prompt['state'], requested_at: '2026-11-03T02:28:05Z',
@@ -35,5 +35,15 @@ describe('PromptDetailPane PRD request changes', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/work-items/revise-prd?id=w1', { reason: 'Use the existing Option type.' }))
     expect(answerPrompt).not.toHaveBeenCalled()
     await waitFor(() => expect(onSubmitted).toHaveBeenCalled())
+  })
+})
+
+// Only a PRD approval can be sent back for changes; another approval
+// prompt must not show a button that 409s (review minor, re-graded).
+describe('PromptDetailPane non-PRD approval', () => {
+  it('has no Request changes button', async () => {
+    const { PromptDetailPane } = await import('../PromptSheet')
+    render(<PromptDetailPane prompt={{ ...prdPrompt, id: 'p2', trigger: 'agent_request' }} onSubmitted={() => {}} />)
+    expect(screen.queryByRole('button', { name: 'Request changes' })).toBeNull()
   })
 })

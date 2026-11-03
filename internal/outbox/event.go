@@ -126,10 +126,30 @@ func NewEvent(aggregateType string, aggregateID uuid.UUID, topic, key string, pa
 // NUL inside jsonb text (SQLSTATE 22P05); a research result whose reason or
 // fingerprint carried a NUL byte was unrecordable and blocked its work item.
 func SanitizeJSONNUL(raw []byte) []byte {
-	if !bytes.Contains(raw, []byte(`\u0000`)) {
+	nul := []byte(`\u0000`)
+	if !bytes.Contains(raw, nul) {
 		return raw
 	}
-	return bytes.ReplaceAll(raw, []byte(`\u0000`), []byte(`�`))
+	// Walk escape pairs so an escaped backslash followed by "u0000" (the
+	// six-character text, which encodes as backslash-backslash-u0000) is
+	// left alone: only a real \u0000 escape is a NUL byte (review C2).
+	out := make([]byte, 0, len(raw)+8)
+	replacement := []byte("�")
+	for i := 0; i < len(raw); {
+		if raw[i] == '\\' && i+1 < len(raw) {
+			if bytes.HasPrefix(raw[i:], nul) {
+				out = append(out, replacement...)
+				i += len(nul)
+				continue
+			}
+			out = append(out, raw[i], raw[i+1]) // any other escape pair, verbatim
+			i += 2
+			continue
+		}
+		out = append(out, raw[i])
+		i++
+	}
+	return out
 }
 
 func applyEventID(raw json.RawMessage) (uuid.UUID, json.RawMessage, error) {
