@@ -164,10 +164,19 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-// Very rough cost estimate: $2 per 1M input tokens, $8 per 1M output tokens (gpt-4o-ish)
-function estimateCost(inputTokens: number, outputTokens: number): string {
-  const cost = (inputTokens / 1_000_000) * 2 + (outputTokens / 1_000_000) * 8
-  return `~$${cost.toFixed(4)}`
+// Cost comes from /work-items/cost, which prices each call by provider and
+// model. A hardcoded GPT-4o-ish rate showed "~$0.06" for a local Ollama run
+// (F33); a run with any unpriced call has no cost to show.
+export interface CostSummary {
+  cost_usd: number | null
+  cost_unknown: boolean
+  unpriced_calls: number
+}
+
+export function formatCost(summary: CostSummary | null | undefined): string {
+  if (!summary) return '—'
+  if (summary.cost_usd === null || summary.cost_usd === undefined || summary.cost_unknown) return 'no pricing (local model)'
+  return `$${summary.cost_usd.toFixed(4)}`
 }
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
@@ -190,6 +199,7 @@ export default function WorkItemDetailPage() {
   const navigate = useNavigate()
   const { get, post } = useApi()
   const [detail, setDetail] = useState<WorkItemDetail | null>(null)
+  const [cost, setCost] = useState<CostSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedArtifacts, setExpandedArtifacts] = useState<Set<string>>(new Set())
@@ -223,6 +233,7 @@ export default function WorkItemDetailPage() {
       const data = await get<WorkItemDetail>(`/work-items/detail?id=${id}`)
       setDetail(data)
       setError(null)
+      get<CostSummary>(`/work-items/cost?id=${id}`).then(setCost).catch(() => setCost(null))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load work item')
     } finally {
@@ -1268,8 +1279,8 @@ export default function WorkItemDetailPage() {
                 </p>
               </div>
               <div>
-                <span className="text-dim">Est. cost</span>
-                <p className="mt-0.5 text-sm font-semibold text-fg">{estimateCost(totalInputTokens, totalOutputTokens)}</p>
+                <span className="text-dim">Cost</span>
+                <p className="mt-0.5 text-sm font-semibold text-fg">{formatCost(cost)}</p>
               </div>
               <div>
                 <span className="text-dim">LLM calls</span>

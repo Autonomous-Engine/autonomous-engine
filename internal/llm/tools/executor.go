@@ -331,6 +331,17 @@ var sumWorkItemTokens = func(ctx context.Context, db *pgxpool.Pool, workItemID u
 	return sum, true
 }
 
+// workItemCreatedMessage is the create_work_item tool result. It names the
+// dashboard path so the model can link the item; without it the chat
+// linked to "#" (F33).
+func workItemCreatedMessage(id uuid.UUID, title, workType, priority string, productID *uuid.UUID) string {
+	msg := fmt.Sprintf("Created work item %s: %s (type=%s, priority=%s, state=intake) — open it at /work-items/%s", id, title, workType, priority, id)
+	if productID != nil {
+		msg += fmt.Sprintf(", linked to product %s", productID)
+	}
+	return msg
+}
+
 func TokenBudget() int64 {
 	var tokenBudget int64 = 500_000
 	if s := os.Getenv("WORK_ITEM_TOKEN_BUDGET"); s != "" {
@@ -649,11 +660,7 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 		if dbErr := createWorkItemWithIntake(ctx, e.db, newID, args.Title, args.Description, args.Type, args.Priority, productID); dbErr != nil {
 			return adapter.ToolResult{ToolCallID: call.ID, Content: fmt.Sprintf("failed to create work item: %v", dbErr), IsError: true}
 		}
-		result := fmt.Sprintf("Created work item %s: %s (type=%s, priority=%s, state=intake)", newID, args.Title, args.Type, args.Priority)
-		if productID != nil {
-			result += fmt.Sprintf(", linked to product %s", productID)
-		}
-		return adapter.ToolResult{ToolCallID: call.ID, Content: result}
+		return adapter.ToolResult{ToolCallID: call.ID, Content: workItemCreatedMessage(newID, args.Title, args.Type, args.Priority, productID)}
 	case "get_system_info":
 		info := map[string]string{
 			"provider": e.modelProvider,

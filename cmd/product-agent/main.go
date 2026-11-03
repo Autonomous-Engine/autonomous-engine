@@ -591,6 +591,16 @@ func extractTitle(prdContent, description string) string {
 			title := strings.TrimPrefix(line, "# ")
 			title = strings.TrimPrefix(title, "PRD: ")
 			title = strings.TrimSpace(title)
+			// Models head the PRD "Product Requirements Document: X". The
+			// generic prefix is not a title (F33); drop it, and when nothing
+			// is left keep the work item's existing title.
+			const generic = "product requirements document"
+			if strings.HasPrefix(strings.ToLower(title), generic) {
+				title = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(title[len(generic):]), ":\u2014\u2013- "))
+				if title == "" {
+					return ""
+				}
+			}
 			if len(title) > 100 {
 				title = title[:100]
 			}
