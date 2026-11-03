@@ -185,6 +185,9 @@ type Executor struct {
 	// readMaxLines (SetReadWindow): research reads in windows a finding can
 	// cite whole, at a third of the tokens.
 	readWindowDefault, readWindowMax int
+	// seenCov are the lines searches showed the model (markSeen), by
+	// cleaned path; a finding may cite them.
+	seenCov map[string]map[int]bool
 
 	// Branch scoping for commit-linked codex. When set, codex queries resolve
 	// to a materialized snapshot for the given branch+commit instead of the
@@ -3061,6 +3064,9 @@ func (e *Executor) codexSimilarCode(ctx context.Context, callID string, args map
 			Line:     r.Metadata["line"],
 			Score:    r.Score,
 		})
+		if n, err := strconv.Atoi(strings.TrimSpace(r.Metadata["line"])); err == nil {
+			e.markSeen(r.Metadata["file"], n)
+		}
 	}
 	if len(hits) == 0 {
 		e.markCodexEmpty("codex_similar_code", desc)
@@ -3573,6 +3579,7 @@ func (e *Executor) codexGrep(ctx context.Context, callID string, args map[string
 				line = line[:200] + "…"
 			}
 			hits = append(hits, hit{File: relPath, Line: lineNo, Text: line})
+			e.markSeen(relPath, lineNo)
 			if len(hits) >= maxHits {
 				truncated = true
 				return fs.SkipAll
@@ -4493,7 +4500,9 @@ func RunToolLoopWithOptions(
 		// next LLM call is paid for.
 		if executor.iterationHook != nil {
 			if err := executor.iterationHook(ctx, cumulativeTokens, tokenBudget, loopTokens); err != nil {
-				if opts.Findings && len(executor.Findings()) > 0 {
+				// Something ran: close with what it showed (the ledger
+				// and any findings), not an error for the whole round.
+				if opts.Findings && (len(executor.Findings()) > 0 || toolsRun > 0) {
 					return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("stopped after %d iterations: %v", i, err))
 				}
 				return nil, fmt.Errorf("tool loop stopped after %d iterations: %w", i, err)
@@ -5178,7 +5187,7 @@ func RunToolLoopWithOptions(
 		req.ToolResults = nil
 	}
 
-	if opts.Findings && len(executor.Findings()) > 0 {
+	if opts.Findings && (len(executor.Findings()) > 0 || toolsRun > 0) {
 		return closingAnswer(ctx, llmAdapter, req, fmt.Sprintf("iteration cap %d reached", maxIterations))
 	}
 	return nil, fmt.Errorf("%w: %d iterations", ErrSafetyLimit, maxIterations)

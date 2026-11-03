@@ -84,6 +84,11 @@ func newStuckTracker(prior []LoopStuck) *stuckTracker {
 // the call targets as it is now; "" for a call without a path (run_command
 // and searches are not tracked).
 func (e *Executor) callFingerprint(call adapter.ToolCall) (fp, path string) {
+	if call.Name == "record_finding" {
+		// A refused finding is guidance, not a failing file edit
+		// (findings.go): three of them must not end the loop as stuck.
+		return "", ""
+	}
 	var args map[string]any
 	if json.Unmarshal([]byte(call.Arguments), &args) != nil {
 		return "", ""

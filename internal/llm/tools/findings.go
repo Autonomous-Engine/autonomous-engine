@@ -111,21 +111,51 @@ func (e *Executor) SetFindingTask(taskID, researchType string) {
 	e.findingTaskID, e.findingResearchType = taskID, researchType
 }
 
+// markSeen records that a search (codex_grep, codex_similar_code) showed
+// the model line of rel: a citation of that line is grounded, as a read
+// is. Live, code_trace ended stuck on three refusals of lines a grep had
+// shown it.
+func (e *Executor) markSeen(rel string, line int) {
+	rel = pinPath(rel)
+	if rel == "" || line <= 0 {
+		return
+	}
+	e.observedMu.Lock()
+	defer e.observedMu.Unlock()
+	if e.seenCov == nil {
+		e.seenCov = map[string]map[int]bool{}
+	}
+	k := filepath.Clean(rel)
+	if e.seenCov[k] == nil {
+		e.seenCov[k] = map[int]bool{}
+	}
+	e.seenCov[k][line] = true
+}
+
 // hasRead reports whether lines start..end of rel overlap a range the loop
-// has read (markRead), so a finding can only cite what the model was shown.
+// has read (markRead), or were every one shown by a search (markSeen), so a
+// finding can only cite what the model was shown.
 func (e *Executor) hasRead(rel string, start, end int) bool {
 	e.observedMu.Lock()
 	defer e.observedMu.Unlock()
-	c := e.readCov[filepath.Clean(rel)]
-	if c == nil {
-		return false
-	}
-	for _, r := range c.ranges {
-		if start <= r[1] && end >= r[0] {
-			return true
+	k := filepath.Clean(rel)
+	if c := e.readCov[k]; c != nil {
+		for _, r := range c.ranges {
+			if start <= r[1] && end >= r[0] {
+				return true
+			}
 		}
 	}
-	return false
+	seen := e.seenCov[k]
+	if seen == nil {
+		return false
+	}
+	for l := start; l <= end; l++ {
+		if !seen[l] {
+			return false
+		}
+	}
+	return true
 }
 
 // recordFinding executes record_finding.
