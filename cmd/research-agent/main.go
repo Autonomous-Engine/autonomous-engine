@@ -474,7 +474,7 @@ func buildHandler(
 		executor.SetDocuments(map[string]string{"prd": task.StartingContext})
 		// Research stops at its share of the work item's token budget so the
 		// later stages still have theirs (F36).
-		executor.SetIterationHook(researchStageHook(researchTokenShare(), researchSpent(pool, workID)))
+		executor.SetIterationHook(researchStageHook(researchTokenShare(), researchSpent(pool, workID), roundTaskCount(pool, task.TaskID)))
 
 		// Scope codex queries to the work item's branch snapshot.
 		if branch, headSHA := tools.ResolveWorkItemBranch(ctx, pool, workID); branch != "" {
