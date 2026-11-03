@@ -467,8 +467,7 @@ func buildHandler(
 		// Create executor rooted at the real repo, with the codex + vector
 		// store + product_id wired in so the codex_* tools can serve real
 		// data. kb + workID enable codex.gap event emission.
-		executor := tools.NewExecutorWithCodex(primaryPath, cx, vectorStore, productIDPtr, kb, &workID)
-		executor.SetFindingTask(task.TaskID, task.ResearchType)
+		executor := newResearchExecutor(primaryPath, primaryRepoName(selectedRepos, repoPaths, primaryPath), cx, vectorStore, productIDPtr, kb, &workID, task.TaskID, task.ResearchType)
 		findingsOf = executor.Findings
 		// Research stops at its share of the work item's token budget so the
 		// later stages still have theirs (F36).
