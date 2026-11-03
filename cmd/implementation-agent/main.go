@@ -661,6 +661,14 @@ func buildHandler(
 		// T3: the task, de-duplicated (steps once, criteria once, files in
 		// scope); the checkpoint keeps it verbatim on every call (B2).
 		taskInstructions := buildTaskMessage(task)
+		// What research recorded about this work item, with file:line
+		// (known_findings.go): the agent edits from it instead of
+		// re-reading what research already cited.
+		if known, kerr := tools.LoadKnownFindings(msgCtx, pool, workID, ""); kerr != nil {
+			logger.Warn(msgCtx, "known findings unavailable", map[string]interface{}{"error": kerr.Error()})
+		} else {
+			taskInstructions = taskMessageWithFindings(task, known)
+		}
 
 		// Build a VectorStore for codex_similar_code. Query-time vectors
 		// MUST come from the same embedding provider + model the knowledge-
