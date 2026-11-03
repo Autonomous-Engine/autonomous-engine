@@ -32,7 +32,7 @@ const (
 	// researchIterationCap bounds one research task: the scaffold's 30 let
 	// pattern_match explore for 25 iterations and return nothing; at the
 	// cap a task with findings closes with an answer from them.
-	researchIterationCap = 10
+	researchIterationCap = 8
 )
 
 // researchMaxIterations is the task's iteration cap: the scaffold's, at

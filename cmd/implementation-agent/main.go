@@ -890,9 +890,11 @@ func buildHandler(
 				{Role: adapter.RoleSystem, Content: systemPrompt},
 				{Role: adapter.RoleUser, Content: taskInstructions},
 			},
-			Tools:       editTools(),
-			ToolChoice:  "auto",
-			MaxTokens:   8192,
+			Tools:      editTools(),
+			ToolChoice: "auto",
+			// 4096: an edit or a new file fits; the 8192 cap let a refused
+			// read turn into an 8k-token ramble twice in one attempt, live.
+			MaxTokens:   4096,
 			Temperature: 0.2,
 		}
 

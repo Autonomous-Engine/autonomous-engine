@@ -31,14 +31,15 @@ func TestResearchExecutorReadsInSmallWindows(t *testing.T) {
 	}
 }
 
-// A research task is capped at ten iterations (the scaffold's 30 let
-// pattern_match explore for 25 and return nothing); with findings recorded
-// the loop closes with an answer from them.
-func TestResearchIterationCapIsTen(t *testing.T) {
-	if got := researchMaxIterations(30); got != 10 {
-		t.Fatalf("cap(30) = %d, want 10", got)
+// A research task is capped at eight iterations (the scaffold's 30 let
+// pattern_match explore for 25 and return nothing; at ten, three tasks
+// filled the whole share by design); with findings recorded the loop
+// closes with an answer from them.
+func TestResearchIterationCapIsEight(t *testing.T) {
+	if got := researchMaxIterations(30); got != 8 {
+		t.Fatalf("cap(30) = %d, want 8", got)
 	}
-	if got := researchMaxIterations(8); got != 8 {
-		t.Fatalf("cap(8) = %d, want the smaller scaffold value", got)
+	if got := researchMaxIterations(5); got != 5 {
+		t.Fatalf("cap(5) = %d, want the smaller scaffold value", got)
 	}
 }

@@ -58,7 +58,7 @@ const (
 	implementationReadWindowMax = 400
 	// implementationEditGate: read turns allowed without an edit before
 	// reads are refused until one is made (tools/gate.go).
-	implementationEditGate = 4
+	implementationEditGate = 3
 )
 
 // implementationLoopOptions are the loop options of every implementation
