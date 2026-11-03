@@ -4391,14 +4391,31 @@ func RunToolLoopWithOptions(
 		keepRecent = keepRecentFromEnv()
 	}
 	if opts.EvidenceLedger {
-		ledger = newEvidenceLedger()
-		if opts.Findings {
-			ledger.findings = executor.Findings
+		if opts.Carry != nil && opts.Carry.ledger != nil {
+			ledger = opts.Carry.ledger // the previous pass's reads, edits and pins
+		} else {
+			ledger = newEvidenceLedger()
+			if opts.Findings {
+				ledger.findings = executor.Findings
+			}
+			if opts.PinReads {
+				ledger.enablePins(opts.PinnedFiles, executor.currentLines)
+				ledger.seedOf = executor.readSeed
+			}
 		}
-		if opts.PinReads {
-			ledger.enablePins(opts.PinnedFiles, executor.currentLines)
-			ledger.seedOf = executor.readSeed
-		}
+	}
+	if opts.Carry != nil {
+		defer func() {
+			msgs := append([]adapter.ChatMessage(nil), req.Messages...)
+			if ledger != nil {
+				// Everything into the ledger: the next pass starts from the
+				// ledger lines and the pinned current file contents, not
+				// from this pass's last raw results.
+				msgs = compactTranscript(msgs, ledger, 0)
+			}
+			opts.Carry.Messages = msgs
+			opts.Carry.ledger = ledger
+		}()
 	}
 	deadToolErrors := map[string]int{}
 	// Re-read dedup (R12 X2): what each read returned, by tool-call turn.

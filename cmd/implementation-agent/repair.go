@@ -376,7 +376,7 @@ func runRepairLoop(ctx context.Context, in repairInputs) repairResult {
 			MaxTokens:  4096,
 		}
 		in.info(ctx, fmt.Sprintf("repair attempt %d/%d with %d failure record(s)", res.state.Repairs, maxRepairAttempts, len(records)), map[string]interface{}{"task_id": in.taskID.String(), "call_id": callID})
-		_, fixErr := runImplementationLoop(ctx, in.llm, fixReq, in.executor, repairIterations, in.pool, &in.workID, in.plannedFiles)
+		_, fixErr := runImplementationLoop(ctx, in.llm, fixReq, in.executor, repairIterations, in.pool, &in.workID, in.plannedFiles, nil)
 		in.budget.activity() // the loop returned: nothing waits in-process for a pending prompt
 		res.state.Attempts = append(res.state.Attempts, attempt)
 		afterRepair = true

@@ -51,6 +51,13 @@ func verifyTools() []adapter.Tool {
 // older results become ledger lines (T4).
 const implementationKeepRecent = 2
 
+// The implementation read window: 160 lines by default, 400 with a range
+// (the executor's defaults are 400/2000).
+const (
+	implementationReadWindow    = 160
+	implementationReadWindowMax = 400
+)
+
 // implementationLoopOptions are the loop options of every implementation
 // tool loop: the dead-tool guard (a tool failing "not ready / unavailable"
 // twice in a row is dropped, within a turn too) and a tool list re-read
@@ -59,9 +66,11 @@ const implementationKeepRecent = 2
 // pinned reads — the latest read of a file in scope or edited stays in
 // full, as the file is now (T4); a re-read of lines it still has,
 // unchanged, answered in one line (R12 X2).
-func implementationLoopOptions(base []adapter.Tool, lspReady func() bool, scope []string) tools.LoopOptions {
+func implementationLoopOptions(base []adapter.Tool, lspReady func() bool, scope []string, carry *tools.LoopCarry) tools.LoopOptions {
 	base = append([]adapter.Tool(nil), base...)
 	return tools.LoopOptions{
+		// Passes of one attempt share a ledger and its pins (carry.go).
+		Carry:          carry,
 		EvidenceLedger: true,
 		KeepRecent:     implementationKeepRecent,
 		PinReads:       true,
@@ -78,14 +87,14 @@ func implementationLoopOptions(base []adapter.Tool, lspReady func() bool, scope 
 // runImplementationLoop runs one implementation tool loop with
 // implementationLoopOptions over req's tools; scope is the task's files in
 // scope (pinned once read).
-func runImplementationLoop(ctx context.Context, llm adapter.ModelAdapter, req adapter.CompletionRequest, executor *tools.Executor, maxIters int, pool *pgxpool.Pool, workID *uuid.UUID, scope []string) (*adapter.CompletionResponse, error) {
-	return runImplementationLoopAfter(ctx, llm, req, executor, maxIters, pool, workID, scope, nil)
+func runImplementationLoop(ctx context.Context, llm adapter.ModelAdapter, req adapter.CompletionRequest, executor *tools.Executor, maxIters int, pool *pgxpool.Pool, workID *uuid.UUID, scope []string, carry *tools.LoopCarry) (*adapter.CompletionResponse, error) {
+	return runImplementationLoopAfter(ctx, llm, req, executor, maxIters, pool, workID, scope, nil, carry)
 }
 
 // runImplementationLoopAfter is runImplementationLoop for a pass after
 // one that ended stuck (R10 W4): a repeat of a prior stuck call ends it.
-func runImplementationLoopAfter(ctx context.Context, llm adapter.ModelAdapter, req adapter.CompletionRequest, executor *tools.Executor, maxIters int, pool *pgxpool.Pool, workID *uuid.UUID, scope []string, prior []tools.LoopStuck) (*adapter.CompletionResponse, error) {
-	opts := implementationLoopOptions(req.Tools, func() bool { return executor.LSPReady(ctx) }, scope)
+func runImplementationLoopAfter(ctx context.Context, llm adapter.ModelAdapter, req adapter.CompletionRequest, executor *tools.Executor, maxIters int, pool *pgxpool.Pool, workID *uuid.UUID, scope []string, prior []tools.LoopStuck, carry *tools.LoopCarry) (*adapter.CompletionResponse, error) {
+	opts := implementationLoopOptions(req.Tools, func() bool { return executor.LSPReady(ctx) }, scope, carry)
 	opts.PriorStuck = prior
 	req.Tools = opts.RefreshTools()
 	return tools.RunToolLoopWithOptions(ctx, llm, req, executor, maxIters, pool, workID, opts)

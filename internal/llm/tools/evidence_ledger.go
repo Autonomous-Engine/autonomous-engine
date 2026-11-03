@@ -91,6 +91,11 @@ type LoopOptions struct {
 	// database (tests and offline replays); with a database the snapshots
 	// go to conversation_snapshots.
 	CheckpointStore func(ctx context.Context, snapshotID, workItemID uuid.UUID, agentType string, seq int, messagesJSON []byte, summary string, turns int) error
+	// Carry, when set, receives the compacted transcript and the ledger
+	// when the loop returns, and a loop given a carry with a ledger
+	// continues that ledger (carry.go). The implementation agent sets it
+	// so its passes share one ledger and one set of pins.
+	Carry *LoopCarry
 	// Findings (findings.go) offers record_finding's results as the loop's
 	// memory: findings are stored for the work item when the loop has a
 	// database, rendered in the ledger message, and a finding recorded
@@ -514,7 +519,9 @@ func isLedgerMessage(m adapter.ChatMessage) bool {
 // the ledger message is (re)placed right after the first user message.
 // User and system messages are kept as they are.
 func compactTranscript(msgs []adapter.ChatMessage, ledger *evidenceLedger, keepRecent int) []adapter.ChatMessage {
-	if keepRecent < 1 {
+	// keepRecent 0 compacts every tool turn (a pass handing its transcript
+	// to the next, carry.go); negative means the default of one.
+	if keepRecent < 0 {
 		keepRecent = 1
 	}
 	base := make([]adapter.ChatMessage, 0, len(msgs)+1)
@@ -540,7 +547,10 @@ func compactTranscript(msgs []adapter.ChatMessage, ledger *evidenceLedger, keepR
 		}
 	}
 	cutoff := firstUser + 1
-	if len(groups) > keepRecent {
+	switch {
+	case keepRecent == 0:
+		cutoff = len(base)
+	case len(groups) > keepRecent:
 		cutoff = groups[len(groups)-keepRecent]
 	}
 

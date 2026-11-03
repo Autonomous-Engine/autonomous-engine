@@ -698,6 +698,9 @@ func buildHandler(
 		// The worktree is the task's repository (not the product's first
 		// one): repo=<that name> reads it too.
 		executor.SetWorktreeRepo(taskRepoName(msgCtx, ps, task.RepositoryID))
+		// Reads come in windows the pins can hold: a read of envelope.go with
+		// no range was 16.7k chars, three times in one attempt, live.
+		executor.SetReadWindow(implementationReadWindow, implementationReadWindowMax)
 		// D4: both budgets are checked before every LLM call; a pending
 		// user prompt pauses the active-time clock.
 		executor.SetIterationHook(budget.iterationHook)

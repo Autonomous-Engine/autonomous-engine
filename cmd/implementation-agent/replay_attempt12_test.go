@@ -120,7 +120,7 @@ func replayAttempt12(t *testing.T, rp attempt12Replay, dedup bool) (chars []int,
 		},
 		Tools: withoutLSPUnlessReady(editTools(), false),
 	}
-	o := implementationLoopOptions(req.Tools, func() bool { return false }, rp.Scope)
+	o := implementationLoopOptions(req.Tools, func() bool { return false }, rp.Scope, nil)
 	o.CheckpointStore = func(context.Context, uuid.UUID, uuid.UUID, string, int, []byte, string, int) error { return nil }
 	o.DedupReads = dedup
 	if _, err := tools.RunToolLoopWithOptions(context.Background(), model, req, ex, 60, nil, nil, o); err != nil {
