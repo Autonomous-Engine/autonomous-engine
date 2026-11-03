@@ -178,6 +178,35 @@ func (cs *ConfigStore) ResolveCredential(ctx context.Context, category, keyName,
 	return "", fmt.Errorf("%w: category=%s key=%s", ErrCredentialNotFound, category, keyName)
 }
 
+// PeekCredential returns the stored value of one exact row (scope, target,
+// category, key) without the resolution chain, the cache or an audit row.
+// The default-setting guard uses it for its "before" baseline: reading the
+// baseline through ResolveCredential logged a spurious "read" audit entry
+// on every guarded write.
+func (cs *ConfigStore) PeekCredential(ctx context.Context, scope, scopeTarget, category, keyName string) (string, bool, error) {
+	var (
+		id             uuid.UUID
+		encryptedValue []byte
+		nonce          []byte
+	)
+	err := cs.db.QueryRow(ctx, `
+		SELECT id, encrypted_value, nonce
+		FROM credential_registry
+		WHERE scope = $1 AND scope_target = $2 AND key_name = $3 AND category = $4
+	`, scope, scopeTarget, keyName, category).Scan(&id, &encryptedValue, &nonce)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("peek credential (%s/%s %s): %w", scope, scopeTarget, keyName, err)
+	}
+	plaintext, err := crypto.Decrypt(cs.masterKey, id, encryptedValue, nonce)
+	if err != nil {
+		return "", false, fmt.Errorf("decrypt credential %s: %w", id, err)
+	}
+	return plaintext, true, nil
+}
+
 // SetCredential creates or updates a credential in the registry. It encrypts
 // the provided value, performs an upsert, logs the appropriate audit event, and
 // removes any cached entry for the affected scope.

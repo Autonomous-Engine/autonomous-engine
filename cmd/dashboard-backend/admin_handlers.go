@@ -91,12 +91,13 @@ func (h *AdminHandlers) guardCredential(w http.ResponseWriter, r *http.Request, 
 		return false, true
 	}
 	ch := credentialChange(action, scope, target, category, key, overlay, write)
-	// The "before" capture overlays the value currently stored, so writing
-	// the same value again is unchanged and only a real change is guarded
-	// (F10a). A missing credential overlays "" — the agents' real view.
+	// The "before" capture overlays the value currently stored in this exact
+	// row, so writing the same value again is unchanged and only a real
+	// change is guarded (F10a). A missing credential overlays "" — the
+	// agents' real view. Peek, not Resolve: the resolve path audits reads.
 	current := ""
 	if h.store != nil {
-		if v, err := h.store.ResolveCredential(r.Context(), category, key, "", ""); err == nil {
+		if v, found, err := h.store.PeekCredential(r.Context(), scope, target, category, key); err == nil && found {
 			current = v
 		}
 	}

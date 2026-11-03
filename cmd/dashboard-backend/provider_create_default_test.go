@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/autonomousengine/autonomous-engine/internal/configstore"
+	"github.com/google/uuid"
 )
 
 // The first provider created on an install becomes the default, so the
@@ -24,6 +25,22 @@ func TestIntegration_FirstProviderBecomesDefault(t *testing.T) {
 	}
 	store := configstore.New(pool, testMasterKey)
 	ph := NewProviderHandlers(pool, store)
+	// The default-provider sync writes global llm credentials; remove the
+	// ones this test creates so later tests see the registry as before.
+	var before []uuid.UUID
+	rows, err := pool.Query(ctx, `SELECT id FROM credential_registry WHERE scope='global' AND scope_target='default' AND category='llm'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		_ = rows.Scan(&id)
+		before = append(before, id)
+	}
+	rows.Close()
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM credential_registry WHERE scope='global' AND scope_target='default' AND category='llm' AND NOT (id = ANY($1))`, before)
+	})
 
 	create := func(name string) providerRow {
 		rec := httptest.NewRecorder()
