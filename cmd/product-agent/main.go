@@ -47,6 +47,18 @@ func guidanceFromIntake(msg intakeMessage) string {
 	return ""
 }
 
+// joinGuidance is the reviewer's feedback and the conflict guidance
+// together, whichever are present.
+func joinGuidance(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
 // prdContext is the PRD generation prompt's context; user_guidance is
 // present only when a reviewer gave feedback.
 func prdContext(title, painPoint, workType, codexContext, source, workItemID, guidance string) map[string]string {
@@ -433,6 +445,19 @@ Return ONLY the JSON. No prose before or after.`,
 			return nil
 		}
 
+		// Acceptance criteria that cannot both hold are settled here — by
+		// the model once, then by the person at the approval prompt — not
+		// by the verifier after implementation (reconcilePRD).
+		prdContent, prdConflicts := reconcilePRD(msgCtx, llmSvc, func(ctx context.Context, guidance string) (string, error) {
+			again := prdIntent
+			again.Context = prdContext(workTitle, workDescription, workType, codexContext, intake.Source, workID.String(), joinGuidance(guidanceFromIntake(intake), guidance))
+			res, err := llmSvc.Execute(ctx, again)
+			if err != nil {
+				return "", err
+			}
+			return res.Content, nil
+		}, prdContent)
+
 		// Extract a concise title from the PRD content. The LLM-generated PRD
 		// typically starts with "# <title>" or has an "## Overview" section.
 		// Fall back to the first sentence of the description.
@@ -475,11 +500,12 @@ Return ONLY the JSON. No prose before or after.`,
 			Trigger:     interactions.TriggerApprovalPRD,
 			PromptType:  interactions.PromptTypeApproval,
 			Headline:    fmt.Sprintf("PRD ready: %s", prdTitle),
-			Question:    prdContent,
+			Question:    conflictPromptBlock(prdConflicts) + prdContent,
 			ContextLink: fmt.Sprintf("/approvals?work_item_id=%s", workID),
 			ContextPayload: map[string]any{
-				"prd_content": prdContent,
-				"work_type":   workType,
+				"prd_content":   prdContent,
+				"work_type":     workType,
+				"prd_conflicts": prdConflicts,
 			},
 			Actions: []interactions.Action{
 				{ID: "approve", Label: "Approve", Semantic: interactions.SemanticContinue},
