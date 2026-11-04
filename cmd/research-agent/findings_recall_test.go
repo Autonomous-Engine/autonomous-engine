@@ -41,3 +41,34 @@ func TestIntegration_LoadKnownFindingsExcludesThisTask(t *testing.T) {
 		t.Fatalf("citation = %+v", fs[0])
 	}
 }
+
+// A retried round records the same finding again; recall hands each
+// finding over once, so duplicates neither pad the section nor use up
+// the limit.
+func TestIntegration_LoadKnownFindingsReturnsEachFindingOnce(t *testing.T) {
+	pool := budgetIntegrationPool(t)
+	ctx := context.Background()
+	workID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO work_items (id, type, state, title) VALUES ($1, 'feature', 'research', 'recall twice')`, workID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM work_items WHERE id = $1`, workID) })
+	base := time.Now().UTC().Add(-time.Hour)
+	insert := func(claim string, start int, at time.Time) {
+		if _, err := pool.Exec(ctx, `INSERT INTO research_findings (work_item_id, task_id, research_type, claim, path, start_line, end_line, excerpt, created_at)
+			VALUES ($1, 't1', 'code_trace', $2, 'a.go', $3, $3, 'x', $4)`, workID, claim, start, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("same", 1, base)
+	insert("other", 2, base.Add(time.Minute))
+	insert("same", 1, base.Add(2*time.Minute)) // round 2 recorded it again
+
+	fs, err := loadKnownFindings(ctx, pool, workID, "t2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) != 2 || fs[0].Claim != "same" || fs[1].Claim != "other" {
+		t.Fatalf("findings = %+v, want each once, newest first", fs)
+	}
+}

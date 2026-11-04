@@ -28,13 +28,18 @@ const (
 )
 
 // LoadKnownFindings returns the work item's findings recorded by tasks
-// other than excludeTaskID ("" excludes none), newest first.
+// other than excludeTaskID ("" excludes none), newest first. A finding
+// recorded again by a later round (same claim and citation) is returned
+// once, so duplicates neither pad the section nor use up the limit.
 func LoadKnownFindings(ctx context.Context, pool *pgxpool.Pool, workID uuid.UUID, excludeTaskID string) ([]CitedFinding, error) {
 	if pool == nil {
 		return nil, nil
 	}
-	rows, err := pool.Query(ctx, `SELECT claim, path, start_line, end_line, excerpt FROM research_findings
-		WHERE work_item_id = $1 AND task_id <> $2 ORDER BY created_at DESC LIMIT $3`, workID, excludeTaskID, KnownFindingsLimit)
+	rows, err := pool.Query(ctx, `SELECT claim, path, start_line, end_line, excerpt FROM (
+			SELECT DISTINCT ON (claim, path, start_line, end_line) claim, path, start_line, end_line, excerpt, created_at
+			FROM research_findings WHERE work_item_id = $1 AND task_id <> $2
+			ORDER BY claim, path, start_line, end_line, created_at DESC
+		) once ORDER BY created_at DESC LIMIT $3`, workID, excludeTaskID, KnownFindingsLimit)
 	if err != nil {
 		return nil, fmt.Errorf("known findings: %w", err)
 	}
