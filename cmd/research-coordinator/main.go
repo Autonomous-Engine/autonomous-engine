@@ -90,6 +90,11 @@ type researchResultMessage struct {
 	FollowupSuggestions string          `json:"followup_suggestions"`
 	ErrorDetail         string          `json:"error_detail,omitempty"`
 
+	// Findings are the claims the task recorded with verified citations
+	// (record_finding). The coordinator's copy of a result is what it
+	// persists and reuses on a retry, so they travel with it (NEW-9).
+	Findings []tools.CitedFinding `json:"findings,omitempty"`
+
 	// Criteria are the task's acceptance criteria (M2-04); merged into the
 	// brief by mergeBriefCriteria (criteria.go).
 	Criteria *plan.BriefCriteria `json:"criteria,omitempty"`
