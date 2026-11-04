@@ -13,6 +13,11 @@ build:
 test:
 	go test ./... -v -count=1
 
+# Build, vet and run every test — the database-gated integration tests
+# included — against a disposable PostgreSQL in Docker (scripts/test-db.sh).
+test-db:
+	./scripts/test-db.sh
+
 # Seeded-defect evaluation of the independent verifier (M3-07; see
 # cmd/verifier-eval/README.md). Dry run unless VERIFIER_EVAL_PROVIDER /
 # VERIFIER_EVAL_MODEL (or ANTHROPIC_API_KEY + VERIFIER_EVAL_MODEL) are set.

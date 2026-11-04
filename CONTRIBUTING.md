@@ -37,6 +37,8 @@ python -m unittest discover -s scripts -p "test_*.py"
 python scripts/third_party_notices.py --check
 ```
 
+**Everything in one go**, with Docker: `make test-db` (`scripts/test-db.sh`) starts a disposable PostgreSQL, runs build, vet and every test including the database-gated ones, and removes the database afterwards. Pass package paths or `-run` to narrow it: `scripts/test-db.sh ./cmd/pr-coordinator/ -run Integration`.
+
 **Database integration tests** run when `TEST_POSTGRES_DSN` names a disposable PostgreSQL database; the tests apply the migrations themselves. Use `-p 1` when several packages share one database:
 
 ```bash
