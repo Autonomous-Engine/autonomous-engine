@@ -66,6 +66,16 @@ func anyRetryable(rs []failures.Record) bool {
 	return false
 }
 
+// firstEnvironment is the first record the environment owns, or nil.
+func firstEnvironment(rs []failures.Record) *failures.Record {
+	for i := range rs {
+		if rs[i].Ownership == failures.OwnedEnvironment {
+			return &rs[i]
+		}
+	}
+	return nil
+}
+
 var (
 	repairAttemptsFixed    = metrics.NewLabeledCounter("ae_repair_attempts_total", "Repair attempts in the pre-commit loop by what the next check run showed", "outcome", "fixed")
 	repairAttemptsChanged  = metrics.NewLabeledCounter("ae_repair_attempts_total", "Repair attempts in the pre-commit loop by what the next check run showed", "outcome", "changed")
@@ -351,6 +361,13 @@ func runRepairLoop(ctx context.Context, in repairInputs) repairResult {
 			}
 		}
 
+		// The environment failed the run (a toolchain the image lacks, a
+		// cache it cannot write, a script it cannot execute): the checks
+		// did not run, so a failing record beside it may be its symptom.
+		// Stop with that message; a repair cannot fix the environment.
+		if env := firstEnvironment(records); env != nil {
+			return finish(stopNotRepairable, fmt.Sprintf("the checks could not run in this environment (%s); fix the environment, then retry", describeRecord(*env)))
+		}
 		// Nothing a code repair can fix (every record is a dependency,
 		// environment or tooling failure): stop now, after the plan
 		// revision, instead of spending a repair on it.

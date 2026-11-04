@@ -774,3 +774,42 @@ func (a *toolRecordingAdapter) Complete(ctx context.Context, req adapter.Complet
 	}
 	return a.queueAdapter.Complete(ctx, req)
 }
+
+// A pre-commit check that could not run in this environment (here the
+// container has no toolchain) blocks with that message: no repair is
+// spent on it, even when a failing test sits next to it in the output,
+// because the environment, not the change, is what failed.
+func TestRepairStopsWhenTheEnvironmentCannotRunTheChecks(t *testing.T) {
+	model := &queueAdapter{tokens: 10, steps: []step{
+		readStep(), writeStep("alpha"), textStep("Implemented."),
+		textStep("revised plan: the image needs the Go toolchain"),
+	}}
+	h := newRepairHarness(t, model, nil, nil)
+	writeFile(t, h.f.worktree, "run_tests.sh",
+		"echo '--- FAIL: TestAlpha (0.00s)'\necho '    alpha_test.go:5: wrong'\necho 'FAIL'\n"+
+			"echo 'OCI runtime exec failed: exec failed: unable to start container process: exec: \"go\": executable file not found in $PATH: unknown' >&2\nexit 126\n")
+	gitRun(t, h.f.worktree, "add", "-A")
+	gitRun(t, h.f.worktree, "commit", "-m", "runner has no toolchain")
+	h.f.baseSHA = gitOutput(t, h.f.worktree, "rev-parse", "HEAD")
+	gen := h.attempt(t, nil, h.sink)
+	if gen.stopped == nil || gen.stopped.reason != stopNotRepairable || !strings.Contains(gen.stopped.detail, "environment") || !strings.Contains(gen.stopped.detail, `"go"`) {
+		t.Fatalf("stopped = %+v, want not_repairable naming the environment failure", gen.stopped)
+	}
+	st := h.rec.repair(t)
+	if st.Repairs != 0 || st.Runs != 1 {
+		t.Fatalf("repair state = %+v, want no repair spent", st)
+	}
+	for _, p := range model.prompts {
+		if strings.HasPrefix(p, "Repair attempt") {
+			t.Fatalf("a repair was spent on an environment failure:\n%s", p)
+		}
+	}
+	var fps []string
+	for _, f := range st.Failures {
+		fps = append(fps, f.Fingerprint)
+	}
+	if len(fps) != 2 {
+		t.Fatalf("failures = %+v, want the test failure and the environment record", st.Failures)
+	}
+	requireStoppedOutcome(t, h, "not_repairable: ", "repair stopped: not_repairable", fps, "alpha")
+}
