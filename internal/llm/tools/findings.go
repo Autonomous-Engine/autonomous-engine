@@ -12,7 +12,7 @@ import (
 
 	"github.com/autonomousengine/autonomous-engine/internal/llm/adapter"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
 // A research task's memory is its findings, not its transcript: a read is
@@ -298,17 +298,17 @@ const (
 		"Call record_finding with what your last read showed (one claim, path, lines); then read on."
 )
 
-// insertFinding stores one finding for the work item.
-func insertFinding(ctx context.Context, db *pgxpool.Pool, workItemID uuid.UUID, taskID, researchType string, productID *uuid.UUID, f CitedFinding) error {
-	_, err := db.Exec(ctx, `INSERT INTO research_findings (work_item_id, task_id, research_type, product_id, claim, path, start_line, end_line, excerpt)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		workItemID, taskID, researchType, productID, f.Claim, f.Path, f.StartLine, f.EndLine, f.Excerpt)
-	return err
-}
-
-// dbFindingStore is the loop's store when it has a database and a work item.
-func dbFindingStore(db *pgxpool.Pool, workItemID uuid.UUID, e *Executor) func(context.Context, CitedFinding) error {
-	return func(ctx context.Context, f CitedFinding) error {
-		return insertFinding(ctx, db, workItemID, e.findingTaskID, e.findingResearchType, e.productID, f)
+// StoreFindingsTx stores a task's findings for the work item in the
+// caller's transaction — the one that commits the task's result — so a
+// result that is not recorded (a duplicate delivery, a rolled-back commit)
+// leaves no findings behind, and a recorded one stores them once.
+func StoreFindingsTx(ctx context.Context, tx pgx.Tx, workItemID uuid.UUID, taskID, researchType string, productID *uuid.UUID, fs []CitedFinding) error {
+	for _, f := range fs {
+		if _, err := tx.Exec(ctx, `INSERT INTO research_findings (work_item_id, task_id, research_type, product_id, claim, path, start_line, end_line, excerpt)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			workItemID, taskID, researchType, productID, f.Claim, f.Path, f.StartLine, f.EndLine, f.Excerpt); err != nil {
+			return fmt.Errorf("store finding %q: %w", f.Claim, err)
+		}
 	}
+	return nil
 }

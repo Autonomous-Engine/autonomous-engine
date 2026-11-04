@@ -4380,9 +4380,8 @@ func RunToolLoopWithOptions(
 	}
 
 	executor.db = db
-	if opts.Findings && db != nil && workItemID != nil && executor.findingStore == nil {
-		executor.SetFindingStore(dbFindingStore(db, *workItemID, executor))
-	}
+	// Findings stay in the executor (Findings()); the caller stores them
+	// with the task's result (StoreFindingsTx), not per call.
 
 	// Per-work-item token budget: kill the loop when cumulative tokens
 	// across all agents exceed the cap. Default 500K tokens (~$5 at

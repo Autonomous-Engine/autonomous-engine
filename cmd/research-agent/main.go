@@ -320,6 +320,9 @@ func buildHandler(
 		// findingsOf is the executor's findings once it exists: every result
 		// carries what the task recorded (findings_recall.go).
 		var findingsOf func() []tools.CitedFinding
+		// resultProductID is the task's product once resolved; the findings
+		// are stored with it in the result's transaction.
+		var resultProductID *uuid.UUID
 		report := func(status models.AssignmentStatus, result researchResultMessage) {
 			result.BaseSHAs = resultBaseSHAs
 			if findingsOf != nil {
@@ -329,7 +332,7 @@ func buildHandler(
 			result.CodexBranch = resultCodexBranch
 			// M1-05: the result's transaction carries the processed-event
 			// guard row (Wrap).
-			err := commitResearchResult(msgCtx, idempotency.Wrap(msgCtx, pool), wg, aggregateID, assignment.ID, status, resultKey, result)
+			err := commitResearchResult(msgCtx, idempotency.Wrap(msgCtx, pool), wg, aggregateID, assignment.ID, status, resultKey, result, resultProductID)
 			if idempotency.IsDuplicate(err) {
 				log.Printf("research-agent: task_id=%s already reported — duplicate delivery", task.TaskID)
 				return
@@ -438,6 +441,7 @@ func buildHandler(
 				productIDPtr = &pid
 			}
 		}
+		resultProductID = productIDPtr
 
 		// Build a VectorStore for codex_similar_code. Query-time vectors
 		// MUST be produced by the same provider + model the knowledge-indexer
@@ -706,12 +710,20 @@ func buildHandler(
 	}
 }
 
-// commitResearchResult completes the agent's assignment with status and
-// enqueues the task's research.results event in one transaction. key and
-// payload are exactly what the direct publish sent.
-func commitResearchResult(ctx context.Context, db workgraph.TxBeginner, wg *workgraph.WorkGraph, aggregateID, assignmentID uuid.UUID, status models.AssignmentStatus, key string, result researchResultMessage) error {
+// commitResearchResult completes the agent's assignment with status,
+// stores the findings the task recorded and enqueues the task's
+// research.results event in one transaction. key and payload are exactly
+// what the direct publish sent.
+func commitResearchResult(ctx context.Context, db workgraph.TxBeginner, wg *workgraph.WorkGraph, aggregateID, assignmentID uuid.UUID, status models.AssignmentStatus, key string, result researchResultMessage, productID *uuid.UUID) error {
+	workID, err := uuid.Parse(result.WorkID)
+	if err != nil {
+		return fmt.Errorf("research result work_id %q: %w", result.WorkID, err)
+	}
 	return workgraph.WithTx(ctx, db, func(tx pgx.Tx) error {
 		if err := wg.CompleteAssignmentTx(ctx, tx, assignmentID, status); err != nil {
+			return err
+		}
+		if err := tools.StoreFindingsTx(ctx, tx, workID, result.TaskID, result.FindingType, productID, result.Findings); err != nil {
 			return err
 		}
 		return outbox.EnqueueJSON(ctx, tx, aggregateID, bus.TopicResearchResults, key, result)
