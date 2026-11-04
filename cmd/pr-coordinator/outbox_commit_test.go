@@ -28,6 +28,8 @@ type fakeTx struct {
 	failOn    string // Exec fails when the SQL contains this
 	commits   int
 	rollbacks int
+	// pendingAtHead is what the gate's pending-change count answers.
+	pendingAtHead int
 }
 
 func (f *fakeTx) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -40,10 +42,14 @@ func (f *fakeTx) Exec(_ context.Context, sql string, args ...any) (pgconn.Comman
 }
 
 // QueryRow answers the block path's SELECT state ... FOR UPDATE with
-// "implementation", so BlockWorkItemTx can run on the fake.
+// "implementation", so BlockWorkItemTx can run on the fake, and the gate's
+// pending-change count with pendingAtHead (0: nothing gated yet).
 func (f *fakeTx) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	f.sqls = append(f.sqls, sql)
 	f.args = append(f.args, args)
+	if strings.Contains(sql, "FROM pending_pr_changes") {
+		return countRow(f.pendingAtHead)
+	}
 	return implementationRow{}
 }
 
@@ -51,6 +57,14 @@ type implementationRow struct{}
 
 func (implementationRow) Scan(dest ...any) error {
 	*(dest[0].(*models.WorkItemState)) = models.WorkItemStateImplementation
+	return nil
+}
+
+// countRow answers a count(*) query.
+type countRow int
+
+func (n countRow) Scan(dest ...any) error {
+	*(dest[0].(*int)) = int(n)
 	return nil
 }
 
@@ -147,17 +161,20 @@ func TestCommitGatedPR_PendingRowEventAndPromptShareOneTx(t *testing.T) {
 	if db.begins != 1 || tx.commits != 1 || tx.rollbacks != 0 {
 		t.Fatalf("begins=%d commits=%d rollbacks=%d, want one committed tx", db.begins, tx.commits, tx.rollbacks)
 	}
-	if len(tx.sqls) != 4 {
-		t.Fatalf("statements = %d (%q), want pending insert, pr.gated, prompt row, prompt event", len(tx.sqls), tx.sqls)
+	if len(tx.sqls) != 5 {
+		t.Fatalf("statements = %d (%q), want pending check, pending insert, pr.gated, prompt row, prompt event", len(tx.sqls), tx.sqls)
 	}
-	if tx.sqls[0] != insertPendingPRChangeSQL {
-		t.Errorf("first statement = %q, want the pending_pr_changes insert", tx.sqls[0])
+	if tx.sqls[0] != pendingAtHeadSQL || tx.args[0][1] != c.Branch || tx.args[0][2] != c.HeadSHA {
+		t.Errorf("first statement = %q %v, want the pending-at-head check for the branch and head", tx.sqls[0], tx.args[0])
 	}
-	if got := tx.args[0][8]; got != c.HeadSHA {
+	if tx.sqls[1] != insertPendingPRChangeSQL {
+		t.Errorf("second statement = %q, want the pending_pr_changes insert", tx.sqls[1])
+	}
+	if got := tx.args[1][8]; got != c.HeadSHA {
 		t.Errorf("pending row head_sha = %v, want %s", got, c.HeadSHA)
 	}
-	if !strings.Contains(tx.sqls[2], "INSERT INTO user_interactions") {
-		t.Errorf("third statement = %q, want the prompt row", tx.sqls[2])
+	if !strings.Contains(tx.sqls[3], "INSERT INTO user_interactions") {
+		t.Errorf("fourth statement = %q, want the prompt row", tx.sqls[3])
 	}
 	rows := outboxRows(t, tx)
 	if len(rows) != 2 {
@@ -181,8 +198,38 @@ func TestCommitGatedPR_NoPromptWithoutProduct(t *testing.T) {
 		t.Fatalf("commitGatedPR: %v", err)
 	}
 	rows := outboxRows(t, tx)
-	if len(tx.sqls) != 2 || len(rows) != 1 || rows[0].topic != bus.TopicPRGated {
-		t.Errorf("statements = %q, want pending insert + pr.gated only", tx.sqls)
+	if len(tx.sqls) != 3 || len(rows) != 1 || rows[0].topic != bus.TopicPRGated {
+		t.Errorf("statements = %q, want pending check + pending insert + pr.gated only", tx.sqls)
+	}
+}
+
+// A branch already pending at the same verified head is not gated again:
+// the check is the only statement, nothing is inserted or enqueued, and
+// recordGatedPR treats it as done (the loop goes on, nothing is blocked).
+func TestCommitGatedPR_ABranchAlreadyPendingAtTheHeadWritesNothing(t *testing.T) {
+	tx := &fakeTx{pendingAtHead: 1}
+	c := sampleGatedChange(true)
+	err := commitGatedPR(context.Background(), &fakeBeginner{tx: tx}, interactions.NewPublisher(nil), c)
+	if !errors.Is(err, errAlreadyGated) {
+		t.Fatalf("commitGatedPR = %v, want errAlreadyGated", err)
+	}
+	if len(tx.sqls) != 1 || tx.sqls[0] != pendingAtHeadSQL {
+		t.Errorf("statements = %q, want the pending-at-head check only", tx.sqls)
+	}
+	if tx.commits != 0 {
+		t.Errorf("commits = %d, want none", tx.commits)
+	}
+	tx2 := &fakeTx{pendingAtHead: 1}
+	db := &fakeBeginner{tx: tx2}
+	stop, rerr := recordGatedPR(context.Background(), db, interactions.NewPublisher(nil), c, "repo")
+	if stop || rerr != nil {
+		t.Fatalf("recordGatedPR = (stop %t, %v), want the loop to go on", stop, rerr)
+	}
+	if db.begins != 1 {
+		t.Errorf("begins = %d, want 1 (no retry, no block)", db.begins)
+	}
+	for _, r := range outboxRows(t, tx2) {
+		t.Errorf("enqueued %s for an already-gated branch", r.topic)
 	}
 }
 
@@ -197,7 +244,7 @@ func TestCommitGatedPR_AnyFailureRollsBackEverything(t *testing.T) {
 			if tx.commits != 0 || tx.rollbacks != 1 {
 				t.Errorf("commits=%d rollbacks=%d, want a rollback only", tx.commits, tx.rollbacks)
 			}
-			if strings.Contains(failOn, "pending") && len(tx.sqls) != 1 {
+			if strings.Contains(failOn, "pending") && len(tx.sqls) != 2 {
 				t.Errorf("statements after a failed pending insert: %q — a failed statement aborts the tx, nothing may follow it", tx.sqls)
 			}
 		})
