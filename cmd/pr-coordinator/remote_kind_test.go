@@ -55,7 +55,7 @@ func TestPRLoop_ChecksRemoteKindBeforeGitHubAPI(t *testing.T) {
 	src := strings.ReplaceAll(string(b), "\r\n", "\n")
 	sel := strings.Index(src, "SELECT base_branch, clone_path, name, github_url FROM repositories")
 	gate := strings.Index(src, "gateReason := manualGateReason(prGateMode, repoKind, repoNoGitHub)")
-	call := strings.Index(src, "prURL, prNumber := createGitHubPR(")
+	call := strings.Index(src, "prURL, prNumber, prFailure := createGitHubPR(")
 	if sel < 0 || gate < 0 || call < 0 || !(sel < gate && gate < call) {
 		t.Fatalf("want the github_url lookup, then the gate decision, then createGitHubPR (positions %d, %d, %d)", sel, gate, call)
 	}

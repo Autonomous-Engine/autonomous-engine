@@ -340,8 +340,8 @@ func TestRecordPRReady_BlockFailureAfterGuardRecordedIsUnrecoverable(t *testing.
 // and returns the error to the bus.
 func TestCoordinator_FailedBlockIsReturnedToTheBus(t *testing.T) {
 	code := stripComments(coordinatorSources(t)["main.go"])
-	if n := strings.Count(code, "unackedErr = rerr\n\t\t\t\t\tbreak subtasks") + strings.Count(code, "unackedErr = rerr\n\t\t\t\tbreak subtasks"); n != 3 {
-		t.Errorf("found %d unacknowledged exits from the repo loop, want 3 (replay hand-off, gate, pr.ready)", n)
+	if n := len(regexp.MustCompile(`unackedErr = [rg]err\n\t+break subtasks`).FindAllString(code, -1)); n != 4 {
+		t.Errorf("found %d unacknowledged exits from the repo loop, want 4 (replay hand-off, manual gate, no-PR gate, pr.ready)", n)
 	}
 	if !regexp.MustCompile(`if unackedErr == nil && replay && replayReviews == 0 \{\s*unackedErr = recordReplayComplete\(`).MatchString(code) {
 		t.Error("replay.complete is not skipped after a failed block, or its error is dropped")

@@ -98,8 +98,14 @@ func TestCoordinator_GateLoopStopsAfterBlock(t *testing.T) {
 	if !regexp.MustCompile(`subtasks:\s*for _, c := range children`).MatchString(code) {
 		t.Error("the per-repo PR loop is not labelled subtasks")
 	}
-	if !regexp.MustCompile(`if stop, rerr := recordGatedPR\([^\n]*\); rerr != nil \{[^}]*break subtasks\s*\} else if stop \{[^}]*break subtasks`).MatchString(code) {
-		t.Error("the gate branch does not break out of the repo loop when recordGatedPR reports a retry or a block")
+	if !regexp.MustCompile(`return recordGatedPR\(`).MatchString(code) {
+		t.Error("the gate closure does not end in recordGatedPR")
+	}
+	// Both gate call sites — the manual/non-GitHub gate and the branch
+	// github-service opened no PR for — stop the loop on a retry or a block.
+	gateCalls := regexp.MustCompile(`stop, gerr := gate\([^\n]*\)\s*if gerr != nil \{[^}]*break subtasks\s*\}\s*if stop \{[^}]*break subtasks`).FindAllString(code, -1)
+	if len(gateCalls) != 2 {
+		t.Errorf("gate call sites that break out of the repo loop on a retry or a block = %d, want 2 (manual gate, and no PR from github-service)", len(gateCalls))
 	}
 	if strings.Contains(code, "commitGatedPR(") {
 		t.Error("main.go calls commitGatedPR directly; use recordGatedPR so a failure stops the loop")
