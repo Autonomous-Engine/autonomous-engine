@@ -4943,7 +4943,7 @@ func RunToolLoopWithOptions(
 		// reference a tool_use in the preceding assistant message.
 		req.Messages = append(req.Messages, adapter.ChatMessage{
 			Role:      adapter.RoleAssistant,
-			Content:   resp.Content,
+			Content:   trimAssistantProse(resp.Content),
 			ToolCalls: resp.ToolCalls,
 		})
 

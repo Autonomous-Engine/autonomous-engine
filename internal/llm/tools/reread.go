@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/autonomousengine/autonomous-engine/internal/llm/adapter"
 )
@@ -191,6 +192,32 @@ func (m *readMemo) recordedFinding(e *Executor, p string, start, end int, unchan
 func rereadFindingResult(path string, start, end, n int, f CitedFinding) string {
 	return fmt.Sprintf("%s%s%d-%d; you recorded finding #%d from them: %s (%s:%d-%d). Cite it, or request a different range",
 		path, rereadMarker, start, end, n, truncateRunes(f.Claim, 160), f.Path, f.StartLine, f.EndLine)
+}
+
+// assistantProseMax bounds the prose of an assistant turn kept in the
+// transcript. Live (enmime, 2026-11-03 15:54) a model wrote 24k characters
+// around one tool call; the one-turn window kept the turn whole, so the
+// next call carried 6k tokens of the model's own words and the work meter
+// counted them. The tool calls are what the history needs; the prose is
+// kept as its head (the plan) and tail (the next step) with a note.
+const assistantProseMax = 2000
+
+// trimAssistantProse keeps content under assistantProseMax: the first 1500
+// and last 500 characters with a note saying how much is gone.
+func trimAssistantProse(content string) string {
+	if len(content) <= assistantProseMax {
+		return content
+	}
+	head, tail := assistantProseMax*3/4, assistantProseMax/4
+	// Cut on rune boundaries.
+	for head > 0 && !utf8.RuneStart(content[head]) {
+		head--
+	}
+	for tail > 0 && !utf8.RuneStart(content[len(content)-tail]) {
+		tail--
+	}
+	return fmt.Sprintf("%s\n[… %d chars trimmed from the transcript; the tool calls stand …]\n%s",
+		content[:head], len(content)-head-tail, content[len(content)-tail:])
 }
 
 // readPlan is the path (pinPath form) and the lines start..end of total a
