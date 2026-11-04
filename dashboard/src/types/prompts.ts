@@ -89,3 +89,5 @@ export type PromptWSEvent =
   | { type: 'prompt_requested'; prompt_id: string; prompt_type: PromptType; headline: string; work_item_id: string; product_id: string }
   | { type: 'prompt_answered'; prompt_id: string; classified_as?: ClassifiedAs; codex_entry_id?: string }
   | { type: 'prompt_revoked'; prompt_id: string; codex_entry_id?: string }
+  // A retry superseded the work item's pending prompts (count of them).
+  | { type: 'prompt_cancelled'; work_item_id: string; count: number }

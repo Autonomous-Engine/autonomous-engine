@@ -344,3 +344,58 @@ func TestStore_FindPendingApprovalPromptForWorkItem(t *testing.T) {
 		t.Errorf("unknown work_item = %v, want ErrNotFound", err)
 	}
 }
+
+// A retry that resumes a work item supersedes its pending prompts in the
+// same transaction: they leave Approvals as "cancelled" with the reason,
+// answered prompts and other work items' prompts are untouched.
+func TestCancelPendingTx_SupersedesOnlyTheWorkItemsPendingPrompts(t *testing.T) {
+	p := pool(t)
+	defer p.Close()
+	ctx := context.Background()
+	productID := mustInsertFixtureProduct(t, p)
+	resumed := mustInsertFixtureWorkItem(t, p, productID)
+	other := mustInsertFixtureWorkItem(t, p, productID)
+	store := interactions.NewStore(p)
+
+	pending, answered, elsewhere := newPendingPrompt(resumed, productID), newPendingPrompt(resumed, productID), newPendingPrompt(other, productID)
+	for _, pr := range []*interactions.Prompt{pending, answered, elsewhere} {
+		if err := store.Insert(ctx, pr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.MarkAnswered(ctx, answered.ID, interactions.AnswerInput{AnsweredBy: "u", AnsweredVia: "dashboard", ActionChosen: "a1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := p.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := interactions.CancelPendingTx(ctx, tx, resumed, "admin", "superseded by the parent's retry")
+	if err != nil {
+		t.Fatalf("CancelPendingTx: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("cancelled %d prompts, want the one pending", n)
+	}
+	got, err := store.GetByID(ctx, pending.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != interactions.StateCancelled || got.AnsweredBy != "admin" || got.ActionChosen != "superseded" || got.AnswerText != "superseded by the parent's retry" || got.AnsweredAt == nil {
+		t.Fatalf("cancelled prompt = %+v", got)
+	}
+	if got, _ := store.GetByID(ctx, answered.ID); got.State != interactions.StateAnswered || got.ActionChosen != "a1" {
+		t.Fatalf("answered prompt changed: %+v", got)
+	}
+	list, err := store.ListPending(ctx, &productID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != elsewhere.ID {
+		t.Fatalf("pending after cancel = %+v, want only the other work item's", list)
+	}
+}

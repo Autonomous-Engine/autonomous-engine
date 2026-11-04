@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/autonomousengine/autonomous-engine/internal/bus"
+	"github.com/autonomousengine/autonomous-engine/internal/interactions"
 	"github.com/autonomousengine/autonomous-engine/internal/models"
 	"github.com/autonomousengine/autonomous-engine/internal/outbox"
 	"github.com/autonomousengine/autonomous-engine/internal/workgraph"
@@ -85,14 +86,49 @@ func enqueueSubtaskRetry(ctx context.Context, tx pgx.Tx, item *models.WorkItem) 
 }
 
 // retrySubtask moves a blocked or failed subtask back to implementation and
-// enqueues its implementation.tasks retry in one transaction.
+// enqueues its implementation.tasks retry in one transaction; the prompt it
+// was parked on is superseded with it.
 func (h *Handlers) retrySubtask(ctx context.Context, item *models.WorkItem, agentID, reason string) error {
-	return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+	superseded := supersededPrompts{}
+	err := workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
 		if _, err := h.approvals.TransitionStateTx(ctx, tx, item.ID, models.WorkItemStateImplementation, agentID, reason); err != nil {
 			return &transitionFailed{err: err}
 		}
+		if err := superseded.cancel(ctx, tx, item.ID, agentID, reason); err != nil {
+			return err
+		}
 		return enqueueSubtaskRetry(ctx, tx, item)
 	})
+	if err == nil {
+		superseded.push(h.promptHub)
+	}
+	return err
+}
+
+// supersededPrompts counts, per work item, the pending prompts a retry
+// cancelled in its transaction, and tells the dashboard once it commits:
+// a prompt_cancelled event per work item, so the bell and the Approvals
+// list drop them without a reload.
+type supersededPrompts map[uuid.UUID]int64
+
+func (s supersededPrompts) cancel(ctx context.Context, tx pgx.Tx, workID uuid.UUID, by, reason string) error {
+	n, err := interactions.CancelPendingTx(ctx, tx, workID, by, reason)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		s[workID] += n
+	}
+	return nil
+}
+
+func (s supersededPrompts) push(hub promptPusher) {
+	if hub == nil {
+		return
+	}
+	for id, n := range s {
+		hub.PushPromptEvent("prompt_cancelled", map[string]any{"work_item_id": id.String(), "count": n})
+	}
 }
 
 // stoppedSubtasks is parentID's subtasks whose implementation stopped:
@@ -116,14 +152,24 @@ func (h *Handlers) stoppedSubtasks(ctx context.Context, parentID uuid.UUID) []*m
 // exhausted, repeated failure) answered on the parent: the parent and each
 // stopped subtask move to implementation and each subtask's
 // implementation.tasks retry is enqueued, in one transaction. Research and
-// the plan stand; only the implementation attempt is fresh.
+// the plan stand; only the implementation attempt is fresh. The pending
+// prompts of the parent and of each stopped subtask (a subtask parked on
+// its own "Blocked:" prompt) are superseded in the same transaction: the
+// retry answers them.
 func (h *Handlers) resumeImplementation(ctx context.Context, parent *models.WorkItem, stopped []*models.WorkItem, agentID, reason string) error {
-	return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+	superseded := supersededPrompts{}
+	err := workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
 		if err := h.transitionTx(ctx, tx, parent, models.WorkItemStateImplementation, agentID, reason); err != nil {
+			return err
+		}
+		if err := superseded.cancel(ctx, tx, parent.ID, agentID, reason); err != nil {
 			return err
 		}
 		for _, c := range stopped {
 			if err := h.transitionTx(ctx, tx, c, models.WorkItemStateImplementation, agentID, reason); err != nil {
+				return err
+			}
+			if err := superseded.cancel(ctx, tx, c.ID, agentID, reason); err != nil {
 				return err
 			}
 			if err := enqueueSubtaskRetry(ctx, tx, c); err != nil {
@@ -132,6 +178,10 @@ func (h *Handlers) resumeImplementation(ctx context.Context, parent *models.Work
 		}
 		return nil
 	})
+	if err == nil {
+		superseded.push(h.promptHub)
+	}
+	return err
 }
 
 // transitionTx moves item to `to` on tx; an item awaiting the user goes

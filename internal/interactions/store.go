@@ -138,6 +138,31 @@ func (s *Store) MarkAnswered(ctx context.Context, id uuid.UUID, ans AnswerInput)
 	return nil
 }
 
+// CancelPendingTx supersedes the work item's pending prompts in the caller's
+// transaction — the one that resumes or cancels the item — so a question
+// the item no longer waits on leaves Approvals with it. The rows become
+// cancelled with who superseded them and why; answered and revoked rows
+// are untouched. Returns how many were cancelled.
+func CancelPendingTx(ctx context.Context, tx pgx.Tx, workItemID uuid.UUID, by, reason string) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("interactions: CancelPendingTx requires the caller's transaction")
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE user_interactions
+		SET state = 'cancelled',
+			answered_at = NOW(),
+			answered_by = $2,
+			answered_via = 'system',
+			action_chosen = 'superseded',
+			answer_text = $3
+		WHERE work_item_id = $1 AND state = 'pending'
+	`, workItemID, by, reason)
+	if err != nil {
+		return 0, fmt.Errorf("cancel pending prompts of %s: %w", workItemID, err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ApplyClassification writes the triage output (and the polymorphic codex
 // back-link, if the answer was promoted). Idempotent — safe to call twice.
 func (s *Store) ApplyClassification(ctx context.Context, id uuid.UUID, r ClassificationResult) error {

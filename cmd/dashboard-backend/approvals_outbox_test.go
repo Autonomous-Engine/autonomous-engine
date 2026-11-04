@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,6 +43,8 @@ type outboxTx struct {
 	key       string
 	payload   []byte
 	err       error // returned by the outbox insert
+	// cancelled is the row count answered to a prompt-cancel UPDATE.
+	cancelled int
 }
 
 func (f *outboxTx) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -54,6 +57,9 @@ func (f *outboxTx) Exec(_ context.Context, sql string, args ...any) (pgconn.Comm
 		f.key, _ = args[4].(string)
 		f.payload, _ = args[5].([]byte)
 		return pgconn.CommandTag{}, f.err
+	}
+	if strings.Contains(sql, "UPDATE user_interactions") && strings.Contains(sql, "'cancelled'") {
+		return pgconn.NewCommandTag(fmt.Sprintf("UPDATE %d", f.cancelled)), nil
 	}
 	return pgconn.CommandTag{}, nil
 }
@@ -642,5 +648,99 @@ func TestBlockedPromptAnswer_ReviewFixSubtaskRetryKeepsItsIdentity(t *testing.T)
 	body := a.assertOneCommittedEvent(t, models.WorkItemStateImplementation, bus.TopicImplementationTasks, item.ID.String(), *item.ParentID)
 	if body["is_review_fix"] != true || body["review_feedback"] != item.Description {
 		t.Errorf("payload = %v, want is_review_fix and the feedback", body)
+	}
+}
+
+// ─── superseded prompts ──────────────────────────────────────────────────────
+
+// promptHubFake records the prompt events a handler pushes to the dashboard.
+type promptHubFake struct{ events []map[string]any }
+
+func (h *promptHubFake) PushPromptEvent(eventType string, payload map[string]any) {
+	cp := map[string]any{"type": eventType}
+	for k, v := range payload {
+		cp[k] = v
+	}
+	h.events = append(h.events, cp)
+}
+
+// cancelSQLs are the UPDATE user_interactions … 'cancelled' statements the
+// transaction ran, with the work item each one names.
+func cancelSQLs(tx *outboxTx) []uuid.UUID {
+	var ids []uuid.UUID
+	for i, s := range tx.sqls {
+		if strings.Contains(s, "UPDATE user_interactions") && strings.Contains(s, "'cancelled'") && strings.Contains(s, "state = 'pending'") {
+			id, _ := tx.args[i][0].(uuid.UUID)
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func containsID(ids []uuid.UUID, id uuid.UUID) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+func cancelledEvents(h *promptHubFake, workID uuid.UUID) int {
+	n := 0
+	for _, e := range h.events {
+		if e["type"] == "prompt_cancelled" && e["work_item_id"] == workID.String() {
+			n++
+		}
+	}
+	return n
+}
+
+// A stopped subtask parked on its own "Blocked:" prompt is resumed by the
+// parent's retry, but its prompt stayed pending in Approvals (NEW-17
+// family). The retry supersedes the pending prompts of the parent and of
+// every stopped subtask in its transaction, and tells the dashboard.
+func TestBlockedPromptAnswer_ParentRetrySupersedesTheStoppedSubtasksOwnPrompts(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateBlocked, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateAwaitingUser,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{child}
+	a.tx.cancelled = 1 // the child's prompt
+	hub := &promptHubFake{}
+	a.h.promptHub = hub
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), parent.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	ids := cancelSQLs(a.tx)
+	if !containsID(ids, child.ID) || !containsID(ids, parent.ID) {
+		t.Fatalf("prompts superseded for %v, want the parent %s and the subtask %s, in the retry's transaction", ids, parent.ID, child.ID)
+	}
+	if a.tx.commits != 1 || a.tx.calls != 1 {
+		t.Fatalf("commits=%d events=%d, want the one committed transaction with its implementation.tasks", a.tx.commits, a.tx.calls)
+	}
+	if cancelledEvents(hub, child.ID) != 1 {
+		t.Fatalf("dashboard events = %v, want prompt_cancelled for the subtask", hub.events)
+	}
+}
+
+// The admin retry of a stopped subtask supersedes that subtask's own
+// pending prompt the same way.
+func TestRetryWorkItem_SubtaskRetrySupersedesItsOwnPrompt(t *testing.T) {
+	item := blockedSubtask()
+	a := newApprovalHarness(item)
+	a.tx.cancelled = 1
+	hub := &promptHubFake{}
+	a.h.promptHub = hub
+	rec := post(a.h.RetryWorkItem, "/api/work-items/retry?id="+item.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if ids := cancelSQLs(a.tx); !containsID(ids, item.ID) {
+		t.Fatalf("prompts superseded for %v, want the subtask %s", ids, item.ID)
+	}
+	if cancelledEvents(hub, item.ID) != 1 {
+		t.Fatalf("dashboard events = %v, want prompt_cancelled for the subtask", hub.events)
 	}
 }

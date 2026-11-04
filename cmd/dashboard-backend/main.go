@@ -116,6 +116,7 @@ func main() {
 	handlers := NewHandlers(wg, cx, kb, interactionsStore, interactionsPublisher, evidenceStore)
 	authSvc := NewAuthService(pool)
 	wsHub := NewWSHub(pool)
+	handlers.promptHub = wsHub // a retry that supersedes prompts tells the bell
 	adminHandlers := NewAdminHandlers(configStore, pool)
 	authHandlers := NewAuthHandlers(authManager, pool)
 	authHandlers.invalidate = authSvc.Invalidate

@@ -60,6 +60,9 @@ type Handlers struct {
 	// NewHandlers wires both to wg; tests supply fakes.
 	approvals approvalGraph
 	txdb      workgraph.TxBeginner
+	// promptHub is told when a retry supersedes pending prompts
+	// (approvals_outbox.go). Nil in tests that do not exercise it.
+	promptHub promptPusher
 	// codexDB reads and writes codex refusals (codex_refusal.go). Nil in
 	// tests that do not exercise them: the blocked answers then take the
 	// generic paths.
