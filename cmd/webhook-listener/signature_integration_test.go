@@ -37,11 +37,13 @@ func TestIntegration_WebhookSecretIsReadFromTheDashboardCredentialStore(t *testi
 	t.Cleanup(clear)
 
 	// Nothing stored: the real store's not-found error is recognised, so an
-	// env secret applies and, without one, deliveries are refused.
+	// env secret applies and, without one, a signed delivery is refused
+	// with the operator told why (an unsigned one is refused before the
+	// secret is looked up, 401 — TestGitHubWebhook_RefusesUnsignedDeliveryWhenNoSecretConfigured).
 	if _, err := listener.ResolveCredential(ctx, webhookSecretCategory, webhookSecretKey, "", ""); !errors.Is(err, configstore.ErrCredentialNotFound) {
 		t.Fatalf("empty store: err = %v, want ErrCredentialNotFound", err)
 	}
-	if rec := deliver(t, &githubSecretSource{store: listener}, "", false); rec.Code != http.StatusServiceUnavailable {
+	if rec := deliver(t, &githubSecretSource{store: listener}, signature(pingBody, "whatever"), true); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no secret anywhere: status = %d, want 503", rec.Code)
 	}
 	if rec := deliver(t, &githubSecretSource{store: listener, env: "env-secret"}, signature(pingBody, "env-secret"), true); rec.Code != http.StatusOK {
