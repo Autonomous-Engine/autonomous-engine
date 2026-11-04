@@ -12,7 +12,7 @@ import (
 
 // R8 O2: an orphan the planner cannot re-home is recorded as a gap.
 
-const unownedGapLine = "criterion AC-3 is unowned after planning: The notice reads politely; verify manually"
+const unownedGapLine = "criterion AC-3 is unowned after planning (its text names no repository path, and no step shares its wording): The notice reads politely; verify manually"
 
 // A criterion that names no path: no block, a recorded gap on every
 // subtask's non_code_criteria, and review records it as not_verifiable with

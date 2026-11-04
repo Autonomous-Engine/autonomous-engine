@@ -92,11 +92,11 @@ func TestEscalationWithoutATreeKeepsTheGap(t *testing.T) {
 // task's files cover it) is kept from the model and recorded as
 // not_verifiable with its own gap line, so the gate escalates.
 func TestRunRecordsUnownedCriteriaAsGaps(t *testing.T) {
-	const gap = "criterion AC-3 is unowned after planning: the claim in landing.html is corrected; verify manually"
+	const gap = "criterion AC-3 is unowned after planning (no task changes landing.html): the claim in landing.html is corrected; verify manually"
 	rb := requirementsBuilder{workID: "w", seen: map[string]bool{}}
 	rb.addPlanTask("11111111-1111-1111-1111-111111111111", []byte(`{
 		"criteria": [{"id":"AC-1","text":"a","source":{"kind":"derived","reason":"r"},"risk":"low"}],
-		"non_code_criteria": [{"id":"AC-3","text":"the claim in landing.html is corrected","source":{"kind":"user","quote":"q"},"risk":"low","non_code":true,"non_code_reason":"owned by no task after planning","unowned":true}]}`))
+		"non_code_criteria": [{"id":"AC-3","text":"the claim in landing.html is corrected","source":{"kind":"user","quote":"q"},"risk":"low","non_code":true,"non_code_reason":"no task changes landing.html","unowned":true}]}`))
 	in := runInput(t)
 	in.Criteria = rb.req.Criteria
 	loop, reqs := scripted(approveAC1)

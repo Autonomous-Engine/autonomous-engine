@@ -107,7 +107,13 @@ func NonCodeGap(c Criterion) string {
 }
 
 // UnownedGap is the line review sees for a criterion the planner could not
-// give to any task (R8).
+// give to any task (R8). NonCodeReason, when the planner set it, is why no
+// task could own it (its text names no path and no step shares its
+// wording; no task changes every path it names), so the person it
+// escalates to sees the planner's reason, not just the criterion.
 func UnownedGap(c Criterion) string {
+	if reason := strings.TrimSpace(c.NonCodeReason); reason != "" {
+		return fmt.Sprintf("criterion %s is unowned after planning (%s): %s; verify manually", c.ID, reason, strings.TrimSpace(c.Text))
+	}
 	return fmt.Sprintf("criterion %s is unowned after planning: %s; verify manually", c.ID, strings.TrimSpace(c.Text))
 }

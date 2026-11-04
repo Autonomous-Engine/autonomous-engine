@@ -108,8 +108,13 @@ func TestPreMarkedNonCodeCriterionIsNotExempt(t *testing.T) {
 func TestUnownedGapAndStrip(t *testing.T) {
 	brief := nonCodeBrief()
 	c := brief.Criteria[1]
-	c.NonCode, c.NonCodeReason, c.Unowned = true, "owned by no task after planning", true
+	c.NonCode, c.NonCodeReason, c.Unowned = true, "", true
 	if got, want := NonCodeGap(c), "criterion AC-2 is unowned after planning: deployed to staging; verify manually"; got != want || UnownedGap(c) != want {
+		t.Fatalf("gap = %q, want %q", got, want)
+	}
+	// The planner's reason, when it recorded one, is in the line.
+	c.NonCodeReason = "its text names no repository path, and no step shares its wording"
+	if got, want := NonCodeGap(c), "criterion AC-2 is unowned after planning (its text names no repository path, and no step shares its wording): deployed to staging; verify manually"; got != want || UnownedGap(c) != want {
 		t.Fatalf("gap = %q, want %q", got, want)
 	}
 	brief.Criteria[1] = c
