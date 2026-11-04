@@ -116,3 +116,34 @@ func TestResearchToolsOfferRecordFindingOnlyWhenAsked(t *testing.T) {
 		t.Fatal("record_finding not offered with Findings")
 	}
 }
+
+// A model that reads codex-scoped paths cites them the same way
+// ("enmime/a.go"); read_file already drops a leading segment that is not
+// in the tree, and record_finding must cite the file read_file served, not
+// refuse it as unread.
+func TestRecordFindingStripsALeadingRepoSegmentLikeReadFile(t *testing.T) {
+	ex := findingsExecutor(t)
+	if err := os.MkdirAll(filepath.Join(ex.repoPath, "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ex.repoPath, "pkg", "a.go"), []byte("one\ntwo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	ex.markRead("a.go", 1, 10, 10)
+	ex.markRead("pkg/a.go", 1, 2, 2)
+
+	res := ex.Execute(ctx, recordCall("cited through the repo name", "enmime/a.go", 1, 2))
+	if res.IsError || !strings.Contains(res.Content, "(a.go:1-2)") {
+		t.Fatalf("repo-prefixed path: result = %+v", res)
+	}
+	// A first segment that is a real directory is kept.
+	res = ex.Execute(ctx, recordCall("a real subdirectory", "pkg/a.go", 1, 1))
+	if res.IsError || !strings.Contains(res.Content, "(pkg/a.go:1-1)") {
+		t.Fatalf("real subdirectory: result = %+v", res)
+	}
+	fs := ex.Findings()
+	if len(fs) != 2 || fs[0].Path != "a.go" || fs[1].Path != "pkg/a.go" {
+		t.Fatalf("findings = %+v", fs)
+	}
+}

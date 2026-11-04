@@ -175,6 +175,10 @@ func (e *Executor) recordFinding(ctx context.Context, callID string, args map[st
 	if err != nil {
 		return refuse(err.Error())
 	}
+	// read_file drops a leading repo-name segment that is not in the tree
+	// (normalizePath); a citation written the same way names the file that
+	// read served, so the read coverage and the stored path agree.
+	rel = filepath.ToSlash(e.normalizePath(filepath.FromSlash(rel)))
 	start, _ := args["start_line"].(float64)
 	end, _ := args["end_line"].(float64)
 	if start < 1 {
