@@ -377,3 +377,37 @@ func TestIntegration_FixSubtaskAndEventCommitTogether(t *testing.T) {
 		t.Errorf("outbox rows = %d after a failed dispatch, want still 1", len(evs))
 	}
 }
+
+// A work item without a product (created by chat before a product was set)
+// is blocked by product-agent; the block must reach Approvals. The prompt
+// is raised without a product (NEW-35: it was skipped, the item invisible).
+func TestIntegration_WorkBlockedOnAProductlessItemRaisesThePrompt(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := context.Background()
+	wg := workgraph.New(pool)
+	orphan := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO work_items (id, type, state, title, description)
+		VALUES ($1, 'feature', 'intake', 'no product', 'd')`, orphan); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM work_items WHERE id = $1`, orphan) })
+
+	if err := blockFromWorkBlocked(ctx, pool, wg, &recordingBus{j: &journal{}}, orphan, "Work item has no product. Assign it to a product, then retry it."); err != nil {
+		t.Fatalf("blockFromWorkBlocked: %v", err)
+	}
+	if got := itemState(t, pool, orphan); got != string(models.WorkItemStateBlocked) {
+		t.Errorf("state = %s, want blocked", got)
+	}
+	var productID *uuid.UUID
+	var headline string
+	if err := pool.QueryRow(ctx, `SELECT product_id, headline FROM user_interactions WHERE work_item_id = $1 AND trigger = 'blocked' AND state = 'pending'`, orphan).Scan(&productID, &headline); err != nil {
+		t.Fatalf("the blocked prompt was not raised: %v", err)
+	}
+	if productID != nil || headline != "Blocked: no product" {
+		t.Errorf("prompt product=%v headline=%q, want no product and the Blocked: headline", productID, headline)
+	}
+	evs := eventsFor(t, pool, orphan)
+	if len(evs) != 1 || evs[0].Topic != bus.TopicUserPromptRequested {
+		t.Errorf("outbox rows = %+v, want one user_prompt.requested", evs)
+	}
+}

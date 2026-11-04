@@ -75,7 +75,7 @@ func insertPrompt(ctx context.Context, ex execer, p *Prompt) error {
 		actions = []byte("[]")
 	}
 	_, err := ex.Exec(ctx, insertPromptSQL,
-		p.ID, p.WorkItemID, p.ProductID, p.AskingAgent, p.Trigger, p.PromptType,
+		p.ID, p.WorkItemID, nullIfNilUUID(p.ProductID), p.AskingAgent, p.Trigger, p.PromptType,
 		p.Headline, p.Question, p.ContextLink, ctxPayload, actions,
 		p.State, p.RequestedAt, p.PromptedVia)
 	return err
@@ -219,8 +219,21 @@ func (s *Store) MarkRevoked(ctx context.Context, id uuid.UUID, by, reason string
 	return nil
 }
 
+// NilProductSQL is the SQL form of uuid.Nil: a prompt raised for a work
+// item without a product (migration 067) reads back with ProductID
+// uuid.Nil, so every reader keeps a plain uuid.UUID.
+const NilProductSQL = `'00000000-0000-0000-0000-000000000000'::uuid`
+
+// nullIfNilUUID stores uuid.Nil as NULL (the foreign key has no nil row).
+func nullIfNilUUID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id
+}
+
 const selectPromptCols = `
-	SELECT id, work_item_id, product_id, asking_agent, trigger, prompt_type,
+	SELECT id, work_item_id, COALESCE(product_id, ` + NilProductSQL + `), asking_agent, trigger, prompt_type,
 	       headline, question, COALESCE(context_link, ''), context_payload, actions,
 	       state, requested_at, answered_at, prompted_via,
 	       COALESCE(answered_by, ''), COALESCE(answered_via, ''),
@@ -299,7 +312,7 @@ func nullIfEmpty(s string) any {
 func (s *Store) FindByCodexEntry(ctx context.Context, codexEntryID uuid.UUID, table string) (uuid.UUID, uuid.UUID, error) {
 	var promptID, productID uuid.UUID
 	err := s.db.QueryRow(ctx, `
-		SELECT id, product_id FROM user_interactions
+		SELECT id, COALESCE(product_id, `+NilProductSQL+`) FROM user_interactions
 		WHERE codex_entry_id = $1 AND codex_entry_table = $2
 		ORDER BY requested_at DESC LIMIT 1
 	`, codexEntryID, table).Scan(&promptID, &productID)

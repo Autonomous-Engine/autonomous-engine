@@ -399,3 +399,54 @@ func TestCancelPendingTx_SupersedesOnlyTheWorkItemsPendingPrompts(t *testing.T) 
 		t.Fatalf("pending after cancel = %+v, want only the other work item's", list)
 	}
 }
+
+// A work item without a product can be blocked, and the person must see
+// the block: its prompt is stored without a product (NULL), reads back
+// with ProductID uuid.Nil, is listed with every product's prompts and
+// under no product's filter.
+func TestStore_PromptWithoutAProductIsStoredAndListed(t *testing.T) {
+	p := pool(t)
+	defer p.Close()
+	ctx := context.Background()
+	productID := mustInsertFixtureProduct(t, p)
+	orphan := uuid.New()
+	if _, err := p.Exec(ctx, `INSERT INTO work_items (id, title, state, type, priority, created_at, updated_at)
+		VALUES ($1, 'no product', 'blocked', 'feature', 'medium', NOW(), NOW())`, orphan); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = p.Exec(context.Background(), `DELETE FROM work_items WHERE id = $1`, orphan) })
+	store := interactions.NewStore(p)
+
+	pr := newPendingPrompt(orphan, uuid.Nil)
+	pr.Trigger, pr.PromptType, pr.Headline = interactions.TriggerBlocked, interactions.PromptTypeEscalation, "Blocked: no product"
+	if err := store.Insert(ctx, pr); err != nil {
+		t.Fatalf("insert a prompt without a product: %v", err)
+	}
+	got, err := store.GetByID(ctx, pr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ProductID != uuid.Nil || got.WorkItemID != orphan || got.Headline != "Blocked: no product" {
+		t.Fatalf("prompt = %+v", got)
+	}
+	all, err := store.ListPending(ctx, nil, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed bool
+	for _, x := range all {
+		listed = listed || x.ID == pr.ID
+	}
+	if !listed {
+		t.Fatalf("the product-less prompt is not in the unfiltered pending list (%d prompts)", len(all))
+	}
+	mine, err := store.ListPending(ctx, &productID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range mine {
+		if x.ID == pr.ID {
+			t.Fatal("the product-less prompt is listed under a product")
+		}
+	}
+}

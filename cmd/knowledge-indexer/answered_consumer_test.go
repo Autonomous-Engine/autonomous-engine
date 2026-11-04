@@ -285,3 +285,30 @@ func TestAnsweredConsumer_BadPayloadSilentlyDropped(t *testing.T) {
 		t.Error("triage should not run on unparseable payload")
 	}
 }
+
+// A prompt raised for a work item without a product (a product-less block,
+// NEW-35) is answered like any other, but there is no product to store the
+// decision under: the answer is classified, not vectorised or promoted.
+func TestAnsweredConsumer_ProductlessAnswerIsClassifiedButNotPromoted(t *testing.T) {
+	store := &fakeStore{}
+	vec := &fakeVec{}
+	codex := &fakeCodexPub{}
+	triage := &fakeTriage{result: &interactions.TriageResult{
+		ClassifiedAs: interactions.ClassifiedCodexPattern, ShouldPromote: true, Confidence: 0.9,
+		ProposedEntry: map[string]any{"title": "x"},
+	}}
+	c := NewAnsweredConsumer(store, vec, codex, triage)
+	promptID := uuid.New()
+	if err := c.Handle(context.Background(), msgFor(&interactions.AnsweredPayload{
+		PromptID: promptID, WorkItemID: uuid.New(), ProductID: uuid.Nil,
+		AnswerText: "retry", Question: "Blocked: no product",
+	})); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(codex.published) != 0 || len(vec.upserts) != 0 {
+		t.Fatalf("codex=%d qdrant=%d, want neither for an answer without a product", len(codex.published), len(vec.upserts))
+	}
+	if store.lastPromptID != promptID || store.lastClassification == nil || store.lastClassification.CodexEntryID != nil {
+		t.Fatalf("classification applied to %s = %+v, want the prompt's, without a codex back-link", store.lastPromptID, store.lastClassification)
+	}
+}

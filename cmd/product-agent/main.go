@@ -253,13 +253,12 @@ func buildHandler(
 		}
 
 		// A work item without a product cannot get a PRD: grounding is
-		// product-scoped (no cross-product fallback) and the PRD approval prompt
-		// needs a product (user_interactions.product_id is NOT NULL). Block
-		// now, before any LLM work, rather than let the prompt insert roll
-		// back the PRD at the end.
+		// product-scoped (no cross-product fallback). Block now, before any
+		// LLM work; status-orchestrator raises the "Blocked:" prompt without
+		// a product, and Update & Retry on the work item assigns one.
 		if productID == nil {
 			reason := fmt.Sprintf("Work item %s has no product, so product-agent cannot ground or approve a PRD for it. "+
-				"Assign the work item to a product, then retry it.", workID)
+				"Choose the product on the work item page (Update & Retry), which retries it.", workID)
 			log.Printf("product-agent: blocking work_id=%s — no product", workID)
 			if err := blockInOwnTx(msgCtx, idempotency.Wrap(msgCtx, pool), aggregateID, workID, reason); err != nil {
 				log.Printf("product-agent: block work item: %v", err)

@@ -281,9 +281,16 @@ const (
 // intake with its transition row, and enqueues intake, all in one
 // transaction. The payload shape must match intakeMessage in
 // cmd/product-agent.
-func commitUpdateAndRetry(ctx context.Context, db workgraph.TxBeginner, item *models.WorkItem, description, userID string) error {
+// assignProductSQL gives a product-less item its product on Update & Retry
+// (product-agent blocked it with "has no product"; the intake event it
+// reprocesses carries the product).
+const assignProductSQL = `UPDATE work_items SET product_id = $1, updated_at = NOW() WHERE id = $2`
+
+func commitUpdateAndRetry(ctx context.Context, db workgraph.TxBeginner, item *models.WorkItem, description, userID string, assignProduct *uuid.UUID) error {
 	productID := ""
-	if item.ProductID != nil {
+	if assignProduct != nil {
+		productID = assignProduct.String()
+	} else if item.ProductID != nil {
 		productID = item.ProductID.String()
 	}
 	payload := map[string]interface{}{
@@ -293,6 +300,11 @@ func commitUpdateAndRetry(ctx context.Context, db workgraph.TxBeginner, item *mo
 		"source":      "dashboard-retry",
 	}
 	return workgraph.WithTx(ctx, db, func(tx pgx.Tx) error {
+		if assignProduct != nil {
+			if _, err := tx.Exec(ctx, assignProductSQL, *assignProduct, item.ID); err != nil {
+				return fmt.Errorf("assign product: %w", err)
+			}
+		}
 		if _, err := tx.Exec(ctx, updateDescriptionSQL, description, item.ID); err != nil {
 			return fmt.Errorf("update description: %w", err)
 		}

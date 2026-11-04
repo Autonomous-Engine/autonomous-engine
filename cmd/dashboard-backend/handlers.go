@@ -1095,14 +1095,27 @@ func (h *Handlers) UpdateAndRetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// product_id assigns a product to an item that has none (product-agent
+	// blocks such an item with "has no product"); with it the description
+	// may stay as it is.
 	var body struct {
 		Description string `json:"description"`
+		ProductID   string `json:"product_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
 		return
 	}
-	if strings.TrimSpace(body.Description) == "" {
+	var assignProduct *uuid.UUID
+	if body.ProductID != "" {
+		pid, err := uuid.Parse(body.ProductID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid product_id")
+			return
+		}
+		assignProduct = &pid
+	}
+	if strings.TrimSpace(body.Description) == "" && assignProduct == nil {
 		writeError(w, http.StatusBadRequest, "description is required")
 		return
 	}
@@ -1111,6 +1124,16 @@ func (h *Handlers) UpdateAndRetry(w http.ResponseWriter, r *http.Request) {
 	if err != nil || item == nil {
 		writeError(w, http.StatusNotFound, "work item not found")
 		return
+	}
+	if strings.TrimSpace(body.Description) == "" {
+		body.Description = item.Description
+	}
+	if assignProduct != nil {
+		var exists bool
+		if err := h.wg.DB().QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM products WHERE id = $1)`, *assignProduct).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusBadRequest, "product_id names no product")
+			return
+		}
 	}
 	if item.State != models.WorkItemStateBlocked && item.State != models.WorkItemStateFailed {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("can only update+retry blocked or failed items (this one is %q)", item.State))
@@ -1171,7 +1194,7 @@ func (h *Handlers) UpdateAndRetry(w http.ResponseWriter, r *http.Request) {
 	// state machine directly; the state is forced and the transition
 	// recorded by hand. product-agent consumes from the intake topic, so the
 	// event is what actually restarts the flow.
-	if err := commitUpdateAndRetry(r.Context(), h.txdb, item, body.Description, userID); err != nil {
+	if err := commitUpdateAndRetry(r.Context(), h.txdb, item, body.Description, userID, assignProduct); err != nil {
 		log.Printf("handlers: update-and-retry %s: %v", id, err)
 		writeError(w, http.StatusInternalServerError, "update and retry: "+err.Error())
 		return

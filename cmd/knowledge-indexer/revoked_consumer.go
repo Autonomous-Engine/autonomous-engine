@@ -126,7 +126,7 @@ type interactionInfo struct {
 func (c *RevokedConsumer) loadInteractionInfo(ctx context.Context, promptID uuid.UUID) (*interactionInfo, error) {
 	info := &interactionInfo{}
 	err := c.db.QueryRow(ctx, `
-		SELECT product_id, COALESCE(codex_entry_table, ''), COALESCE(qdrant_point_id, '')
+		SELECT COALESCE(product_id, `+interactions.NilProductSQL+`), COALESCE(codex_entry_table, ''), COALESCE(qdrant_point_id, '')
 		FROM user_interactions WHERE id = $1
 	`, promptID).Scan(&info.ProductID, &info.CodexEntryTable, &info.QdrantPointID)
 	if err != nil {

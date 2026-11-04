@@ -268,7 +268,7 @@ func TestCommitUpdateAndRetry_DescriptionStateTransitionAndIntakeShareOneTx(t *t
 	item := &models.WorkItem{ID: uuid.New(), State: models.WorkItemStateBlocked, ProductID: &product}
 	tx := &outboxTx{}
 	db := &txBeginnerFake{tx: tx}
-	if err := commitUpdateAndRetry(context.Background(), db, item, "new desc", "u1"); err != nil {
+	if err := commitUpdateAndRetry(context.Background(), db, item, "new desc", "u1", nil); err != nil {
 		t.Fatalf("commitUpdateAndRetry: %v", err)
 	}
 	if db.begins != 1 || tx.commits != 1 || tx.calls != 1 {
@@ -290,7 +290,7 @@ func TestCommitUpdateAndRetry_DescriptionStateTransitionAndIntakeShareOneTx(t *t
 	}
 
 	tx = &outboxTx{err: errors.New("boom")}
-	if err := commitUpdateAndRetry(context.Background(), &txBeginnerFake{tx: tx}, item, "d", "u"); err == nil || tx.rollbacks != 1 || tx.commits != 0 {
+	if err := commitUpdateAndRetry(context.Background(), &txBeginnerFake{tx: tx}, item, "d", "u", nil); err == nil || tx.rollbacks != 1 || tx.commits != 0 {
 		t.Errorf("enqueue failure: err=%v commits=%d rollbacks=%d", err, tx.commits, tx.rollbacks)
 	}
 }
@@ -742,5 +742,31 @@ func TestRetryWorkItem_SubtaskRetrySupersedesItsOwnPrompt(t *testing.T) {
 	}
 	if cancelledEvents(hub, item.ID) != 1 {
 		t.Fatalf("dashboard events = %v, want prompt_cancelled for the subtask", hub.events)
+	}
+}
+
+// Update & Retry of a product-less item (blocked by product-agent with
+// "has no product") assigns the product in the same transaction, and the
+// intake event product-agent reprocesses carries it.
+func TestCommitUpdateAndRetry_AssignsAProduct(t *testing.T) {
+	item := &models.WorkItem{ID: uuid.New(), State: models.WorkItemStateBlocked, Description: "the description"}
+	product := uuid.New()
+	tx := &outboxTx{}
+	if err := commitUpdateAndRetry(context.Background(), &txBeginnerFake{tx: tx}, item, item.Description, "u1", &product); err != nil {
+		t.Fatalf("commitUpdateAndRetry: %v", err)
+	}
+	var assigned bool
+	for i, s := range tx.sqls {
+		if s == assignProductSQL {
+			assigned = tx.args[i][0] == product && tx.args[i][1] == item.ID
+		}
+	}
+	if !assigned || tx.commits != 1 {
+		t.Fatalf("statements = %q (commits %d), want the product assigned in the retry's transaction", tx.sqls, tx.commits)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(tx.payload, &body)
+	if body["product_id"] != product.String() {
+		t.Errorf("intake payload product_id = %v, want %s", body["product_id"], product)
 	}
 }

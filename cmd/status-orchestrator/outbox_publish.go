@@ -67,20 +67,13 @@ func enqueueEffect(topic, key string, payload any) txEffect {
 }
 
 // promptEffect writes the prompt row and its user_prompt.requested event in
-// the caller's transaction (interactions.PublishTx).
-//
-// user_interactions.product_id is NOT NULL with a foreign key, so a prompt for
-// an item without a product can never be stored; before the conversion such a
-// prompt was published and then failed at every consumer. Inside the
-// transaction it would roll back the transition it accompanies, so it is
-// skipped with a log line instead and the transition still commits.
+// the caller's transaction (interactions.PublishTx). An item without a
+// product gets its prompt too, stored without a product (migration 067):
+// a product-less item blocked by product-agent must reach Approvals, not
+// sit invisible (NEW-35).
 func promptEffect(build func(item *models.WorkItem) *interactions.Prompt) txEffect {
 	return func(ctx context.Context, tx pgx.Tx, item *models.WorkItem) error {
 		p := build(item)
-		if p.ProductID == uuid.Nil {
-			log.Printf("status-orchestrator: %s prompt for work item %s skipped: the item has no product (user_interactions.product_id is required)", p.Trigger, item.ID)
-			return nil
-		}
 		if err := interactions.NewPublisher(nil).PublishTx(ctx, tx, aggregateFor(item), p); err != nil {
 			return fmt.Errorf("raise %s prompt: %w", p.Trigger, err)
 		}
@@ -310,8 +303,8 @@ func publishStateChanged(ctx context.Context, kb bus.MessageBus, workID uuid.UUI
 }
 
 // humanReviewPrompt builds the approval prompt for an item entering
-// human_review. ProductID is uuid.Nil when the item has none (promptEffect
-// then skips it).
+// human_review. ProductID is uuid.Nil when the item has none (stored as
+// NULL).
 func humanReviewPrompt(item *models.WorkItem, reason string) *interactions.Prompt {
 	return &interactions.Prompt{
 		ID:          uuid.New(),
