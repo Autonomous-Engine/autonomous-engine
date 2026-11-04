@@ -134,6 +134,17 @@ func (m *readMemo) answer(ctx context.Context, e *Executor, calls []adapter.Tool
 			}
 		}
 		if hit == nil {
+			// A read that has left the transcript, of lines the model
+			// recorded a finding from (unchanged since), is answered with
+			// that finding: findings are the memory, not the transcript.
+			if n, f, r := m.recordedFinding(e, p, start, end, unchanged); f != nil {
+				res := adapter.ToolResult{ToolCallID: c.ID, Content: rereadFindingResult(p, r.start, r.end, n, *f)}
+				e.markObserved(p)
+				e.markRead(p, start, end, total)
+				e.notifyReused(c, res)
+				out[i] = res
+				continue
+			}
 			if cur, ok := e.currentLines(p, start, end); ok {
 				thisTurn = append(thisTurn, readRecord{path: p, start: start, end: end, body: cur, turn: turn})
 			}
@@ -151,6 +162,35 @@ func (m *readMemo) answer(ctx context.Context, e *Executor, calls []adapter.Tool
 		out[i] = res
 	}
 	return out
+}
+
+// recordedFinding is the newest finding of e citing lines that cover
+// start..end of p, with its 1-based number and the read record (any turn)
+// that returned those lines and still matches the file; nil when there is
+// none. A finding cites lines the loop read, so a record normally exists.
+func (m *readMemo) recordedFinding(e *Executor, p string, start, end int, unchanged func(string, int, int, string) bool) (int, *CitedFinding, *readRecord) {
+	fs := e.Findings()
+	for n := len(fs) - 1; n >= 0; n-- {
+		f := fs[n]
+		if pinPath(f.Path) != p || f.StartLine > start || end > f.EndLine {
+			continue
+		}
+		for k := len(m.records) - 1; k >= 0; k-- {
+			r := &m.records[k]
+			if r.path == p && r.start <= start && end <= r.end && unchanged(p, r.start, r.end, r.body) {
+				return n + 1, &fs[n], r
+			}
+		}
+	}
+	return 0, nil, nil
+}
+
+// rereadFindingResult is the short answer to a re-read of lines a finding
+// covers; it carries rereadMarker (a re-read to the ledger) and stays
+// under isRereadResult's bound.
+func rereadFindingResult(path string, start, end, n int, f CitedFinding) string {
+	return fmt.Sprintf("%s%s%d-%d; you recorded finding #%d from them: %s (%s:%d-%d). Cite it, or request a different range",
+		path, rereadMarker, start, end, n, truncateRunes(f.Claim, 160), f.Path, f.StartLine, f.EndLine)
 }
 
 // readPlan is the path (pinPath form) and the lines start..end of total a

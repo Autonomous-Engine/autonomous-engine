@@ -135,7 +135,7 @@ func TestRereadOfAPinnedReadIsShort(t *testing.T) {
 	}
 }
 
-// Without DedupReads (research loops) every read returns its content.
+// Without DedupReads every read returns its content.
 func TestRereadDedupIsOptIn(t *testing.T) {
 	root := writeTree(t, map[string]string{"src/a.ts": numberedFile(50)})
 	readA := call("read_file", `{"path":"src/a.ts"}`)
