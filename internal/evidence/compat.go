@@ -13,11 +13,12 @@ import (
 type CompatWindow string
 
 const (
-	// CompatWindowLegacy (the default when the variable is unset): a message
+	// CompatWindowLegacy (opt-in: EVIDENCE_COMPAT_WINDOW=legacy): a message
 	// without an evidence field is decided by the legacy success boolean,
 	// with a warning. Intended only while pre-evidence producers drain.
 	CompatWindowLegacy CompatWindow = "legacy"
-	// CompatWindowStrict: a message without an evidence field blocks. Also
+	// CompatWindowStrict (the default when the variable is unset): a
+	// message without an evidence field blocks. Also
 	// the fallback for an unrecognised value, so a typo can only narrow the
 	// gate, never widen it.
 	CompatWindowStrict CompatWindow = "strict"
@@ -27,13 +28,16 @@ const (
 )
 
 // ParseCompatWindow maps a raw EVIDENCE_COMPAT_WINDOW value to a window,
-// case- and whitespace-insensitively. Unset (empty) is legacy, the documented
-// default. An unrecognised value is strict, with ok=false so the caller can
+// case- and whitespace-insensitively. Unset (empty) is strict: every
+// producer emits evidence, and the legacy window — which turned a
+// not-run verification into a pass — is opt-in for an upgrade with
+// pre-evidence messages still in flight. An unrecognised value is strict
+// too, with ok=false so the caller can
 // log it.
 func ParseCompatWindow(v string) (window CompatWindow, ok bool) {
 	switch CompatWindow(strings.ToLower(strings.TrimSpace(v))) {
 	case "":
-		return CompatWindowLegacy, true
+		return CompatWindowStrict, true
 	case CompatWindowLegacy:
 		return CompatWindowLegacy, true
 	case CompatWindowStrict:
