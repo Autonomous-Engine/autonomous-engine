@@ -83,27 +83,18 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 		})
 	}, onboarding.QArchitectureOverview, "summarizeArchitecture")
 
-	// 3. patterns_discovered — join pattern groups with count>=2
+	// 3. patterns_discovered — the naming rule the role-named files show
+	//    (conventions.go); test and mock files are test_conventions' subject.
 	emit(func() onboarding.Candidate {
-		var bullets []string
-		var evidence []onboarding.Evidence
-		for _, g := range in.PatternGroups {
-			if g.Count < 2 {
-				continue
-			}
-			bullets = append(bullets, fmt.Sprintf("- %s pattern in %d files (e.g. %s)", g.Pattern, g.Count, strings.Join(firstN(g.RefFiles, 2), ", ")))
-			for _, f := range firstN(g.RefFiles, 2) {
-				evidence = append(evidence, onboarding.Evidence{Kind: "file", Path: f, Name: g.Pattern})
-			}
-		}
-		if len(bullets) == 0 {
-			return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QPatternsDiscovered, "detectPatterns", "no naming-pattern groups with count>=2")
+		value, evidence, why := patternsAnswer(in.PatternGroups)
+		if why != "" {
+			return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QPatternsDiscovered, "detectPatterns", why)
 		}
 		return onboarding.Candidate{
 			ProductID: in.ProductID, RepositoryID: in.RepositoryID,
 			QuestionKey: onboarding.QPatternsDiscovered,
-			Value:       strings.Join(bullets, "\n"),
-			Confidence:  onboarding.ConfidenceHigh,
+			Value:       value,
+			Confidence:  onboarding.ConfidenceMedium,
 			Evidence:    evidence,
 			Extractor:   "detectPatterns",
 			UserStatus:  onboarding.StatusPending,
@@ -160,22 +151,22 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 		}
 	}, onboarding.QTestingPhilosophy, "testdetect")
 
-	// 11. test_conventions — from pattern group "test"
+	// 11. test_conventions — the test file form, placement and command the
+	//     test and mock groups show (conventions.go).
 	emit(func() onboarding.Candidate {
-		for _, g := range in.PatternGroups {
-			if g.Pattern == "test" && g.Count >= 2 && len(g.RefFiles) > 0 {
-				return onboarding.Candidate{
-					ProductID: in.ProductID, RepositoryID: in.RepositoryID,
-					QuestionKey: onboarding.QTestConventions,
-					Value:       fmt.Sprintf("Test files follow `_test.` suffix convention across %d files.", g.Count),
-					Confidence:  onboarding.ConfidenceMedium,
-					Evidence:    []onboarding.Evidence{{Kind: "file", Path: g.RefFiles[0], Name: "test"}},
-					Extractor:   "detectPatterns",
-					UserStatus:  onboarding.StatusPending,
-				}
-			}
+		value, evidence, why := testConventionsAnswer(in.PatternGroups, in.TestFramework)
+		if why != "" {
+			return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QTestConventions, "detectPatterns", why)
 		}
-		return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QTestConventions, "detectPatterns", "no _test.* pattern group with count>=2")
+		return onboarding.Candidate{
+			ProductID: in.ProductID, RepositoryID: in.RepositoryID,
+			QuestionKey: onboarding.QTestConventions,
+			Value:       value,
+			Confidence:  onboarding.ConfidenceMedium,
+			Evidence:    evidence,
+			Extractor:   "detectPatterns",
+			UserStatus:  onboarding.StatusPending,
+		}
 	}, onboarding.QTestConventions, "detectPatterns")
 
 	// 12-14. autonomous_scope / review_triggers / risk_zones — derived from
