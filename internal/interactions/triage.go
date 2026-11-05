@@ -52,6 +52,12 @@ func (t *Triage) ClassifyWithOverride(ctx context.Context, question, answer stri
 	if override != nil && *override == SaveAsEphemeral {
 		return &TriageResult{ClassifiedAs: ClassifiedEphemeral, ShouldPromote: false}, nil
 	}
+	// An answer with no text (Approve, Retry, a bare action) is never a
+	// codex entry, whatever the save-as choice: it used to become an empty
+	// codex_patterns row and a new codex version (F38).
+	if strings.TrimSpace(answer) == "" {
+		return &TriageResult{ClassifiedAs: ClassifiedEphemeral, ShouldPromote: false}, nil
+	}
 
 	prompt := buildClassifierPrompt(question, answer)
 	raw, err := t.llm.Classify(ctx, prompt)

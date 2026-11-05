@@ -301,7 +301,7 @@ func (b *attemptBudget) fromLoopError(err error) *budgetExhaustedError {
 // iterationHook is the executor's IterationHook: the attempt is active,
 // the work item's token count is current, and both caps are checked
 // before the next LLM call.
-func (b *attemptBudget) iterationHook(ctx context.Context, cumulativeTokens, _ int64) error {
+func (b *attemptBudget) iterationHook(ctx context.Context, cumulativeTokens, _, _ int64) error {
 	if b == nil {
 		return nil
 	}

@@ -117,7 +117,7 @@ func TestReplayAttempt11RejectedEditsSteerToInsertAfter(t *testing.T) {
 		Messages: []adapter.ChatMessage{{Role: adapter.RoleSystem, Content: "sys"}, {Role: adapter.RoleUser, Content: "Add a vitest unit test for /api/client-config."}},
 		Tools:    withoutLSPUnlessReady(editTools(), false),
 	}
-	opts := implementationLoopOptions(req.Tools, func() bool { return false }, attempt9Files)
+	opts := implementationLoopOptions(req.Tools, func() bool { return false }, attempt9Files, nil)
 	ex := replayExecutor(root)
 	if _, err := tools.RunToolLoopWithOptions(context.Background(), model, req, ex, 20, nil, nil, opts); err != nil {
 		t.Fatalf("loop: %v", err)

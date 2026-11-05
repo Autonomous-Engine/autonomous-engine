@@ -26,7 +26,8 @@ function isPromptEvent(
   return (
     t === 'prompt_requested' ||
     t === 'prompt_answered' ||
-    t === 'prompt_revoked'
+    t === 'prompt_revoked' ||
+    t === 'prompt_cancelled'
   )
 }
 
@@ -58,6 +59,9 @@ export function usePendingPromptsCount(): { count: number; refresh: () => void }
     if (isPromptEvent(lastMessage)) {
       if (lastMessage.type === 'prompt_requested') {
         setCount((c) => c + 1)
+      } else if (lastMessage.type === 'prompt_cancelled') {
+        // A retry superseded a work item's pending prompts: count them.
+        setCount((c) => Math.max(0, c - lastMessage.count))
       } else {
         setCount((c) => Math.max(0, c - 1))
       }

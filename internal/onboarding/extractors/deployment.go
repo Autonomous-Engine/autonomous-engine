@@ -139,7 +139,10 @@ func ClassifyDeploymentSignals(files []string) (string, []onboarding.Evidence) {
 	case hasActions && hasDocker:
 		return fmt.Sprintf("github-actions + docker — %d workflow file(s) build and publish container images.", countPrefixed(files, ".github/workflows/")), evidence
 	case hasActions:
-		return "github-actions — CI/CD via workflow files in .github/workflows/.", evidence
+		// CI alone is not a deployment pipeline: a library or CLI deploys
+		// nothing and is released by tag (F26).
+		return fmt.Sprintf("No deployment pipeline detected: only CI workflows in .github/workflows/ (%d file(s)) that build, test or lint. "+
+			"A library or CLI is usually released by tag; describe the release process if there is one.", countPrefixed(files, ".github/workflows/")), evidence
 	case hasCompose:
 		return "docker-compose — local or single-host orchestration.", evidence
 	case hasPaaS:

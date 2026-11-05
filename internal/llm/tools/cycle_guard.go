@@ -28,6 +28,9 @@ const (
 	// StuckKindSlidingWindow: the sliding-window detector fired again after
 	// its warning, and no turn since the warning made a new call.
 	StuckKindSlidingWindow = "sliding_window"
+	// StuckKindNoProgress: noProgressWindow tool turns in which nothing
+	// happened (work_tokens.go).
+	StuckKindNoProgress = "no_progress"
 )
 
 const (
@@ -77,7 +80,7 @@ func (e *Executor) turnCalls(calls []adapter.ToolCall) []turnCall {
 	for _, c := range calls {
 		fp, p := e.callFingerprint(c)
 		if fp == "" {
-			fp = c.Name + "\x00" + canonicalArgs(c.Arguments)
+			fp = c.Name + fingerprintSep + canonicalArgs(c.Arguments)
 		}
 		out = append(out, turnCall{call: c, fp: fp, path: p, desc: describeCall(c)})
 	}
@@ -219,7 +222,7 @@ func (g *cycleGuard) warning(counts map[string]int) string {
 	allReads := true
 	for k := range counts {
 		for _, fp := range strings.Split(k, "\x01") {
-			if !isReadTool(strings.SplitN(fp, "\x00", 2)[0]) {
+			if !isReadTool(strings.SplitN(fp, fingerprintSep, 2)[0]) {
 				allReads = false
 			}
 		}
@@ -244,11 +247,12 @@ func (g *cycleGuard) stuck(reason string, attempts int) *LoopStuck {
 type readRepeats struct {
 	count map[string]int // read fingerprint → reads so far
 	span  map[string][2]int
-	turn  map[string]int // the turn of the first read
+	turn  map[string]int    // the turn of the first read
+	path  map[string]string // the file read (pinPath form)
 }
 
 func newReadRepeats() *readRepeats {
-	return &readRepeats{count: map[string]int{}, span: map[string][2]int{}, turn: map[string]int{}}
+	return &readRepeats{count: map[string]int{}, span: map[string][2]int{}, turn: map[string]int{}, path: map[string]string{}}
 }
 
 // check runs before a turn: the third repeat of a read ends the loop.
@@ -275,6 +279,27 @@ func (r *readRepeats) check(tc []turnCall, allowed map[string]bool) (map[int]int
 	return prior, nil
 }
 
+// productive forgets the repeats of the reads the turn's findings cite —
+// same path, overlapping lines, first read before turn: a read that comes
+// back after a finding on it is the model citing more of what compaction
+// took away, not a loop (findings.go). Reads the findings do not cite keep
+// their counts (review #2: resetting every read let "read B, trivial
+// finding on A" run unmetered).
+func (r *readRepeats) productive(turn int, fs []CitedFinding) {
+	for fp, first := range r.turn {
+		if first >= turn {
+			continue
+		}
+		sp := r.span[fp]
+		for _, f := range fs {
+			if r.path[fp] == pinPath(f.Path) && f.StartLine <= sp[1] && f.EndLine >= sp[0] {
+				r.count[fp] = 0
+				break
+			}
+		}
+	}
+}
+
 // annotate rewrites the results of repeated reads once they ran: the first
 // repeat keeps its content and says so; the second gets a one-line answer
 // (with dedup on) that says the next repeat ends the task. Then it counts
@@ -294,7 +319,7 @@ func (r *readRepeats) annotate(tc []turnCall, prior map[int]int, results []adapt
 			_ = json.Unmarshal([]byte(c.call.Arguments), &args)
 			if _, ok := r.span[c.fp]; !ok {
 				a, b := readSpan(args, res.Content)
-				r.span[c.fp], r.turn[c.fp] = [2]int{a, b}, turn
+				r.span[c.fp], r.turn[c.fp], r.path[c.fp] = [2]int{a, b}, turn, c.path
 			}
 			r.count[c.fp]++
 			continue

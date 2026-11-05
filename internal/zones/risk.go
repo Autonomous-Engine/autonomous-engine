@@ -27,7 +27,44 @@ var (
 // "<token>/**"; one whose last segment has an extension, or that already
 // is a glob, is kept as is. Sorted by name, distinct; the wizard lets the
 // operator drop one or raise it to escalate (restricted).
+var (
+	// lowerRiskMarker starts the part of an answer that names what is NOT
+	// high-risk.
+	lowerRiskMarker = regexp.MustCompile(`(?i)\b(lower|low|less|least)[ -]?risk`)
+	// pathToken is any run of path characters inside prose.
+	pathToken = regexp.MustCompile(`[A-Za-z0-9_./*?\[\]-]+`)
+	// pathLike is a relative path: lowercase segments joined by "/" (a
+	// "Base64/QP" in prose is not one).
+	pathLike = regexp.MustCompile(`^[a-z0-9_.-]+(/[a-z0-9_.*?\[\]-]+)+/?$`)
+)
+
+// sourceExts are file extensions that make a bare token a source file.
+var sourceExts = map[string]bool{
+	".go": true, ".ts": true, ".tsx": true, ".js": true, ".jsx": true, ".py": true, ".rs": true,
+	".java": true, ".rb": true, ".cs": true, ".kt": true, ".swift": true, ".php": true, ".sql": true,
+	".yaml": true, ".yml": true, ".proto": true,
+}
+
+// isPathLike reports whether tok, found inside prose, names a path or a
+// source file rather than a word.
+func isPathLike(tok string) bool {
+	tok = strings.Trim(strings.ReplaceAll(tok, "\\", "/"), "/")
+	if tok == "" || strings.Trim(tok, "0123456789") == "" {
+		return false
+	}
+	if strings.Contains(tok, "/") {
+		return pathLike.MatchString(tok)
+	}
+	return sourceExts[strings.ToLower(path.Ext(tok))]
+}
+
 func RiskZoneTemplates(answer string, evidenceModules []string) []Template {
+	// Only the high-risk part of the answer names zones. The audit's answer
+	// ended "… Lower risk: cmd/ tools, internal/stringutil …" and the
+	// lower-risk list became human_review zones (F27).
+	if loc := lowerRiskMarker.FindStringIndex(answer); loc != nil {
+		answer = answer[:loc[0]]
+	}
 	seen := map[string]bool{}
 	var out []Template
 	add := func(tok string) {
@@ -64,6 +101,14 @@ func RiskZoneTemplates(answer string, evidenceModules []string) []Template {
 		}
 		for _, frag := range riskSplit.Split(line, -1) {
 			add(frag)
+		}
+		// Paths named inside prose — "the parser (part.go, boundary.go)
+		// since every consumer …; internal/coding (charsets.go, …)" —
+		// are zones too, even when the fragment around them has spaces.
+		for _, tok := range pathToken.FindAllString(line, -1) {
+			if isPathLike(strings.Trim(tok, "().`'\"")) {
+				add(tok)
+			}
 		}
 	}
 	for _, m := range evidenceModules {

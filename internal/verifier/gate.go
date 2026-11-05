@@ -192,7 +192,7 @@ func fixRound(v Verdict, what string) Decision {
 func criterionActionable(r CriterionResult, v Verdict) bool {
 	barePath := false
 	for _, e := range r.Evidence {
-		s := strings.TrimSpace(string(e))
+		s := leadingRef(string(e))
 		if fileLineRE.MatchString(s) {
 			return true
 		}

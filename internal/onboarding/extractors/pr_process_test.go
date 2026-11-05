@@ -62,3 +62,45 @@ func TestDetectPRProcess_NothingPresent(t *testing.T) {
 func TestPRProcessImplementsExtractor(t *testing.T) {
 	var _ framework.Extractor = (*prProcessExtractor)(nil)
 }
+
+// F26: "CI workflows detected: build-and-test, lint" is a statistic. The
+// answer says what a pull request must pass (each workflow by its name,
+// its jobs and what triggers it), who reviews (CODEOWNERS) and what the
+// template asks for, so the agent can write a PR the way the team does.
+func TestScanPRProcessDescribesChecksReviewersAndTemplate(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, ".github/CODEOWNERS", "* @org/platform\n/dashboard/ @org/frontend\n")
+	writeFile(t, dir, ".github/pull_request_template.md", "## Summary\n\n## Test plan\n\n- [ ] unit tests\n")
+	writeFile(t, dir, ".github/workflows/build-and-test.yml",
+		"name: Build and test\non:\n  push:\n    branches: [main]\n  pull_request:\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go build ./...\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go test ./...\n")
+	writeFile(t, dir, ".github/workflows/lint.yml", "name: Lint\non: [pull_request]\njobs:\n  golangci:\n    runs-on: ubuntu-latest\n")
+
+	value, evidence := ScanPRProcess(dir)
+	for _, want := range []string{"Build and test", "build, test", "pull_request", "push", "Lint", "golangci", "@org/platform", "@org/frontend", "Summary", "Test plan", "must pass"} {
+		if !strings.Contains(value, want) {
+			t.Errorf("pr_process lacks %q:\n%s", want, value)
+		}
+	}
+	for _, not := range []string{"CI workflows detected", "boilerplate is enforced", "lists 2 reviewer(s)"} {
+		if strings.Contains(value, not) {
+			t.Errorf("pr_process still says %q:\n%s", not, value)
+		}
+	}
+	if len(evidence) < 4 {
+		t.Fatalf("evidence = %+v", evidence)
+	}
+}
+
+// Workflows alone (no CODEOWNERS, no template) still give the checks a PR
+// must pass; the rest is asked of the user, not invented.
+func TestScanPRProcessWorkflowsAloneNameTheChecks(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, ".github/workflows/ci.yml", "name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n")
+	value, _ := ScanPRProcess(dir)
+	if !strings.Contains(value, "CI") || !strings.Contains(value, "test") || !strings.Contains(value, "must pass") {
+		t.Errorf("pr_process = %q", value)
+	}
+	if !strings.Contains(value, "No CODEOWNERS") || !strings.Contains(value, "no pull-request template") {
+		t.Errorf("pr_process does not say what is missing:\n%s", value)
+	}
+}

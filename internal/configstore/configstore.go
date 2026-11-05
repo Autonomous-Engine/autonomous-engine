@@ -178,6 +178,35 @@ func (cs *ConfigStore) ResolveCredential(ctx context.Context, category, keyName,
 	return "", fmt.Errorf("%w: category=%s key=%s", ErrCredentialNotFound, category, keyName)
 }
 
+// PeekCredential returns the stored value of one exact row (scope, target,
+// category, key) without the resolution chain, the cache or an audit row.
+// The default-setting guard uses it for its "before" baseline: reading the
+// baseline through ResolveCredential logged a spurious "read" audit entry
+// on every guarded write.
+func (cs *ConfigStore) PeekCredential(ctx context.Context, scope, scopeTarget, category, keyName string) (string, bool, error) {
+	var (
+		id             uuid.UUID
+		encryptedValue []byte
+		nonce          []byte
+	)
+	err := cs.db.QueryRow(ctx, `
+		SELECT id, encrypted_value, nonce
+		FROM credential_registry
+		WHERE scope = $1 AND scope_target = $2 AND key_name = $3 AND category = $4
+	`, scope, scopeTarget, keyName, category).Scan(&id, &encryptedValue, &nonce)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("peek credential (%s/%s %s): %w", scope, scopeTarget, keyName, err)
+	}
+	plaintext, err := crypto.Decrypt(cs.masterKey, id, encryptedValue, nonce)
+	if err != nil {
+		return "", false, fmt.Errorf("decrypt credential %s: %w", id, err)
+	}
+	return plaintext, true, nil
+}
+
 // SetCredential creates or updates a credential in the registry. It encrypts
 // the provided value, performs an upsert, logs the appropriate audit event, and
 // removes any cached entry for the affected scope.
@@ -278,7 +307,7 @@ func (cs *ConfigStore) SetGlobalCredential(ctx context.Context, category, keyNam
 	return cs.SetCredential(ctx, "global", "default", category, keyName, value, isSecret, description, actorID)
 }
 
-// SetIntegrationCredential writes at scope='integration', scope_target=''
+// SetIntegrationCredential writes at scope='integration', scope_target=”
 // (the integration scope does not use a target — the resolver hardcodes "").
 // Use for shared integration keys where a single global-per-integration
 // works (today, nothing fits this — prefer SetGlobalCredential).
@@ -416,7 +445,8 @@ func (cs *ConfigStore) ListCredentials(ctx context.Context, category, scope stri
 	query := `
 		SELECT id, scope, scope_target, key_name, is_secret, category, description,
 		       created_by, created_at, updated_at,
-		       expires_at, last_validated_at, last_validation_status, last_validation_error
+		       expires_at, last_validated_at, last_validation_status, last_validation_error,
+		       encrypted_value, nonce
 		FROM credential_registry
 		WHERE 1=1
 	`
@@ -446,11 +476,13 @@ func (cs *ConfigStore) ListCredentials(ctx context.Context, category, scope stri
 		e := &CredentialEntry{}
 		var expiresAt, lastValidatedAt pgtype.Timestamptz
 		var lastStatus, lastErr pgtype.Text
+		var ciphertext, nonce []byte
 		if err := rows.Scan(
 			&e.ID, &e.Scope, &e.ScopeTarget, &e.KeyName,
 			&e.IsSecret, &e.Category, &e.Description,
 			&e.CreatedBy, &e.CreatedAt, &e.UpdatedAt,
 			&expiresAt, &lastValidatedAt, &lastStatus, &lastErr,
+			&ciphertext, &nonce,
 		); err != nil {
 			return nil, fmt.Errorf("scan credential row: %w", err)
 		}
@@ -468,7 +500,14 @@ func (cs *ConfigStore) ListCredentials(ctx context.Context, category, scope stri
 		if lastErr.Valid {
 			e.LastValidationError = lastErr.String
 		}
+		// Secrets stay masked; a non-secret value (endpoint, project key,
+		// provider name) is what the page is for, and came back "" (F9).
 		e.Value = crypto.MaskValue("", e.IsSecret)
+		if !e.IsSecret {
+			if v, err := crypto.Decrypt(cs.masterKey, e.ID, ciphertext, nonce); err == nil {
+				e.Value = v
+			}
+		}
 		results = append(results, e)
 	}
 	if err := rows.Err(); err != nil {

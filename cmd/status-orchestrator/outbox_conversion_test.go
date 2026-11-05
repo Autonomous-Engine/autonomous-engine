@@ -457,10 +457,12 @@ func TestTransitionAndPublish_SubtaskEffectsUseTheParentAggregate(t *testing.T) 
 	}
 }
 
-// TestPromptEffect_ItemWithoutProductSkipsThePrompt: user_interactions needs a
-// product; an item without one keeps its transition and gets no prompt
-// instead of rolling the transition back.
-func TestPromptEffect_ItemWithoutProductSkipsThePrompt(t *testing.T) {
+// TestPromptEffect_ItemWithoutProductRaisesThePrompt: an item without a
+// product is blocked like any other, and the person must see it: the prompt
+// is raised without a product (user_interactions.product_id is nullable
+// since migration 067) in the transition's transaction. Before, it was
+// skipped with a log line and the item was an invisible dead item (NEW-35).
+func TestPromptEffect_ItemWithoutProductRaisesThePrompt(t *testing.T) {
 	item := productItem(models.WorkItemStateImplementation, nil)
 	item.ProductID = nil
 	h := newHarness(item)
@@ -468,8 +470,11 @@ func TestPromptEffect_ItemWithoutProductSkipsThePrompt(t *testing.T) {
 		blockedPromptEffect("r")); err != nil {
 		t.Fatalf("transitionAndPublish: %v", err)
 	}
-	if !h.tx.committed || len(h.tx.promptInserts()) != 0 || len(h.tx.outboxRows()) != 0 {
-		t.Errorf("committed=%t prompts=%d events=%d, want the transition alone", h.tx.committed, len(h.tx.promptInserts()), len(h.tx.outboxRows()))
+	if !h.tx.committed || len(h.tx.promptInserts()) != 1 || len(h.tx.outboxRows()) != 1 {
+		t.Fatalf("committed=%t prompts=%d events=%d, want the transition with its prompt and event", h.tx.committed, len(h.tx.promptInserts()), len(h.tx.outboxRows()))
+	}
+	if args := h.tx.promptInserts()[0].args; args[2] != nil {
+		t.Fatalf("prompt product_id = %v, want NULL for an item without a product", args[2])
 	}
 }
 

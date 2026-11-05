@@ -8,7 +8,7 @@ func TestParseCompatWindow(t *testing.T) {
 		want   CompatWindow
 		wantOK bool
 	}{
-		{"", CompatWindowLegacy, true},
+		{"", CompatWindowStrict, true}, // unset: strict — every producer emits evidence now
 		{"legacy", CompatWindowLegacy, true},
 		{" Legacy ", CompatWindowLegacy, true},
 		{"strict", CompatWindowStrict, true},
@@ -27,8 +27,8 @@ func TestParseCompatWindow(t *testing.T) {
 
 func TestCompatWindowFromEnv(t *testing.T) {
 	t.Setenv(CompatWindowEnv, "")
-	if got := CompatWindowFromEnv(); got != CompatWindowLegacy {
-		t.Errorf("unset: got %q, want legacy", got)
+	if got := CompatWindowFromEnv(); got != CompatWindowStrict {
+		t.Errorf("unset: got %q, want strict (the compatibility window is opt-in)", got)
 	}
 	t.Setenv(CompatWindowEnv, "legacy")
 	if got := CompatWindowFromEnv(); got != CompatWindowLegacy {

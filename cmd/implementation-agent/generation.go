@@ -155,8 +155,12 @@ func runGeneration(ctx context.Context, in generationInputs, sink completionSink
 	// a loop that kept failing the same way ended early; what it did do
 	// is tested and committed, and a continuation inherits the failures.
 	var stuck []tools.LoopStuck
+	// Every pass of this attempt continues the same transcript, ledger and
+	// pins (carry.go): a nudged pass does not re-read what the first read
+	// or redo an edit it already made.
+	carry := &tools.LoopCarry{}
 	for {
-		resp, loopErr = runImplementationLoop(ctx, llmAdapter, req, executor, maxIters, pool, &workID, pinScope)
+		resp, loopErr = runImplementationLoop(ctx, llmAdapter, req, executor, maxIters, pool, &workID, pinScope, carry)
 		in.budget.activity() // the loop returned: nothing waits in-process for a pending prompt
 		if loopErr != nil {
 			if st := stopOn(loopErr, nil); st != nil {
@@ -169,6 +173,16 @@ func runGeneration(ctx context.Context, in generationInputs, sink completionSink
 					"task_id": taskID.String(), "tool": ls.Tool, "path": ls.Path, "attempts": ls.Attempts, "reason": truncate(ls.Reason, 300),
 				})
 				resp, loopErr = &adapter.CompletionResponse{Content: ls.Error()}, nil
+				break
+			}
+			if errors.Is(loopErr, tools.ErrSafetyLimit) {
+				// The iteration cap is a stop, not a failure: the pass ends
+				// and what it did is tested and committed, as a stuck
+				// pass's work is. Churn is the progress window's to end.
+				logger.Warn(ctx, "tool loop reached its iteration cap — ending the pass, keeping its work", map[string]interface{}{
+					"task_id": taskID.String(), "max_iterations": maxIters,
+				})
+				resp, loopErr = &adapter.CompletionResponse{Content: loopErr.Error()}, nil
 				break
 			}
 			if errors.Is(loopErr, tools.ErrToolCallingNotSupported) {
@@ -272,7 +286,7 @@ func runGeneration(ctx context.Context, in generationInputs, sink completionSink
 			"missing": missing,
 			"attempt": verifyGateRetries,
 		})
-		req.Messages = append(req.Messages,
+		req.Messages = append(carry.Resume(req.Messages),
 			adapter.ChatMessage{Role: adapter.RoleAssistant, Content: finalContent},
 			adapter.ChatMessage{Role: adapter.RoleUser, Content: corrective},
 		)
@@ -351,7 +365,7 @@ func runGeneration(ctx context.Context, in generationInputs, sink completionSink
 			MaxTokens:   4096,
 			Temperature: 0.2,
 		}
-		_, fixErr := runImplementationLoop(ctx, llmAdapter, fixReq, executor, 10, pool, &workID, pinScope)
+		_, fixErr := runImplementationLoop(ctx, llmAdapter, fixReq, executor, 10, pool, &workID, pinScope, nil)
 		in.budget.activity()
 		if st := stopOn(fixErr, nil); st != nil {
 			return generationResult{stopped: st}, false
@@ -456,11 +470,11 @@ func runGeneration(ctx context.Context, in generationInputs, sink completionSink
 		nudge := "You explored the codebase but did NOT call edit_file or write_file — no files were changed on disk. " +
 			"This task requires actual code changes. Based on the files you already read, call edit_file NOW to implement the required change. " +
 			"Do not read more files. Do not explain. Call edit_file with the specific old_string and new_string to make the change."
-		req.Messages = append(req.Messages,
+		req.Messages = append(carry.Resume(req.Messages),
 			adapter.ChatMessage{Role: adapter.RoleAssistant, Content: summary},
 			adapter.ChatMessage{Role: adapter.RoleUser, Content: nudge},
 		)
-		resp, loopErr = runImplementationLoopAfter(ctx, llmAdapter, req, executor, maxIters, pool, &workID, pinScope, stuck)
+		resp, loopErr = runImplementationLoopAfter(ctx, llmAdapter, req, executor, maxIters, pool, &workID, pinScope, stuck, carry)
 		in.budget.activity()
 		if st := stopOn(loopErr, repair); st != nil {
 			return generationResult{stopped: st, repair: repair}, false
@@ -624,7 +638,7 @@ func runGeneration(ctx context.Context, in generationInputs, sink completionSink
 
 		// What is uncommitted before the pass survives a revert (R11 S3).
 		uncommittedBefore := uncommittedSet(ctx, worktreePath)
-		contResp, contErr := runImplementationLoopAfter(ctx, llmAdapter, contReq, executor, continuationIters, pool, &workID, pinScope, stuck)
+		contResp, contErr := runImplementationLoopAfter(ctx, llmAdapter, contReq, executor, continuationIters, pool, &workID, pinScope, stuck, carry)
 		in.budget.activity()
 		if contResp != nil {
 			summary = contResp.Content

@@ -173,6 +173,22 @@ type Executor struct {
 	// on a file read only in part is refused).
 	readCov map[string]*readCoverage
 
+	// findings are the record_finding results of this loop (findings.go);
+	// findingStore also writes each one (the database, in a loop with one).
+	findings            []CitedFinding
+	findingStore        func(context.Context, CitedFinding) error
+	findingTaskID       string
+	findingResearchType string
+	// documents are what read_document serves (documents.go), by name.
+	documents map[string]string
+	// readWindowDefault / readWindowMax override readDefaultLines /
+	// readMaxLines (SetReadWindow): research reads in windows a finding can
+	// cite whole, at a third of the tokens.
+	readWindowDefault, readWindowMax int
+	// seenCov are the lines searches showed the model (markSeen), by
+	// cleaned path; a finding may cite them.
+	seenCov map[string]map[int]bool
+
 	// Branch scoping for commit-linked codex. When set, codex queries resolve
 	// to a materialized snapshot for the given branch+commit instead of the
 	// live codex tables. Set via SetWorkItemBranch.
@@ -287,7 +303,9 @@ func (e *Executor) SetResultAnnotator(a ResultAnnotator) {
 // token budget counts them) and that budget. A non-nil error stops the
 // loop; RunToolLoop returns it wrapped (errors.Is/As see through). The
 // implementation agent checks its D4 budgets here (M3-06).
-type IterationHook func(ctx context.Context, cumulativeTokens, tokenBudget int64) error
+// cumulativeTokens is the work item's total (refreshed from the database
+// before every call); loopTokens is what this loop alone has spent.
+type IterationHook func(ctx context.Context, cumulativeTokens, tokenBudget, loopTokens int64) error
 
 // SetIterationHook registers the iteration hook (nil clears it).
 func (e *Executor) SetIterationHook(h IterationHook) { e.iterationHook = h }
@@ -313,6 +331,56 @@ var ErrTokenBudgetExceeded = errors.New("token budget exceeded")
 
 // TokenBudget is the per-work-item token ceiling RunToolLoop enforces:
 // WORK_ITEM_TOKEN_BUDGET, default 500,000 (D4).
+// sumWorkItemTokens is the work item's token total across every agent and
+// stage, read from inference_logs. ok is false when there is no database
+// or the query failed; the loop then falls back to counting its own calls.
+// A variable so tests can stand in a database.
+var sumWorkItemTokens = func(ctx context.Context, db *pgxpool.Pool, workItemID uuid.UUID) (int64, bool) {
+	if db == nil {
+		return 0, false
+	}
+	var sum int64
+	if err := db.QueryRow(ctx,
+		`SELECT COALESCE(SUM(COALESCE(work_tokens, input_tokens + output_tokens)), 0) FROM inference_logs WHERE work_item_id = $1`,
+		workItemID,
+	).Scan(&sum); err != nil {
+		return 0, false
+	}
+	return sum, true
+}
+
+// workItemCreatedMessage is the create_work_item tool result. It names the
+// dashboard path so the model can link the item; without it the chat
+// linked to "#" (F33).
+// resolveProduct resolves a product reference a model passes: the product's
+// id, or its name as list_products shows it (case-insensitive).
+func (e *Executor) resolveProduct(ctx context.Context, ref string) (uuid.UUID, string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return uuid.Nil, "", fmt.Errorf("product_id is required: the id or the name list_products shows")
+	}
+	var id uuid.UUID
+	var name string
+	if pid, err := uuid.Parse(ref); err == nil {
+		if err := e.db.QueryRow(ctx, `SELECT id, name FROM products WHERE id = $1`, pid).Scan(&id, &name); err != nil {
+			return uuid.Nil, "", fmt.Errorf("product not found: %s — list_products shows the products", ref)
+		}
+		return id, name, nil
+	}
+	if err := e.db.QueryRow(ctx, `SELECT id, name FROM products WHERE lower(name) = lower($1) ORDER BY created_at LIMIT 1`, ref).Scan(&id, &name); err != nil {
+		return uuid.Nil, "", fmt.Errorf("product not found: %q — list_products shows the products (pass the id or the exact name)", ref)
+	}
+	return id, name, nil
+}
+
+func workItemCreatedMessage(id uuid.UUID, title, workType, priority string, productID *uuid.UUID) string {
+	msg := fmt.Sprintf("Created work item %s: %s (type=%s, priority=%s, state=intake) — open it at /work-items/%s", id, title, workType, priority, id)
+	if productID != nil {
+		msg += fmt.Sprintf(", linked to product %s", productID)
+	}
+	return msg
+}
+
 func TokenBudget() int64 {
 	var tokenBudget int64 = 500_000
 	if s := os.Getenv("WORK_ITEM_TOKEN_BUDGET"); s != "" {
@@ -550,18 +618,18 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 		result = e.pastDecisionsQuery(ctx, call.ID, args)
 	case "recall_context":
 		result = e.recallContext(ctx, call.ID, args)
+	case "record_finding":
+		result = e.recordFinding(ctx, call.ID, args)
+	case "read_document":
+		result = e.readDocument(call.ID, args)
 	case "set_product_context":
 		if e.db == nil {
 			return adapter.ToolResult{ToolCallID: call.ID, Content: "database not available", IsError: true}
 		}
 		pidStr, _ := args["product_id"].(string)
-		pid, parseErr := uuid.Parse(pidStr)
-		if parseErr != nil {
-			return adapter.ToolResult{ToolCallID: call.ID, Content: "invalid product_id: " + parseErr.Error(), IsError: true}
-		}
-		var prodName string
-		if err := e.db.QueryRow(ctx, `SELECT name FROM products WHERE id = $1`, pid).Scan(&prodName); err != nil {
-			return adapter.ToolResult{ToolCallID: call.ID, Content: "product not found", IsError: true}
+		pid, prodName, err := e.resolveProduct(ctx, pidStr)
+		if err != nil {
+			return adapter.ToolResult{ToolCallID: call.ID, Content: err.Error(), IsError: true}
 		}
 		e.productID = &pid
 		if e.sessionID != nil {
@@ -613,14 +681,20 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 		if args.Priority == "" {
 			args.Priority = "medium"
 		}
+		// A work item without a product cannot be grounded or prompted
+		// about (product-agent blocks it, and a blocked prompt needs a
+		// product): the product is the session's context or the argument.
+		productID := e.productID
+		if args.ProductID == "" && productID == nil {
+			return adapter.ToolResult{ToolCallID: call.ID, Content: "a product is required: call set_product_context first, or pass product_id (the id or the name list_products shows)", IsError: true}
+		}
 		if e.db == nil {
 			return adapter.ToolResult{ToolCallID: call.ID, Content: "database not available for work item creation", IsError: true}
 		}
-		var productID *uuid.UUID
 		if args.ProductID != "" {
-			pid, parseErr := uuid.Parse(args.ProductID)
-			if parseErr != nil {
-				return adapter.ToolResult{ToolCallID: call.ID, Content: "invalid product_id: " + parseErr.Error(), IsError: true}
+			pid, _, err := e.resolveProduct(ctx, args.ProductID)
+			if err != nil {
+				return adapter.ToolResult{ToolCallID: call.ID, Content: err.Error(), IsError: true}
 			}
 			productID = &pid
 		}
@@ -631,11 +705,7 @@ func (e *Executor) Execute(ctx context.Context, call adapter.ToolCall) adapter.T
 		if dbErr := createWorkItemWithIntake(ctx, e.db, newID, args.Title, args.Description, args.Type, args.Priority, productID); dbErr != nil {
 			return adapter.ToolResult{ToolCallID: call.ID, Content: fmt.Sprintf("failed to create work item: %v", dbErr), IsError: true}
 		}
-		result := fmt.Sprintf("Created work item %s: %s (type=%s, priority=%s, state=intake)", newID, args.Title, args.Type, args.Priority)
-		if productID != nil {
-			result += fmt.Sprintf(", linked to product %s", productID)
-		}
-		return adapter.ToolResult{ToolCallID: call.ID, Content: result}
+		return adapter.ToolResult{ToolCallID: call.ID, Content: workItemCreatedMessage(newID, args.Title, args.Type, args.Priority, productID)}
 	case "get_system_info":
 		info := map[string]string{
 			"provider": e.modelProvider,
@@ -974,7 +1044,7 @@ func (e *Executor) readFile(callID string, args map[string]interface{}) adapter.
 	if window, n, ok := e.defaultWindow(path, args, fileLinesOf(strings.ReplaceAll(string(data), "\r\n", "\n"))); ok {
 		args, note = window, n
 	}
-	out, start, end, total := sliceLines(string(data), args)
+	out, start, end, total := sliceLines(string(data), args, e.readDefault(), e.readMax())
 	e.markRead(path, start, end, total)
 	if note != "" {
 		// The seeded note replaces sliceLines' own range hint.
@@ -1080,10 +1150,36 @@ const (
 	readMaxLines     = 2000
 )
 
+// SetReadWindow overrides the default and maximum lines a read returns
+// (readDefaultLines / readMaxLines). Research sets 120/240: a window a
+// finding can cite whole, at a third of the tokens of the 400-line default.
+func (e *Executor) SetReadWindow(defaultLines, maxLines int) {
+	if defaultLines > 0 {
+		e.readWindowDefault = defaultLines
+	}
+	if maxLines > 0 {
+		e.readWindowMax = maxLines
+	}
+}
+
+func (e *Executor) readDefault() int {
+	if e.readWindowDefault > 0 {
+		return e.readWindowDefault
+	}
+	return readDefaultLines
+}
+
+func (e *Executor) readMax() int {
+	if e.readWindowMax > 0 {
+		return e.readWindowMax
+	}
+	return readMaxLines
+}
+
 // readWindow resolves a read's start_line/end_line (1-based, inclusive)
 // against a file of total lines: no range is the first readDefaultLines,
 // an explicit range any slice up to readMaxLines.
-func readWindow(args map[string]interface{}, total int) (start, end int, explicit bool) {
+func readWindow(args map[string]interface{}, total, defaultLines, maxLines int) (start, end int, explicit bool) {
 	start, end = 1, 0
 	if v, ok := args["start_line"].(float64); ok && int(v) > 0 {
 		start, explicit = int(v), true
@@ -1093,12 +1189,12 @@ func readWindow(args map[string]interface{}, total int) (start, end int, explici
 	}
 	switch {
 	case end < start && explicit:
-		end = start + readMaxLines - 1
+		end = start + maxLines - 1
 	case end < start:
-		end = start + readDefaultLines - 1
+		end = start + defaultLines - 1
 	}
-	if end-start+1 > readMaxLines {
-		end = start + readMaxLines - 1
+	if end-start+1 > maxLines {
+		end = start + maxLines - 1
 	}
 	if end > total {
 		end = total
@@ -1109,13 +1205,13 @@ func readWindow(args map[string]interface{}, total int) (start, end int, explici
 // sliceLines is read_file's result: the requested lines verbatim and, when
 // the file goes on, a hint naming the next range; start..end of total are
 // the lines returned.
-func sliceLines(content string, args map[string]interface{}) (out string, start, end, total int) {
+func sliceLines(content string, args map[string]interface{}, defaultLines, maxLines int) (out string, start, end, total int) {
 	lines := strings.SplitAfter(content, "\n")
 	if n := len(lines); n > 0 && lines[n-1] == "" {
 		lines = lines[:n-1]
 	}
 	total = len(lines)
-	start, end, explicit := readWindow(args, total)
+	start, end, explicit := readWindow(args, total, defaultLines, maxLines)
 	if !explicit && end >= total {
 		return content, 1, total, total
 	}
@@ -1453,6 +1549,29 @@ func (e *Executor) validateAfterWrite(ctx context.Context, callID, relPath strin
 		return nil
 	}
 
+	// Import-balance diagnostics (a package used before its import, an
+	// import not used yet) are transitional: the edit stands and the model
+	// is told what remains, so a change that needs an import and its use
+	// can land in two edits. The build still fails until it is balanced.
+	var fatal, transitional []lsp.Diagnostic
+	for _, d := range errorDiags {
+		if transitionalDiagnostic(d, newContent) {
+			transitional = append(transitional, d)
+		} else {
+			fatal = append(fatal, d)
+		}
+	}
+	if len(fatal) == 0 {
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "Edit applied to %s. It leaves %d import-balance diagnostic(s) for your next edit (the build fails until they are resolved):\n", relPath, len(transitional))
+		for _, d := range transitional {
+			fmt.Fprintf(&sb, "  [%s] line %d col %d: %s\n", diagSource(d, language), d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message)
+		}
+		log.Printf("tool-loop: post-write: %s left %d import-balance diagnostic(s) for the next edit", relPath, len(transitional))
+		return &adapter.ToolResult{ToolCallID: callID, Content: sb.String()}
+	}
+	errorDiags = fatal
+
 	// Revert the file so the model can try again with a clean baseline.
 	// oldContent is nil only when writeFile created a brand-new file; in
 	// that case, deleting the file is the correct revert.
@@ -1469,13 +1588,17 @@ func (e *Executor) validateAfterWrite(ctx context.Context, callID, relPath strin
 			fmt.Fprintf(&sb, "… and %d more\n", len(errorDiags)-10)
 			break
 		}
-		source := d.Source
-		if source == "" {
-			source = language
-		}
-		fmt.Fprintf(&sb, "  [%s] line %d col %d: %s\n", source, d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message)
+		fmt.Fprintf(&sb, "  [%s] line %d col %d: %s\n", diagSource(d, language), d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message)
 	}
 	return &adapter.ToolResult{ToolCallID: callID, Content: sb.String(), IsError: true}
+}
+
+// diagSource is the diagnostic's source, or the language when it has none.
+func diagSource(d lsp.Diagnostic, language string) string {
+	if d.Source != "" {
+		return d.Source
+	}
+	return language
 }
 
 // maybeMicrocompact trims the conversation in place when the input-token
@@ -2991,6 +3114,9 @@ func (e *Executor) codexSimilarCode(ctx context.Context, callID string, args map
 			Line:     r.Metadata["line"],
 			Score:    r.Score,
 		})
+		if n, err := strconv.Atoi(strings.TrimSpace(r.Metadata["line"])); err == nil {
+			e.markSeen(r.Metadata["file"], n)
+		}
 	}
 	if len(hits) == 0 {
 		e.markCodexEmpty("codex_similar_code", desc)
@@ -3249,9 +3375,9 @@ func (e *Executor) codexReadFile(ctx context.Context, callID string, args map[st
 	if v, ok := args["end_line"].(float64); ok && int(v) > 0 {
 		endLine = int(v)
 	}
-	const hardCap = readMaxLines
+	hardCap := e.readMax()
 	if endLine == 0 || endLine < startLine {
-		endLine = startLine + readDefaultLines - 1 // T6
+		endLine = startLine + e.readDefault() - 1 // T6
 	}
 	// Enforce the hard cap regardless of what the caller asked for.
 	if endLine-startLine+1 > hardCap {
@@ -3503,6 +3629,7 @@ func (e *Executor) codexGrep(ctx context.Context, callID string, args map[string
 				line = line[:200] + "…"
 			}
 			hits = append(hits, hit{File: relPath, Line: lineNo, Text: line})
+			e.markSeen(relPath, lineNo)
 			if len(hits) >= maxHits {
 				truncated = true
 				return fs.SkipAll
@@ -4253,17 +4380,19 @@ func RunToolLoopWithOptions(
 	}
 
 	executor.db = db
+	// Findings stay in the executor (Findings()); the caller stores them
+	// with the task's result (StoreFindingsTx), not per call.
 
 	// Per-work-item token budget: kill the loop when cumulative tokens
 	// across all agents exceed the cap. Default 500K tokens (~$5 at
 	// Sonnet pricing). Override via WORK_ITEM_TOKEN_BUDGET env var.
 	tokenBudget := TokenBudget()
 	var cumulativeTokens int64
-	if db != nil && workItemID != nil {
-		_ = db.QueryRow(ctx,
-			`SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM inference_logs WHERE work_item_id = $1`,
-			*workItemID,
-		).Scan(&cumulativeTokens)
+	var loopTokens int64 // this loop's own spend, for per-task caps
+	if workItemID != nil {
+		if sum, ok := sumWorkItemTokens(ctx, db, *workItemID); ok {
+			cumulativeTokens = sum
+		}
 	}
 
 	// Stuck detection: track the last tool-call fingerprint and repeat count.
@@ -4321,11 +4450,31 @@ func RunToolLoopWithOptions(
 		keepRecent = keepRecentFromEnv()
 	}
 	if opts.EvidenceLedger {
-		ledger = newEvidenceLedger()
-		if opts.PinReads {
-			ledger.enablePins(opts.PinnedFiles, executor.currentLines)
-			ledger.seedOf = executor.readSeed
+		if opts.Carry != nil && opts.Carry.ledger != nil {
+			ledger = opts.Carry.ledger // the previous pass's reads, edits and pins
+		} else {
+			ledger = newEvidenceLedger()
+			if opts.Findings {
+				ledger.findings = executor.Findings
+			}
+			if opts.PinReads {
+				ledger.enablePins(opts.PinnedFiles, executor.currentLines)
+				ledger.seedOf = executor.readSeed
+			}
 		}
+	}
+	if opts.Carry != nil {
+		defer func() {
+			msgs := append([]adapter.ChatMessage(nil), req.Messages...)
+			if ledger != nil {
+				// Everything into the ledger: the next pass starts from the
+				// ledger lines and the pinned current file contents, not
+				// from this pass's last raw results.
+				msgs = compactTranscript(msgs, ledger, 0)
+			}
+			opts.Carry.Messages = msgs
+			opts.Carry.ledger = ledger
+		}()
 	}
 	deadToolErrors := map[string]int{}
 	// Re-read dedup (R12 X2): what each read returned, by tool-call turn.
@@ -4358,6 +4507,18 @@ func RunToolLoopWithOptions(
 	}
 	var stuck *stuckTracker
 	var cycles *cycleGuard   // R17: whole-turn cycles
+	unrecordedReads := 0     // Findings read gate: read turns since the last finding
+	uneditedReads := 0       // EditGate: read turns since the last edit (gate.go)
+	sent := newSentTracker() // work tokens: input not sent before (work_tokens.go)
+	rec := &loopRecorder{db: db, workItemID: workItemID, sent: sent}
+	progress := newProgressTracker()
+	gateExempt := map[string]bool{} // paths a REJECTED edit asked the model to read: served through the gate
+	gateScope := map[string]bool{}  // the files in scope: what the task edits, never refused (gate.go)
+	for _, p := range opts.PinnedFiles {
+		if n := pinPath(p); n != "" {
+			gateScope[n] = true
+		}
+	}
 	var repeats *readRepeats // R17: repeated reads of a read-only tree
 	if opts.StuckControl {
 		stuck = newStuckTracker(opts.PriorStuck)
@@ -4382,10 +4543,28 @@ func RunToolLoopWithOptions(
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("tool loop aborted after %d iterations: %w", i, err)
 		}
+		// The budget is per work item and shared by every agent on it (F36):
+		// re-read the total before paying for the next call, so parallel
+		// loops stop within one iteration of each other instead of each
+		// trusting a total it read at start.
+		if workItemID != nil {
+			if sum, ok := sumWorkItemTokens(ctx, db, *workItemID); ok && sum > cumulativeTokens {
+				cumulativeTokens = sum
+			}
+		}
+		if cumulativeTokens > tokenBudget {
+			log.Printf("tool-loop: token budget exceeded (%d > %d) for work_item=%v before iteration %d — terminating", cumulativeTokens, tokenBudget, workItemID, i)
+			return nil, fmt.Errorf("%w: %d tokens used (limit %d) — work item is too expensive, investigate before retrying", ErrTokenBudgetExceeded, cumulativeTokens, tokenBudget)
+		}
 		// The caller's budget check (M3-06): between iterations, before the
 		// next LLM call is paid for.
 		if executor.iterationHook != nil {
-			if err := executor.iterationHook(ctx, cumulativeTokens, tokenBudget); err != nil {
+			if err := executor.iterationHook(ctx, cumulativeTokens, tokenBudget, loopTokens); err != nil {
+				// Something ran: close with what it showed (the ledger
+				// and any findings), not an error for the whole round.
+				if opts.Findings && (len(executor.Findings()) > 0 || toolsRun > 0) {
+					return closingAnswer(ctx, llmAdapter, rec, req, fmt.Sprintf("stopped after %d iterations: %v", i, err))
+				}
 				return nil, fmt.Errorf("tool loop stopped after %d iterations: %w", i, err)
 			}
 		}
@@ -4422,84 +4601,29 @@ func RunToolLoopWithOptions(
 			req.Tools = filtered
 		}
 
-		// Insert the inference_logs row BEFORE the LLM call so the dashboard
-		// can show it as "running" while it's in flight. Update at the end.
-		// latency_ms=0 is the dashboard's "still running" marker.
-		var logID string
-		if db != nil && workItemID != nil {
-			// agent_id is a UUID column; passing the literal string "tool-agent"
-			// triggered a silent INSERT failure (errors swallowed below). Leave
-			// it NULL — the intent_type="tool_loop" is enough to identify these
-			// rows for the dashboard.
-			// M4-05: the caller's inference tags (role, agent type, config
-			// snapshot, resolved model) come from ctx (llm.WithInferenceTags).
-			tags := llm.InferenceTagsFrom(ctx)
-			provider, modelID := llm.ModelIdentity(llmAdapter.Name(), tags)
-			insertErr := db.QueryRow(ctx,
-				`INSERT INTO inference_logs (model_provider, model_id, intent_type, input_tokens, output_tokens, latency_ms, success, error_message, work_item_id, agent_id, created_at,
-				                             role, agent_type, config_snapshot_id)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NOW(), $10, $11, $12)
-				 RETURNING id::text`,
-				provider, modelID, "tool_loop", 0, 0,
-				int64(0), false, "", workItemID,
-				llm.NullIfEmpty(tags.Role), llm.NullIfEmpty(tags.AgentType), llm.NullIfEmpty(tags.ConfigSnapshotID),
-			).Scan(&logID)
-			if insertErr != nil {
-				fmt.Printf("tool-executor: insert in-progress inference_logs row failed: %v\n", insertErr)
-			}
-			if logID != "" {
-				_, _ = db.Exec(ctx, "SELECT pg_notify('inference_started', $1)", logID)
-			}
-		}
-
-		callStart := time.Now()
-		var resp *adapter.CompletionResponse
-		var err error
-		for attempt := 0; attempt < 3; attempt++ {
-			resp, err = llmAdapter.Complete(ctx, req)
-			if err == nil || !llm.IsTransientLLMError(err) {
-				break
-			}
-			if attempt < 2 {
-				delay := time.Duration(5*(1<<uint(attempt))) * time.Second // 5s, 10s
-				log.Printf("tool-loop: transient error on LLM call %d attempt %d/3 (%v); retrying in %s", i, attempt+1, err, delay)
-				select {
-				case <-time.After(delay):
-				case <-ctx.Done():
+		// The call is recorded in inference_logs around its execution
+		// (loop_recorder.go: a "running" row before, the outcome, the
+		// conversation and the work after).
+		resp, work, err := rec.complete(ctx, llmAdapter, req, func() (*adapter.CompletionResponse, error) {
+			var r *adapter.CompletionResponse
+			var e error
+			for attempt := 0; attempt < 3; attempt++ {
+				r, e = llmAdapter.Complete(ctx, req)
+				if e == nil || !llm.IsTransientLLMError(e) {
 					break
 				}
+				if attempt < 2 {
+					delay := time.Duration(5*(1<<uint(attempt))) * time.Second // 5s, 10s
+					log.Printf("tool-loop: transient error on LLM call %d attempt %d/3 (%v); retrying in %s", i, attempt+1, e, delay)
+					select {
+					case <-time.After(delay):
+					case <-ctx.Done():
+						break
+					}
+				}
 			}
-		}
-		latency := time.Since(callStart)
-
-		// Update the row with the real outcome + conversation content.
-		if db != nil && workItemID != nil && logID != "" {
-			errMsg := ""
-			if err != nil {
-				errMsg = err.Error()
-			}
-			var inputTokens, outputTokens int
-			responseText := ""
-			if resp != nil {
-				inputTokens = resp.InputTokens
-				outputTokens = resp.OutputTokens
-				responseText = resp.Content
-			}
-			messagesJSON := []byte("[]")
-			if b, mErr := json.Marshal(req.Messages); mErr == nil {
-				messagesJSON = b
-			}
-			_, _ = db.Exec(ctx,
-				`UPDATE inference_logs
-				 SET input_tokens = $1, output_tokens = $2, latency_ms = $3,
-				     success = $4, error_message = $5,
-				     prompt_messages = $6::jsonb, response_content = $7
-				 WHERE id = $8::uuid`,
-				inputTokens, outputTokens, latency.Milliseconds(),
-				err == nil, errMsg, string(messagesJSON), responseText, logID,
-			)
-			_, _ = db.Exec(ctx, "SELECT pg_notify('inference_completed', $1)", logID)
-		}
+			return r, e
+		})
 
 		if err != nil {
 			return nil, fmt.Errorf("LLM call %d failed: %w", i, err)
@@ -4509,7 +4633,10 @@ func RunToolLoopWithOptions(
 		metrics.LLMCallsTotal.Inc()
 		if resp.InputTokens > 0 || resp.OutputTokens > 0 {
 			metrics.LLMTokensUsed.Add(int64(resp.InputTokens + resp.OutputTokens))
-			cumulativeTokens += int64(resp.InputTokens + resp.OutputTokens)
+			// The budget counts what the call added (work_tokens.go), not
+			// the whole resent prompt.
+			cumulativeTokens += work
+			loopTokens += work
 		}
 
 		// Token budget kill switch.
@@ -4816,7 +4943,7 @@ func RunToolLoopWithOptions(
 		// reference a tool_use in the preceding assistant message.
 		req.Messages = append(req.Messages, adapter.ChatMessage{
 			Role:      adapter.RoleAssistant,
-			Content:   resp.Content,
+			Content:   trimAssistantProse(resp.Content),
 			ToolCalls: resp.ToolCalls,
 		})
 
@@ -4875,6 +5002,54 @@ func RunToolLoopWithOptions(
 		var shortReads map[int]adapter.ToolResult
 		if rereads != nil {
 			shortReads = rereads.answer(ctx, executor, validCalls, toolTurn, keepRecent, ledger)
+		}
+		// Findings read gate (findings.go): the third consecutive read turn
+		// with nothing recorded is not served.
+		findingsBefore := 0
+		gated := map[int]bool{} // reads the gate did not serve: not failures, not repeats
+		if opts.EditGate > 0 && uneditedReads >= opts.EditGate {
+			for k, c := range validCalls {
+				if !isReadTool(c.Name) {
+					continue
+				}
+				// The read a rejected edit asked for is served (live: the
+				// read-before-edit gate and the edit gate refused each other
+				// until the budget was gone).
+				if p := pinPath(toolPathArg(c)); p != "" && (gateScope[p] || gateExempt[p]) {
+					// In scope: the file the task edits, read in whatever
+					// window the edit needs (live, ciblame: report.go
+					// refused twelve times for ~100k tokens).
+					delete(gateExempt, p)
+					continue
+				}
+				if shortReads == nil {
+					shortReads = map[int]adapter.ToolResult{}
+				}
+				shortReads[k] = adapter.ToolResult{ToolCallID: c.ID, Content: editGateRefusal(uneditedReads), IsError: true}
+				gated[k] = true
+			}
+		}
+		if opts.Findings {
+			findingsBefore = len(executor.Findings())
+			if unrecordedReads >= 2 {
+				for k, c := range validCalls {
+					if !isReadTool(c.Name) {
+						continue
+					}
+					// A repeat is the repeat guard's to answer (note, short
+					// answer, repeated_read); the gate is for new ranges.
+					if fp, _ := executor.callFingerprint(c); fp == "" || (repeats != nil && repeats.count[fp] > 0) {
+						continue
+					}
+					if shortReads == nil {
+						shortReads = map[int]adapter.ToolResult{}
+					}
+					shortReads[k] = adapter.ToolResult{ToolCallID: c.ID, Content: readGateRefusal, IsError: true}
+					gated[k] = true
+				}
+			}
+		}
+		{
 			if len(shortReads) > 0 {
 				runCalls = make([]adapter.ToolCall, 0, len(validCalls))
 				for k, c := range validCalls {
@@ -4919,6 +5094,67 @@ func RunToolLoopWithOptions(
 			}
 			repeats.annotate(vt, vp, validResults, toolTurn, rereads != nil)
 		}
+		if opts.EditGate > 0 {
+			edited, readServed := false, false
+			for k, c := range validCalls {
+				switch {
+				case (IsFileEditTool(c.Name) || isWriteTool(c.Name)) && !validResults[k].IsError:
+					edited = true
+				case (IsFileEditTool(c.Name) || isWriteTool(c.Name)) && strings.HasPrefix(strings.TrimSpace(validResults[k].Content), "REJECTED"):
+					if p := pinPath(toolPathArg(c)); p != "" {
+						gateExempt[p] = true
+					}
+				case isReadTool(c.Name) && !validResults[k].IsError:
+					readServed = true
+				}
+			}
+			switch {
+			case edited:
+				uneditedReads = 0
+			case readServed:
+				uneditedReads++
+			}
+		}
+		full := progress.observe(validCalls, validResults)
+		if progress.worked && recoveryAttempts > 0 {
+			// Work landed: the stuck detectors' recovery count is a count
+			// of churn, and this turn was not churn.
+			log.Printf("tool-loop: work landed — recovery attempts reset (was %d)", recoveryAttempts)
+			recoveryAttempts = 0
+		}
+		if progress.idle > 0 {
+			log.Printf("tool-loop: no progress for %d tool turn(s) (window %d)", progress.idle, noProgressWindow)
+		}
+		if opts.StuckControl && full {
+			reason := fmt.Sprintf("no progress in %d tool turns: no edit or write applied, no command run, no finding recorded, no call the loop had not made before", noProgressWindow)
+			log.Printf("tool-loop: %s — ending the loop", reason)
+			if opts.Findings && toolsRun > 0 {
+				return closingAnswer(ctx, llmAdapter, rec, req, reason)
+			}
+			return nil, &LoopStuck{Tool: "(none)", Kind: StuckKindNoProgress, Reason: reason, Attempts: noProgressWindow}
+		}
+		if opts.Findings {
+			newFindings := executor.Findings()[findingsBefore:]
+			if repeats != nil && len(newFindings) > 0 {
+				repeats.productive(toolTurn, newFindings)
+			}
+			served := false
+			for k, c := range validCalls {
+				if !isReadTool(c.Name) || validResults[k].IsError || isRereadResult(validResults[k].Content) {
+					continue
+				}
+				served = true
+				if unrecordedReads == 1 {
+					validResults[k].Content = withNote(validResults[k].Content, readGateNote)
+				}
+			}
+			switch {
+			case len(newFindings) > 0:
+				unrecordedReads = 0
+			case served:
+				unrecordedReads++
+			}
+		}
 		if rereads != nil {
 			rereads.record(executor, validCalls, validResults, toolTurn)
 		}
@@ -4942,6 +5178,9 @@ func RunToolLoopWithOptions(
 
 		if stuck != nil {
 			for k := range validCalls {
+				if gated[k] {
+					continue
+				}
 				if s := stuck.observe(validCalls[k], fingerprints[k], fpPaths[k], &validResults[k]); s != nil {
 					log.Printf("tool-loop: %v — ending the loop", s)
 					return nil, s
@@ -5016,5 +5255,11 @@ func RunToolLoopWithOptions(
 		req.ToolResults = nil
 	}
 
+	if opts.Findings && (len(executor.Findings()) > 0 || toolsRun > 0) {
+		return closingAnswer(ctx, llmAdapter, rec, req, fmt.Sprintf("iteration cap %d reached", maxIterations))
+	}
+	if opts.CloseAtLimit && toolsRun > 0 {
+		return closingAnswerWith(ctx, llmAdapter, rec, req, closeAtLimitMessage, fmt.Sprintf("iteration cap %d reached", maxIterations))
+	}
 	return nil, fmt.Errorf("%w: %d iterations", ErrSafetyLimit, maxIterations)
 }

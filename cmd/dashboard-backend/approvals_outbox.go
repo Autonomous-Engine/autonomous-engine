@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/autonomousengine/autonomous-engine/internal/bus"
+	"github.com/autonomousengine/autonomous-engine/internal/interactions"
 	"github.com/autonomousengine/autonomous-engine/internal/models"
 	"github.com/autonomousengine/autonomous-engine/internal/outbox"
 	"github.com/autonomousengine/autonomous-engine/internal/workgraph"
@@ -38,6 +39,7 @@ type approvalGraph interface {
 	GetArtifacts(ctx context.Context, workItemID uuid.UUID, artifactType models.ArtifactType) ([]*models.WorkItemArtifact, error)
 	TransitionStateTx(ctx context.Context, tx pgx.Tx, itemID uuid.UUID, toState models.WorkItemState, agentID, reason string) (models.WorkItemState, error)
 	TransitionFromAwaitingUserToStateTx(ctx context.Context, tx pgx.Tx, itemID uuid.UUID, toState models.WorkItemState, agentID, reason string) error
+	GetChildren(ctx context.Context, parentID uuid.UUID) ([]*models.WorkItem, error)
 }
 
 // workGraphApprovals adapts *workgraph.WorkGraph to approvalGraph.
@@ -84,14 +86,123 @@ func enqueueSubtaskRetry(ctx context.Context, tx pgx.Tx, item *models.WorkItem) 
 }
 
 // retrySubtask moves a blocked or failed subtask back to implementation and
-// enqueues its implementation.tasks retry in one transaction.
+// enqueues its implementation.tasks retry in one transaction; the prompt it
+// was parked on is superseded with it.
 func (h *Handlers) retrySubtask(ctx context.Context, item *models.WorkItem, agentID, reason string) error {
-	return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+	superseded := supersededPrompts{}
+	err := workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
 		if _, err := h.approvals.TransitionStateTx(ctx, tx, item.ID, models.WorkItemStateImplementation, agentID, reason); err != nil {
 			return &transitionFailed{err: err}
 		}
+		if err := superseded.cancel(ctx, tx, item.ID, agentID, reason); err != nil {
+			return err
+		}
 		return enqueueSubtaskRetry(ctx, tx, item)
 	})
+	if err == nil {
+		superseded.push(h.promptHub)
+	}
+	return err
+}
+
+// supersededPrompts counts, per work item, the pending prompts a retry
+// cancelled in its transaction, and tells the dashboard once it commits:
+// a prompt_cancelled event per work item, so the bell and the Approvals
+// list drop them without a reload.
+type supersededPrompts map[uuid.UUID]int64
+
+func (s supersededPrompts) cancel(ctx context.Context, tx pgx.Tx, workID uuid.UUID, by, reason string) error {
+	n, err := interactions.CancelPendingTx(ctx, tx, workID, by, reason)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		s[workID] += n
+	}
+	return nil
+}
+
+func (s supersededPrompts) push(hub promptPusher) {
+	if hub == nil {
+		return
+	}
+	for id, n := range s {
+		hub.PushPromptEvent("prompt_cancelled", map[string]any{"work_item_id": id.String(), "count": n})
+	}
+}
+
+// stoppedSubtasks is parentID's subtasks whose implementation stopped:
+// blocked, awaiting the user on their own stop prompt, or failed.
+func (h *Handlers) stoppedSubtasks(ctx context.Context, parentID uuid.UUID) []*models.WorkItem {
+	children, err := h.approvals.GetChildren(ctx, parentID)
+	if err != nil {
+		return nil
+	}
+	var stopped []*models.WorkItem
+	for _, c := range children {
+		switch c.State {
+		case models.WorkItemStateBlocked, models.WorkItemStateAwaitingUser, models.WorkItemStateFailed:
+			stopped = append(stopped, c)
+		}
+	}
+	return stopped
+}
+
+// resumeImplementation is the retry of an implementation stop (budget
+// exhausted, repeated failure) answered on the parent: the parent and each
+// stopped subtask move to implementation and each subtask's
+// implementation.tasks retry is enqueued, in one transaction. Research and
+// the plan stand; only the implementation attempt is fresh. The pending
+// prompts of the parent and of each stopped subtask (a subtask parked on
+// its own "Blocked:" prompt) are superseded in the same transaction: the
+// retry answers them.
+func (h *Handlers) resumeImplementation(ctx context.Context, parent *models.WorkItem, stopped []*models.WorkItem, agentID, reason string) error {
+	superseded := supersededPrompts{}
+	err := workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+		if err := h.transitionTx(ctx, tx, parent, models.WorkItemStateImplementation, agentID, reason); err != nil {
+			return err
+		}
+		if err := superseded.cancel(ctx, tx, parent.ID, agentID, reason); err != nil {
+			return err
+		}
+		for _, c := range stopped {
+			if err := h.transitionTx(ctx, tx, c, models.WorkItemStateImplementation, agentID, reason); err != nil {
+				return err
+			}
+			if err := superseded.cancel(ctx, tx, c.ID, agentID, reason); err != nil {
+				return err
+			}
+			if err := enqueueSubtaskRetry(ctx, tx, c); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		superseded.push(h.promptHub)
+	}
+	return err
+}
+
+// transitionTx moves item to `to` on tx; an item awaiting the user goes
+// through the path that clears its prompt. status-orchestrator restores an
+// item awaiting_user → previous_state on the same answer, so an item that
+// has already moved on takes the ordinary transition instead (that path
+// fails before any statement, so the transaction is still usable).
+func (h *Handlers) transitionTx(ctx context.Context, tx pgx.Tx, item *models.WorkItem, to models.WorkItemState, agentID, reason string) error {
+	if item.State == models.WorkItemStateAwaitingUser {
+		err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, item.ID, to, agentID, reason)
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "invalid transition: state is") {
+			return &transitionFailed{err: err}
+		}
+	}
+	if _, err := h.approvals.TransitionStateTx(ctx, tx, item.ID, to, agentID, reason); err != nil {
+		return &transitionFailed{err: err}
+	}
+	return nil
 }
 
 // buildQAReadyMessage is the qa.ready payload for workID with the reviewed
@@ -170,9 +281,16 @@ const (
 // intake with its transition row, and enqueues intake, all in one
 // transaction. The payload shape must match intakeMessage in
 // cmd/product-agent.
-func commitUpdateAndRetry(ctx context.Context, db workgraph.TxBeginner, item *models.WorkItem, description, userID string) error {
+// assignProductSQL gives a product-less item its product on Update & Retry
+// (product-agent blocked it with "has no product"; the intake event it
+// reprocesses carries the product).
+const assignProductSQL = `UPDATE work_items SET product_id = $1, updated_at = NOW() WHERE id = $2`
+
+func commitUpdateAndRetry(ctx context.Context, db workgraph.TxBeginner, item *models.WorkItem, description, userID string, assignProduct *uuid.UUID) error {
 	productID := ""
-	if item.ProductID != nil {
+	if assignProduct != nil {
+		productID = assignProduct.String()
+	} else if item.ProductID != nil {
 		productID = item.ProductID.String()
 	}
 	payload := map[string]interface{}{
@@ -182,6 +300,11 @@ func commitUpdateAndRetry(ctx context.Context, db workgraph.TxBeginner, item *mo
 		"source":      "dashboard-retry",
 	}
 	return workgraph.WithTx(ctx, db, func(tx pgx.Tx) error {
+		if assignProduct != nil {
+			if _, err := tx.Exec(ctx, assignProductSQL, *assignProduct, item.ID); err != nil {
+				return fmt.Errorf("assign product: %w", err)
+			}
+		}
 		if _, err := tx.Exec(ctx, updateDescriptionSQL, description, item.ID); err != nil {
 			return fmt.Errorf("update description: %w", err)
 		}

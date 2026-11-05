@@ -83,11 +83,23 @@ func roundStart(parentTransitions []*models.WorkItemTransition) time.Time {
 // recorded).
 func lastPassed(ts []*models.WorkItemTransition) time.Time { return workgraph.LastPassed(ts) }
 
+// lastImplementation is when the subtask last moved to implementation:
+// the start of its latest attempt (zero: never).
+func lastImplementation(ts []*models.WorkItemTransition) time.Time {
+	var at time.Time
+	for _, t := range ts {
+		if t != nil && t.ToState == models.WorkItemStateImplementation && t.Timestamp.After(at) {
+			at = t.Timestamp
+		}
+	}
+	return at
+}
+
 // decideVerificationRound aggregates the round's results. subtasks are the
 // parent's subtask children (for an item without subtasks, the item itself
 // in state passed); passedAt their last pass; results the newest result per
 // subtask.
-func decideVerificationRound(subtasks []*models.WorkItem, passedAt map[uuid.UUID]time.Time, results map[uuid.UUID]stage.Result, start time.Time) verificationRound {
+func decideVerificationRound(subtasks []*models.WorkItem, passedAt, startedAt map[uuid.UUID]time.Time, results map[uuid.UUID]stage.Result, start time.Time) verificationRound {
 	var r verificationRound
 	var participants []*models.WorkItem
 	for _, c := range subtasks {
@@ -119,7 +131,11 @@ func decideVerificationRound(subtasks []*models.WorkItem, passedAt map[uuid.UUID
 	var reasons []string
 	for _, c := range participants {
 		res, ok := results[c.ID]
-		if !ok || (!start.IsZero() && res.CreatedAt.Before(start)) {
+		// A result older than the round, or older than the subtask's
+		// latest attempt (its last move to implementation), is an earlier
+		// attempt's, not this one's. The attempt start, not the pass: the
+		// stage may record this attempt's result before the subtask passes.
+		if !ok || (!start.IsZero() && res.CreatedAt.Before(start)) || (!startedAt[c.ID].IsZero() && res.CreatedAt.Before(startedAt[c.ID])) {
 			r.Wait = true
 			r.Waiting = append(r.Waiting, c.ID.String()+" not verified yet")
 			continue
@@ -204,6 +220,7 @@ func settleVerification(ctx context.Context, wg *workgraph.WorkGraph, kb bus.Mes
 		}
 	}
 	passedAt := map[uuid.UUID]time.Time{}
+	startedAt := map[uuid.UUID]time.Time{}
 	if len(subtasks) == 0 {
 		// An item implemented directly: it is its own (passed) subtask.
 		self := *parent
@@ -217,6 +234,7 @@ func settleVerification(ctx context.Context, wg *workgraph.WorkGraph, kb bus.Mes
 					log.Printf("status-orchestrator: verification: transitions of subtask %s: %v", c.ID, terr)
 				}
 				passedAt[c.ID] = lastPassed(ts)
+				startedAt[c.ID] = lastImplementation(ts)
 			}
 		}
 	}
@@ -229,7 +247,7 @@ func settleVerification(ctx context.Context, wg *workgraph.WorkGraph, kb bus.Mes
 		log.Printf("status-orchestrator: verification: %v — waiting", err)
 		results = nil
 	}
-	round := decideVerificationRound(subtasks, passedAt, results, roundStart(parentTransitions))
+	round := decideVerificationRound(subtasks, passedAt, startedAt, results, roundStart(parentTransitions))
 	if round.Running || round.Empty {
 		return nil
 	}

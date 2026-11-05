@@ -60,10 +60,17 @@ type Handlers struct {
 	// NewHandlers wires both to wg; tests supply fakes.
 	approvals approvalGraph
 	txdb      workgraph.TxBeginner
+	// promptHub is told when a retry supersedes pending prompts
+	// (approvals_outbox.go). Nil in tests that do not exercise it.
+	promptHub promptPusher
 	// codexDB reads and writes codex refusals (codex_refusal.go). Nil in
 	// tests that do not exercise them: the blocked answers then take the
 	// generic paths.
 	codexDB codexRefusalDB
+	// verifications reads the parent's verification.complete events for a
+	// human-review approval (human_review_verification.go). Nil in tests
+	// that do not exercise it: the approval then takes the QA path.
+	verifications rowQuerier
 }
 
 // NewHandlers creates a Handlers instance from the given WorkGraph and Codex.
@@ -81,6 +88,7 @@ func NewHandlers(wg *workgraph.WorkGraph, cx *codex.Codex, msgBus bus.MessageBus
 		if pool := wg.DB(); pool != nil {
 			h.runs = controller.NewStore(pool)
 			h.codexDB = pool
+			h.verifications = pool
 		}
 	}
 	return h
@@ -994,6 +1002,18 @@ func (h *Handlers) RetryWorkItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A parent whose subtasks stopped resumes implementation; the research
+	// and the plan stand.
+	if stopped := h.stoppedSubtasks(r.Context(), id); len(stopped) > 0 {
+		if err := h.resumeImplementation(r.Context(), item, stopped, userID, "Manual retry by admin — implementation resumed"); err != nil {
+			log.Printf("handlers: retry %s to implementation: %v", id, err)
+			writeError(w, http.StatusInternalServerError, "retry failed: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "retrying"})
+		return
+	}
+
 	// Check whether a PRD artifact exists. If one was already generated,
 	// we can skip straight to research by publishing to prd.ready. If
 	// NOT (e.g. the clarity gate blocked before PRD generation), we must
@@ -1075,14 +1095,27 @@ func (h *Handlers) UpdateAndRetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// product_id assigns a product to an item that has none (product-agent
+	// blocks such an item with "has no product"); with it the description
+	// may stay as it is.
 	var body struct {
 		Description string `json:"description"`
+		ProductID   string `json:"product_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
 		return
 	}
-	if strings.TrimSpace(body.Description) == "" {
+	var assignProduct *uuid.UUID
+	if body.ProductID != "" {
+		pid, err := uuid.Parse(body.ProductID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid product_id")
+			return
+		}
+		assignProduct = &pid
+	}
+	if strings.TrimSpace(body.Description) == "" && assignProduct == nil {
 		writeError(w, http.StatusBadRequest, "description is required")
 		return
 	}
@@ -1091,6 +1124,16 @@ func (h *Handlers) UpdateAndRetry(w http.ResponseWriter, r *http.Request) {
 	if err != nil || item == nil {
 		writeError(w, http.StatusNotFound, "work item not found")
 		return
+	}
+	if strings.TrimSpace(body.Description) == "" {
+		body.Description = item.Description
+	}
+	if assignProduct != nil {
+		var exists bool
+		if err := h.wg.DB().QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM products WHERE id = $1)`, *assignProduct).Scan(&exists); err != nil || !exists {
+			writeError(w, http.StatusBadRequest, "product_id names no product")
+			return
+		}
 	}
 	if item.State != models.WorkItemStateBlocked && item.State != models.WorkItemStateFailed {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("can only update+retry blocked or failed items (this one is %q)", item.State))
@@ -1151,7 +1194,7 @@ func (h *Handlers) UpdateAndRetry(w http.ResponseWriter, r *http.Request) {
 	// state machine directly; the state is forced and the transition
 	// recorded by hand. product-agent consumes from the intake topic, so the
 	// event is what actually restarts the flow.
-	if err := commitUpdateAndRetry(r.Context(), h.txdb, item, body.Description, userID); err != nil {
+	if err := commitUpdateAndRetry(r.Context(), h.txdb, item, body.Description, userID, assignProduct); err != nil {
 		log.Printf("handlers: update-and-retry %s: %v", id, err)
 		writeError(w, http.StatusInternalServerError, "update and retry: "+err.Error())
 		return
@@ -1402,15 +1445,37 @@ func (h *Handlers) HandlePRDPromptAnswer(ctx context.Context, workItemID uuid.UU
 		})
 	}
 
+	if action == "revise" {
+		// "Request changes" from the prompt sheet: the item is parked in
+		// awaiting_user while the prompt is pending, so RevisePRD's
+		// prd_approval check would refuse it (rerun NEW-5). Same effect as
+		// RevisePRD: back to prd with the feedback, intake re-enqueued.
+		feedback := strings.TrimSpace(answerText)
+		if feedback == "" {
+			return fmt.Errorf("request changes needs feedback: say what should change")
+		}
+		payload := prdRevisionPayload(workItemID, item, feedback)
+		return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+			if err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, workItemID, models.WorkItemStatePRD, userID, "PRD changes requested: "+feedback); err != nil {
+				return fmt.Errorf("transition failed: %w", err)
+			}
+			return outbox.EnqueueJSON(ctx, tx, aggregateFor(workItemID, item), bus.TopicIntake, workItemID.String(), payload)
+		})
+	}
+
 	if action == "reject" {
 		reason := "PRD rejected via prompt sheet"
 		if strings.TrimSpace(answerText) != "" {
 			reason = "PRD rejected: " + answerText
 		}
-		if err := h.wg.TransitionState(ctx, workItemID, models.WorkItemStateRejected, userID, reason); err != nil {
-			return fmt.Errorf("transition failed: %w", err)
-		}
-		return nil
+		// The item is parked in awaiting_user while the prompt is pending
+		// (rerun NEW-10): the awaiting_user-aware path, as approve and revise.
+		return workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+			if err := h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, workItemID, models.WorkItemStateRejected, userID, reason); err != nil {
+				return fmt.Errorf("transition failed: %w", err)
+			}
+			return nil
+		})
 	}
 
 	return nil
@@ -1421,9 +1486,21 @@ func (h *Handlers) HandlePRDPromptAnswer(ctx context.Context, workItemID uuid.UU
 // state transition and qa.ready publish as ApproveWorkItem.
 func (h *Handlers) HandleHumanReviewPromptAnswer(ctx context.Context, workItemID uuid.UUID, action, answerText, userID string) error {
 	if action == "approve" {
-		// Same transition and qa.ready as ApproveWorkItem (the reviewed
-		// branch and the verified head SHA the review examined), committed
-		// together.
+		// R14: a verifier escalation approved by a person is the
+		// verification decision (human_review_verification.go); the PR
+		// coordinator opens the PR or the gate's pending change.
+		if handled, err := h.approveEscalatedVerification(ctx, workItemID, userID, answerText); err != nil {
+			var tf *transitionFailed
+			if errors.As(err, &tf) {
+				return fmt.Errorf("transition failed: %w", tf.err)
+			}
+			return fmt.Errorf("approve escalated verification: %w", err)
+		} else if handled {
+			return nil
+		}
+		// Pre-R14 review path: the same transition and qa.ready as
+		// ApproveWorkItem (the reviewed branch and the verified head SHA
+		// the review examined), committed together.
 		if err := h.approveToQA(ctx, workItemID, userID, "approved via prompt sheet"); err != nil {
 			var tf *transitionFailed
 			if errors.As(err, &tf) {
@@ -1439,7 +1516,10 @@ func (h *Handlers) HandleHumanReviewPromptAnswer(ctx context.Context, workItemID
 		if strings.TrimSpace(answerText) != "" {
 			reason = "rejected: " + answerText
 		}
-		if err := h.wg.TransitionState(ctx, workItemID, models.WorkItemStateRejected, userID, reason); err != nil {
+		// Parked in awaiting_user while the prompt is pending (rerun NEW-10).
+		if err := workgraph.WithTx(ctx, h.txdb, func(tx pgx.Tx) error {
+			return h.approvals.TransitionFromAwaitingUserToStateTx(ctx, tx, workItemID, models.WorkItemStateRejected, userID, reason)
+		}); err != nil {
 			return fmt.Errorf("transition failed: %w", err)
 		}
 		return nil
@@ -1567,6 +1647,10 @@ type subtaskRetryMessage struct {
 	Description   string   `json:"description"`
 	FilesToChange []string `json:"files_to_change"`
 	Retry         bool     `json:"retry"`
+	// A review-fix subtask keeps its identity on retry: the agent starts
+	// it from the parent's implementation branch with the feedback.
+	IsReviewFix    bool   `json:"is_review_fix,omitempty"`
+	ReviewFeedback string `json:"review_feedback,omitempty"`
 }
 
 // buildSubtaskRetryMessage builds the retry payload for a subtask work item.
@@ -1589,6 +1673,9 @@ func buildSubtaskRetryMessage(item *models.WorkItem) subtaskRetryMessage {
 	}
 	if item.RepositoryID != nil {
 		msg.RepositoryID = item.RepositoryID.String()
+	}
+	if item.IsReviewFix() {
+		msg.IsReviewFix, msg.ReviewFeedback = true, item.Description
 	}
 	return msg
 }
@@ -1617,6 +1704,18 @@ func (h *Handlers) HandleBlockedPromptAnswer(ctx context.Context, workItemID uui
 		if item.Type == models.WorkItemTypeSubtask {
 			// The transition and implementation.tasks commit together.
 			if err := h.retrySubtask(ctx, item, userID, "retry via prompt sheet"); err != nil {
+				var tf *transitionFailed
+				if errors.As(err, &tf) {
+					return fmt.Errorf("transition failed: %w", tf.err)
+				}
+				return fmt.Errorf("record implementation.tasks retry: %w", err)
+			}
+			return nil
+		}
+		// An implementation stop prompts the parent ("Retry with a fresh
+		// attempt"): the attempt is fresh, the research and the plan stand.
+		if stopped := h.stoppedSubtasks(ctx, item.ID); len(stopped) > 0 {
+			if err := h.resumeImplementation(ctx, item, stopped, userID, "retry via prompt sheet"); err != nil {
 				var tf *transitionFailed
 				if errors.As(err, &tf) {
 					return fmt.Errorf("transition failed: %w", tf.err)

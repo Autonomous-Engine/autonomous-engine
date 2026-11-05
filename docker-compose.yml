@@ -27,6 +27,20 @@ x-service-defaults: &service-defaults
     postgres:
       condition: service_healthy
 
+# Every service except status-orchestrator also waits for the migrations:
+# status-orchestrator applies them and its /health stays unhealthy until
+# they are (F1). A YAML merge replaces depends_on wholesale, so the three
+# dependencies are listed again here.
+x-migrated-service-defaults: &migrated-service-defaults
+  <<: *service-defaults
+  depends_on:
+    kafka:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+    status-orchestrator:
+      condition: service_healthy
+
 services:
 
   # ─── TLS Cert Generation ─────────────────────────────────────────────────────
@@ -132,7 +146,7 @@ services:
   # ─── Core services ───────────────────────────────────────────────────────────
 
   gateway:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -160,9 +174,12 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+      # /health is unhealthy until the migrations are applied (F1); a large
+      # existing database can take minutes, and the other services wait.
+      start_period: 300s
 
   webhook-listener:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -180,7 +197,7 @@ services:
   # ─── Agent pool ──────────────────────────────────────────────────────────────
 
   product-agent:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -196,7 +213,7 @@ services:
       retries: 5
 
   research-coordinator:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -212,7 +229,7 @@ services:
       retries: 5
 
   research-agent:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.agent-lsp
@@ -232,7 +249,7 @@ services:
       retries: 5
 
   implementation-planner:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -248,7 +265,7 @@ services:
       retries: 5
 
   implementation-agent:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.implementation-agent
@@ -263,7 +280,7 @@ services:
       retries: 5
 
   pr-coordinator:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -279,7 +296,7 @@ services:
       retries: 5
 
   review-agent:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.agent-lsp
@@ -295,7 +312,7 @@ services:
       retries: 5
 
   qa-agent:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.qa-agent
@@ -310,7 +327,7 @@ services:
       retries: 5
 
   chat-agent:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -328,7 +345,7 @@ services:
   # ─── Integration services ────────────────────────────────────────────────────
 
   github-service:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -344,7 +361,7 @@ services:
       retries: 5
 
   jira-sync:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -358,7 +375,7 @@ services:
       retries: 5
 
   change-reconciler:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -374,7 +391,7 @@ services:
       retries: 5
 
   credential-monitor:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -391,7 +408,7 @@ services:
       retries: 5
 
   knowledge-indexer:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.agent-lsp
@@ -407,7 +424,7 @@ services:
       retries: 5
 
   onboarding:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -427,7 +444,7 @@ services:
   # ─── Dashboard ───────────────────────────────────────────────────────────────
 
   dashboard-backend:
-    <<: *service-defaults
+    <<: *migrated-service-defaults
     build:
       context: .
       dockerfile: docker/Dockerfile.service

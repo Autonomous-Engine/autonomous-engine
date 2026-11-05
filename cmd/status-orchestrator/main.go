@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -35,6 +37,71 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+// Every other service starts after this service is healthy (docker-compose
+// depends_on), so none of them queries a table before the migrations exist
+// (F1). A migration that fails for a transient reason (a connection blip, a
+// lock timeout) is therefore retried until it applies — the alternative is
+// a deployment held until someone restarts this service — and /health
+// reports the last failure meanwhile.
+
+// migrationRetryEvery is how often a failed migration is retried.
+const migrationRetryEvery = 30 * time.Second
+
+// applyMigrations runs migrate over dirs in order until one applies. On
+// failure it records the error, keeps retrying every retryEvery in the
+// background until the migrations apply or ctx ends, and returns at once.
+// applied flips to true on success; lastErr holds the latest failure ("" once
+// applied).
+func applyMigrations(ctx context.Context, migrate func(context.Context, string) error, dirs []string, retryEvery time.Duration) (applied *atomic.Bool, lastErr *atomic.Value) {
+	applied, lastErr = new(atomic.Bool), new(atomic.Value)
+	attempt := func() bool {
+		var err error
+		for _, dir := range dirs {
+			if err = migrate(ctx, dir); err == nil {
+				lastErr.Store("")
+				applied.Store(true)
+				return true
+			}
+			log.Printf("status-orchestrator: db migrate from %s: %v", dir, err)
+		}
+		lastErr.Store(err.Error())
+		return false
+	}
+	if attempt() {
+		return applied, lastErr
+	}
+	log.Printf("status-orchestrator: migrations not applied; retrying every %s, /health reports it", retryEvery)
+	go func() {
+		t := time.NewTicker(retryEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if attempt() {
+					log.Printf("status-orchestrator: migrations applied on retry")
+					return
+				}
+			}
+		}
+	}()
+	return applied, lastErr
+}
+
+// migrationCheckOf is the /health check for the migrations.
+func migrationCheckOf(applied *atomic.Bool, lastErr *atomic.Value) func() error {
+	return func() error {
+		if applied.Load() {
+			return nil
+		}
+		if msg, _ := lastErr.Load().(string); msg != "" {
+			return fmt.Errorf("migrations not applied: %s", msg)
+		}
+		return errors.New("migrations not applied yet")
+	}
+}
 
 const (
 	agentID       = "status-orchestrator"
@@ -182,14 +249,11 @@ func main() {
 		log.Printf("status-orchestrator: get executable path: %v — using relative migrations path", err)
 		execPath = "."
 	}
-	migrationsDir := filepath.Join(filepath.Dir(execPath), "migrations")
-	if err := db.Migrate(ctx, pool, migrationsDir); err != nil {
-		log.Printf("status-orchestrator: db migrate from %s: %v — retrying with cwd", migrationsDir, err)
-		migrationsDir = "migrations"
-		if err := db.Migrate(ctx, pool, migrationsDir); err != nil {
-			log.Printf("status-orchestrator: db migrate: %v — continuing without migration", err)
-		}
-	}
+	// The image's migrations directory first, then the working directory;
+	// a failure is retried in the background and /health reports it.
+	migrationsApplied, migrationError := applyMigrations(ctx,
+		func(ctx context.Context, dir string) error { return db.Migrate(ctx, pool, dir) },
+		[]string{filepath.Join(filepath.Dir(execPath), "migrations"), "migrations"}, migrationRetryEvery)
 
 	if err := auth.Bootstrap(ctx, pool); err != nil {
 		log.Printf("auth bootstrap warning: %v", err)
@@ -234,6 +298,7 @@ func main() {
 
 	// Set up health checker.
 	checker := health.New("status-orchestrator")
+	checker.AddCheck("migrations", migrationCheckOf(migrationsApplied, migrationError))
 	checker.AddCheck("database", func() error {
 		return pool.Ping(ctx)
 	})

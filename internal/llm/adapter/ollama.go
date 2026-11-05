@@ -444,20 +444,23 @@ func extractStructuredFromThinking(thinking string) string {
 		}
 	}
 
-	// 2. Try to find the last top-level JSON array — the final answer for
-	//    decomposition-style prompts that ask for "[{...}, ...]".
-	lastArr := lastJSONBlock(thinking, '[', ']')
-	if lastArr != "" {
-		return lastArr
+	// 2. The outermost block that ends last, object or array: a verdict
+	//    object's own `"defects": []` is the last array in the text and ends
+	//    before the object does; a task array's objects end before it does.
+	best, bestEnd := "", -1
+	for _, c := range []string{lastJSONBlock(thinking, '{', '}'), lastJSONBlock(thinking, '[', ']')} {
+		if c == "" {
+			continue
+		}
+		if end := strings.LastIndex(thinking, c) + len(c); end > bestEnd {
+			best, bestEnd = c, end
+		}
+	}
+	if best != "" {
+		return best
 	}
 
-	// 3. Try the last top-level JSON object.
-	lastObj := lastJSONBlock(thinking, '{', '}')
-	if lastObj != "" {
-		return lastObj
-	}
-
-	// 4. No structured content found — return the full thinking text.
+	// 3. No structured content found — return the full thinking text.
 	//    This is correct for intents like synthesize-brief where the
 	//    reasoning IS the useful content.
 	return thinking
@@ -500,7 +503,9 @@ func lastJSONBlock(s string, open, close byte) string {
 				depth--
 				if depth == 0 {
 					candidate := s[j : i+1]
-					if json.Valid([]byte(candidate)) {
+					// An empty [] or {} is a fragment of the reasoning
+					// ("the defects list is []"), never the answer.
+					if json.Valid([]byte(candidate)) && strings.TrimSpace(candidate[1:len(candidate)-1]) != "" {
 						return candidate
 					}
 					break

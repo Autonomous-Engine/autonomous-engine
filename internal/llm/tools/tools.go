@@ -307,7 +307,7 @@ Usage:
 			"properties": {
 				"title":       {"type": "string", "description": "Short title for the work item"},
 				"description": {"type": "string", "description": "Detailed description including acceptance criteria"},
-				"product_id":  {"type": "string", "description": "UUID of the product (call list_products to find this)"},
+				"product_id":  {"type": "string", "description": "The product's id or its name, as list_products shows it; omitted, the session's product context (set_product_context) is used"},
 				"type":        {"type": "string", "enum": ["feature", "bug", "task"], "description": "Work item type"},
 				"priority":    {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "Priority level"}
 			},
@@ -419,7 +419,7 @@ IMPORTANT RULES:
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"product_id": {"type": "string", "description": "UUID of the product to set as context (from list_products)"}
+				"product_id": {"type": "string", "description": "The product's id or its name, as list_products shows it"}
 			},
 			"required": ["product_id"]
 		}`),

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useApi } from '@/hooks/useApi'
+import { guarded } from '@/hooks/rolloutGuard'
 import type { EmbeddingProvider, EmbeddingProviderTestResult } from '@/types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -240,14 +241,14 @@ function EmbeddingModal({ initial, onClose, onSaved }: EmbeddingModalProps) {
     setSaving(true)
     try {
       if (initial) {
-        await put(`/admin/embedding-providers/update?id=${initial.id}`, {
+        await guarded(`/admin/embedding-providers/update?id=${initial.id}`, p => put(p, {
           name,
           endpoint,
           model,
           api_key: apiKey,
           settings: {},
           enabled: initial.enabled,
-        })
+        }))
       } else {
         await post('/admin/embedding-providers/create', {
           name,
@@ -371,7 +372,7 @@ function EmbeddingModal({ initial, onClose, onSaved }: EmbeddingModalProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function EmbeddingProviders() {
-  const { get, post, put } = useApi()
+  const { get, post, put, del } = useApi()
   const [providers, setProviders] = useState<EmbeddingProvider[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -395,10 +396,7 @@ export default function EmbeddingProviders() {
 
   async function handleDelete(p: EmbeddingProvider) {
     try {
-      await fetch(`/api/admin/embedding-providers/delete?id=${p.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
-      })
+      await guarded(`/admin/embedding-providers/delete?id=${p.id}`, path => del(path))
       fetchProviders()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Delete failed')
@@ -407,7 +405,9 @@ export default function EmbeddingProviders() {
 
   async function handleSetDefault(p: EmbeddingProvider) {
     try {
-      await post(`/admin/embedding-providers/default?id=${p.id}`, {})
+      // The backend guards this change; without guarded() a 409 was shown
+      // as raw JSON and the default could never be set (F19).
+      await guarded(`/admin/embedding-providers/default?id=${p.id}`, path => post(path, {}))
       fetchProviders()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to set default')
@@ -416,14 +416,14 @@ export default function EmbeddingProviders() {
 
   async function handleToggleEnabled(p: EmbeddingProvider) {
     try {
-      await put(`/admin/embedding-providers/update?id=${p.id}`, {
+      await guarded(`/admin/embedding-providers/update?id=${p.id}`, path => put(path, {
         name: p.name,
         endpoint: p.endpoint,
         model: p.model,
         api_key: '',
         settings: p.settings,
         enabled: !p.enabled,
-      })
+      }))
       fetchProviders()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to update provider')

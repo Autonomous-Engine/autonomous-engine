@@ -37,8 +37,8 @@ const (
 	// escalation prompt lists.
 	escalationTopFingerprints = 5
 
-	triggerBudgetExhausted interactions.Trigger = "budget:exhausted"
-	triggerRepairStopped   interactions.Trigger = "repair:stopped"
+	triggerBudgetExhausted = interactions.TriggerBudgetExhausted
+	triggerRepairStopped   = interactions.TriggerRepairStopped
 )
 
 // stopInfo says why generation stopped the attempt.

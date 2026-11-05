@@ -83,27 +83,18 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 		})
 	}, onboarding.QArchitectureOverview, "summarizeArchitecture")
 
-	// 3. patterns_discovered — join pattern groups with count>=2
+	// 3. patterns_discovered — the naming rule the role-named files show
+	//    (conventions.go); test and mock files are test_conventions' subject.
 	emit(func() onboarding.Candidate {
-		var bullets []string
-		var evidence []onboarding.Evidence
-		for _, g := range in.PatternGroups {
-			if g.Count < 2 {
-				continue
-			}
-			bullets = append(bullets, fmt.Sprintf("- %s pattern in %d files (e.g. %s)", g.Pattern, g.Count, strings.Join(firstN(g.RefFiles, 2), ", ")))
-			for _, f := range firstN(g.RefFiles, 2) {
-				evidence = append(evidence, onboarding.Evidence{Kind: "file", Path: f, Name: g.Pattern})
-			}
-		}
-		if len(bullets) == 0 {
-			return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QPatternsDiscovered, "detectPatterns", "no naming-pattern groups with count>=2")
+		value, evidence, why := patternsAnswer(in.PatternGroups)
+		if why != "" {
+			return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QPatternsDiscovered, "detectPatterns", why)
 		}
 		return onboarding.Candidate{
 			ProductID: in.ProductID, RepositoryID: in.RepositoryID,
 			QuestionKey: onboarding.QPatternsDiscovered,
-			Value:       strings.Join(bullets, "\n"),
-			Confidence:  onboarding.ConfidenceHigh,
+			Value:       value,
+			Confidence:  onboarding.ConfidenceMedium,
 			Evidence:    evidence,
 			Extractor:   "detectPatterns",
 			UserStatus:  onboarding.StatusPending,
@@ -160,22 +151,22 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 		}
 	}, onboarding.QTestingPhilosophy, "testdetect")
 
-	// 11. test_conventions — from pattern group "test"
+	// 11. test_conventions — the test file form, placement and command the
+	//     test and mock groups show (conventions.go).
 	emit(func() onboarding.Candidate {
-		for _, g := range in.PatternGroups {
-			if g.Pattern == "test" && g.Count >= 2 && len(g.RefFiles) > 0 {
-				return onboarding.Candidate{
-					ProductID: in.ProductID, RepositoryID: in.RepositoryID,
-					QuestionKey: onboarding.QTestConventions,
-					Value:       fmt.Sprintf("Test files follow `_test.` suffix convention across %d files.", g.Count),
-					Confidence:  onboarding.ConfidenceMedium,
-					Evidence:    []onboarding.Evidence{{Kind: "file", Path: g.RefFiles[0], Name: "test"}},
-					Extractor:   "detectPatterns",
-					UserStatus:  onboarding.StatusPending,
-				}
-			}
+		value, evidence, why := testConventionsAnswer(in.PatternGroups, in.TestFramework)
+		if why != "" {
+			return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QTestConventions, "detectPatterns", why)
 		}
-		return onboarding.NotDetected(in.ProductID, in.RepositoryID, onboarding.QTestConventions, "detectPatterns", "no _test.* pattern group with count>=2")
+		return onboarding.Candidate{
+			ProductID: in.ProductID, RepositoryID: in.RepositoryID,
+			QuestionKey: onboarding.QTestConventions,
+			Value:       value,
+			Confidence:  onboarding.ConfidenceMedium,
+			Evidence:    evidence,
+			Extractor:   "detectPatterns",
+			UserStatus:  onboarding.StatusPending,
+		}
 	}, onboarding.QTestConventions, "detectPatterns")
 
 	// 12-14. autonomous_scope / review_triggers / risk_zones — derived from
@@ -201,10 +192,14 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 			lowRiskCount, totalMods, riskNotes,
 		)
 	} else if totalMods > 0 {
+		// Never propose blanket autonomy: "no module has more than 5
+		// dependents" is what a library looks like, and its root package is
+		// the public API every consumer depends on (F25).
 		scopeValue = fmt.Sprintf(
-			"All %d modules are low-risk (none have >5 dependents). "+
-				"Autonomous changes allowed across the codebase. "+
-				"Consider restricting auth, database, and API boundary modules once identified.",
+			"The dependency heuristic found no high-risk module among %d (none has more than 5 dependents). "+
+				"That is normal for a library: its root package is the exported API every consumer depends on. "+
+				"Require human review for changes to the exported API and to parsing or encoding logic; "+
+				"describe which paths the agent may change on its own.",
 			totalMods,
 		)
 		scopeConf = onboarding.ConfidenceLow
@@ -222,7 +217,7 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 
 	// 13. review_triggers — specific to what was detected
 	var triggerParts []string
-	triggerParts = append(triggerParts, "auth/security modules", "database schema changes", "public API surfaces")
+	triggerParts = append(triggerParts, "auth/security modules", "database schema changes", "the exported API of the root package", "dependency manifests (go.mod, package.json)")
 	if len(in.HighRiskModules) > 0 {
 		triggerParts = append(triggerParts, fmt.Sprintf("high-risk modules: %s", riskNotes))
 	}
@@ -250,8 +245,9 @@ func RunCandidateExtractors(ctx context.Context, llmSvc *llm.Service, in Inputs)
 		)
 	} else if totalMods > 0 {
 		riskValue = fmt.Sprintf(
-			"No high-risk modules detected across %d modules. "+
-				"All modules have 5 or fewer dependents. Risk profile is flat.",
+			"No module has more than 5 dependents across %d modules, so the heuristic flags none. "+
+				"Treat the root package (the exported API) and the packages it relies on for parsing, encoding or persistence as highest risk; "+
+				"list the paths that need human review.",
 			totalMods,
 		)
 	} else {

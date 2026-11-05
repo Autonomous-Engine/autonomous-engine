@@ -22,7 +22,7 @@ func toolNames(ts []adapter.Tool) map[string]bool {
 func TestImplementationLoopOptionsGateLSPAndGuardDeadTools(t *testing.T) {
 	base := tools.SafeImplementationTools()
 	ready := false
-	opts := implementationLoopOptions(base, func() bool { return ready }, []string{"src/env.ts"})
+	opts := implementationLoopOptions(base, func() bool { return ready }, []string{"src/env.ts"}, nil)
 	if !opts.DeadToolGuard {
 		t.Fatal("DeadToolGuard is off")
 	}

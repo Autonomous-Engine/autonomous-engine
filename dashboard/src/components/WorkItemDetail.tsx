@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useApi } from '@/hooks/useApi'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import type { WorkItemDetail, WorkItemState, Priority } from '@/types'
+import type { WorkItemDetail, WorkItemState, Priority, Product } from '@/types'
 import { usePrompt } from '@/hooks/usePrompts'
 import { PromptDetailPane } from './PromptSheet'
 import Markdown from './Markdown'
@@ -164,10 +164,19 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-// Very rough cost estimate: $2 per 1M input tokens, $8 per 1M output tokens (gpt-4o-ish)
-function estimateCost(inputTokens: number, outputTokens: number): string {
-  const cost = (inputTokens / 1_000_000) * 2 + (outputTokens / 1_000_000) * 8
-  return `~$${cost.toFixed(4)}`
+// Cost comes from /work-items/cost, which prices each call by provider and
+// model. A hardcoded GPT-4o-ish rate showed "~$0.06" for a local Ollama run
+// (F33); a run with any unpriced call has no cost to show.
+export interface CostSummary {
+  cost_usd: number | null
+  cost_unknown: boolean
+  unpriced_calls: number
+}
+
+export function formatCost(summary: CostSummary | null | undefined): string {
+  if (!summary) return '—'
+  if (summary.cost_usd === null || summary.cost_usd === undefined || summary.cost_unknown) return 'no pricing (local model)'
+  return `$${summary.cost_usd.toFixed(4)}`
 }
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
@@ -190,6 +199,7 @@ export default function WorkItemDetailPage() {
   const navigate = useNavigate()
   const { get, post } = useApi()
   const [detail, setDetail] = useState<WorkItemDetail | null>(null)
+  const [cost, setCost] = useState<CostSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedArtifacts, setExpandedArtifacts] = useState<Set<string>>(new Set())
@@ -223,6 +233,7 @@ export default function WorkItemDetailPage() {
       const data = await get<WorkItemDetail>(`/work-items/detail?id=${id}`)
       setDetail(data)
       setError(null)
+      get<CostSummary>(`/work-items/cost?id=${id}`).then(setCost).catch(() => setCost(null))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load work item')
     } finally {
@@ -1268,8 +1279,8 @@ export default function WorkItemDetailPage() {
                 </p>
               </div>
               <div>
-                <span className="text-dim">Est. cost</span>
-                <p className="mt-0.5 text-sm font-semibold text-fg">{estimateCost(totalInputTokens, totalOutputTokens)}</p>
+                <span className="text-dim">Cost</span>
+                <p className="mt-0.5 text-sm font-semibold text-fg">{formatCost(cost)}</p>
               </div>
               <div>
                 <span className="text-dim">LLM calls</span>
@@ -1721,10 +1732,34 @@ function BlockedActionRequired({
   blockReason: string
   onRefetch: () => void | Promise<void>
 }) {
-  const { post } = useApi()
+  const { post, get } = useApi()
   const [draft, setDraft] = useState(description)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // A product-less item (product-agent: "has no product") is retried by
+  // choosing its product here; Update & Retry assigns it and reruns intake.
+  const needsProduct = /has no product/i.test(blockReason)
+  const [products, setProducts] = useState<Product[]>([])
+  const [productId, setProductId] = useState('')
+  useEffect(() => {
+    if (!needsProduct) return
+    get<Product[]>('/products').then(setProducts).catch(() => setProducts([]))
+  }, [needsProduct, get])
+
+  async function handleAssignProduct() {
+    if (!productId) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await post(`/work-items/update-and-retry?id=${workItemId}`, { product_id: productId })
+      await onRefetch()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to assign the product')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const questions = blockReason
     .split('\n')
@@ -1860,7 +1895,34 @@ function BlockedActionRequired({
               <pre className="whitespace-pre-wrap text-sm text-fg">{blockReason || '(no reason recorded)'}</pre>
             </div>
 
-            {/repository|repo|onboarding/i.test(blockReason) && (
+            {needsProduct ? (
+              <div className="space-y-2">
+                <label className="block text-xs font-mono uppercase tracking-wider text-muted">
+                  Product
+                </label>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={productId}
+                    onChange={e => setProductId(e.target.value)}
+                    className="rounded-sm border border-rule bg-surface-950 px-3 py-2 text-sm text-fg focus:outline-none focus:ring-1 focus:ring-red-500"
+                  >
+                    <option value="">Choose a product…</option>
+                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleAssignProduct}
+                    disabled={submitting || !productId}
+                    className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? 'Assigning…' : 'Assign product & Retry'}
+                  </button>
+                </div>
+                <p className="text-xs text-dim">
+                  This work item was created without a product. Choosing one assigns it and reruns intake.
+                </p>
+              </div>
+            ) : /repository|repo|onboarding/i.test(blockReason) && (
               <p className="text-sm text-red-100/90 leading-relaxed">
                 This work item requires a connected git repository. Go to{' '}
                 <Link to="/admin/products" className="text-accent hover:underline font-medium">Admin &rarr; Products</Link>{' '}

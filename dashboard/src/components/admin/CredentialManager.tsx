@@ -306,6 +306,11 @@ function AddModal({ onClose, onSaved }: AddModalProps) {
               className="w-full rounded-sm border border-rule bg-surface-950 px-3 py-2 text-sm text-fg focus:outline-none focus:ring-1 focus:ring-accent"
               placeholder="e.g. api_key, token, ..."
             />
+            {form.category === 'github' && (
+              <p className="mt-1 text-xs text-dim">
+                A GitHub token saved here (key name token / pat) is stored as a GitHub account and appears under Admin → Integrations; that is what the wizard and the pipeline use.
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Value</label>

@@ -12,6 +12,7 @@
 package outbox
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -94,6 +95,7 @@ func NewEvent(aggregateType string, aggregateID uuid.UUID, topic, key string, pa
 	if err != nil {
 		return Event{}, fmt.Errorf("encode payload: %w", err)
 	}
+	raw = SanitizeJSONNUL(raw)
 	if !json.Valid(raw) {
 		// Reached when payload is a json.RawMessage / json.Marshaler holding
 		// malformed bytes: json.Marshal passes those through unchecked in
@@ -119,6 +121,37 @@ func NewEvent(aggregateType string, aggregateID uuid.UUID, topic, key string, pa
 
 // applyEventID resolves the event id for an encoded payload and returns the
 // payload with the id present when it is a JSON object.
+// SanitizeJSONNUL replaces every \u0000 escape in encoded JSON with the
+// replacement character. The payload column is jsonb, and Postgres refuses
+// NUL inside jsonb text (SQLSTATE 22P05); a research result whose reason or
+// fingerprint carried a NUL byte was unrecordable and blocked its work item.
+func SanitizeJSONNUL(raw []byte) []byte {
+	nul := []byte(`\u0000`)
+	if !bytes.Contains(raw, nul) {
+		return raw
+	}
+	// Walk escape pairs so an escaped backslash followed by "u0000" (the
+	// six-character text, which encodes as backslash-backslash-u0000) is
+	// left alone: only a real \u0000 escape is a NUL byte (review C2).
+	out := make([]byte, 0, len(raw)+8)
+	replacement := []byte("�")
+	for i := 0; i < len(raw); {
+		if raw[i] == '\\' && i+1 < len(raw) {
+			if bytes.HasPrefix(raw[i:], nul) {
+				out = append(out, replacement...)
+				i += len(nul)
+				continue
+			}
+			out = append(out, raw[i], raw[i+1]) // any other escape pair, verbatim
+			i += 2
+			continue
+		}
+		out = append(out, raw[i])
+		i++
+	}
+	return out
+}
+
 func applyEventID(raw json.RawMessage) (uuid.UUID, json.RawMessage, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {

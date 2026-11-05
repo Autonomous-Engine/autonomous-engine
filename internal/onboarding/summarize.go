@@ -127,7 +127,7 @@ func SummarizeReadme(ctx context.Context, llmSvc *llm.Service, productID uuid.UU
 		Type: strategy.IntentOnboardingQuestion,
 		Context: map[string]string{
 			"question_topic": "domain_knowledge",
-			"question_text":  "Summarise the core domain concepts an engineer must understand, based only on the README text below.",
+			"question_text":  "Summarise the core domain concepts an engineer must understand, based only on the README text below. Mention only identifiers, methods and signatures that appear verbatim in the README; never invent or guess API names. If the README shows no API, describe concepts without naming methods.",
 			"readme":         readmeBody,
 		},
 		MaxTokens:   300,

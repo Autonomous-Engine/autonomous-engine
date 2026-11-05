@@ -589,8 +589,8 @@ func runCriteriaPass(
 				errMsg = err.Error()
 			}
 			if _, lerr := db.Exec(ctx,
-				`INSERT INTO inference_logs (model_provider, model_id, intent_type, input_tokens, output_tokens, latency_ms, success, error_message, work_item_id, created_at)
-				 VALUES ($1, $2, 'extract_criteria', $3, $4, $5, $6, $7, $8, NOW())`,
+				`INSERT INTO inference_logs (model_provider, model_id, intent_type, input_tokens, output_tokens, latency_ms, success, error_message, work_item_id, created_at, role, agent_type)
+				 VALUES ($1, $2, 'extract_criteria', $3, $4, $5, $6, $7, $8, NOW(), 'research', 'research-agent')`,
 				llmAdapter.Name(), model, inTok, outTok, latency.Milliseconds(), err == nil, errMsg, workID,
 			); lerr != nil {
 				log.Printf("research-agent: record criteria inference: %v", lerr)

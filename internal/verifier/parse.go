@@ -141,26 +141,43 @@ func invalidRefsReprompt(probs []RefProblem) string {
 	for _, p := range probs {
 		fmt.Fprintf(&b, "- %s: %q %s\n", p.ID, string(p.Ref), p.Reason)
 	}
-	b.WriteString("Each evidence entry must be a tool call id from this run, a path:line reference, or the path of a file that exists at head. " +
+	b.WriteString("Each evidence entry must be a tool call id from this run (the id a tool result ends with, after \"tool call id:\"; not a description of a command or its output), a path:line reference, or the path of a file that exists at head. " +
 		"Reply again with ONLY the JSON object described under Output, with just these citations corrected (or that criterion marked not_verifiable with a note). " +
 		"Keep everything else as it was. Do not call more tools unless you must.")
 	return b.String()
 }
 
-// extractJSONObject returns the answer's JSON object: the whole trimmed
-// answer, or the body of one ```/```json fence that is the whole answer.
+// answerFenceRE is one ``` fence of the answer, with its body.
+var answerFenceRE = regexp.MustCompile("(?s)```([A-Za-z]*)[ \\t]*\\n?(.*?)```")
+
+// extractJSONObject returns the answer's JSON object: the body of the one
+// ```/```json fence that holds an object, whatever prose stands around it
+// (a local model's closing answer is "Here is my verdict: … Done."), or
+// the whole trimmed answer when nothing is fenced.
 func extractJSONObject(content string) ([]byte, error) {
 	s := strings.TrimSpace(content)
+	if fences := answerFenceRE.FindAllStringSubmatch(s, -1); len(fences) > 0 {
+		var objects []string
+		for _, f := range fences {
+			// A fence in another language (```go) is code, not the answer.
+			if lang := strings.TrimSpace(f[1]); lang != "" && lang != "json" {
+				continue
+			}
+			if body := strings.TrimSpace(f[2]); strings.HasPrefix(body, "{") && strings.HasSuffix(body, "}") {
+				objects = append(objects, body)
+			}
+		}
+		switch len(objects) {
+		case 1:
+			return []byte(objects[0]), nil
+		case 0:
+			return nil, errors.New("answer opens a code fence but no plain or json fence holds a JSON object")
+		default:
+			return nil, fmt.Errorf("answer holds %d fenced JSON objects, want exactly one", len(objects))
+		}
+	}
 	if strings.HasPrefix(s, "```") {
-		nl := strings.IndexByte(s, '\n')
-		if nl < 0 || !strings.HasSuffix(s, "```") {
-			return nil, errors.New("answer opens a code fence but is not exactly one fenced JSON object")
-		}
-		lang := strings.TrimSpace(s[3:nl])
-		if lang != "" && lang != "json" {
-			return nil, fmt.Errorf("answer is fenced as %q, want json", lang)
-		}
-		s = strings.TrimSpace(s[nl+1 : len(s)-3])
+		return nil, errors.New("answer opens a code fence that is never closed")
 	}
 	if s == "" {
 		return nil, errors.New("empty answer")
@@ -216,9 +233,9 @@ func (v Verdict) validate(criterionIDs []string, g Grounding) ([]RefProblem, err
 			// A met criterion's path:line evidence must name a file that
 			// exists at head (a not_met may well cite a file that is
 			// missing). A bare path is valid only when it exists.
-			s := strings.TrimSpace(string(ref))
+			s := leadingRef(string(ref))
 			if r.Status == StatusMet && !g.CallIDs[s] && g.PathExists != nil && fileLineRE.MatchString(s) {
-				if p := refPath(ref); !g.PathExists(p) {
+				if p := refPath(Ref(s)); !g.PathExists(p) {
 					probs = append(probs, RefProblem{Index: i, ID: r.ID, Ref: ref, Reason: fmt.Sprintf("names %s, which does not exist in the tree at head", p)})
 				}
 			}
@@ -296,7 +313,7 @@ func TreePathExists(root string) func(string) bool {
 // the bare path of a file that exists at head — file-level evidence, a
 // lower grade than path:line (see criterionActionable).
 func validRef(ref Ref, g Grounding) bool {
-	s := strings.TrimSpace(string(ref))
+	s := leadingRef(string(ref))
 	if s == "" {
 		return false
 	}
@@ -307,6 +324,25 @@ func validRef(ref Ref, g Grounding) bool {
 		return true
 	}
 	return isBarePathRef(s, g)
+}
+
+// leadingLineRE is a path:line reference at the start of a citation, ended
+// by a colon, whitespace or the end.
+var leadingLineRE = regexp.MustCompile(`^([^\s:]+:[1-9][0-9]*(?:-[1-9][0-9]*)?)(?:[:\s]|$)`)
+
+// leadingRef is the reference a citation starts with: a path:line, or the
+// citation up to its first space (a trailing colon dropped). A local model
+// writes `path:line: what is there` and `call_1 (go test output)`; the
+// note after the reference is for the reader and does not void it.
+func leadingRef(citation string) string {
+	s := strings.TrimSpace(citation)
+	if m := leadingLineRE.FindStringSubmatch(s); m != nil {
+		return m[1]
+	}
+	if i := strings.IndexAny(s, " \t"); i > 0 {
+		return strings.TrimSuffix(s[:i], ":")
+	}
+	return s
 }
 
 // barePathRE is a repository path with no line: no spaces or colon, and a

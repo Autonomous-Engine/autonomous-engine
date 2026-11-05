@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/autonomousengine/autonomous-engine/internal/llm/tools"
 	"regexp"
 	"strconv"
 	"strings"
@@ -587,4 +588,10 @@ func seedLines(seeds []lineSeed) map[string]int {
 		}
 	}
 	return out
+}
+
+// taskMessageWithFindings is buildTaskMessage followed by the work item's
+// known findings (research's claims with file:line), when there are any.
+func taskMessageWithFindings(task implementationTaskMessage, findings []tools.CitedFinding) string {
+	return buildTaskMessage(task) + tools.KnownFindingsSection(findings)
 }

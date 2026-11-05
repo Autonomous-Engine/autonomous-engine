@@ -245,6 +245,8 @@ type functionChunk struct {
 	Signature string
 	Body      string
 	StartLine int
+	Exported  bool // part of the package's public interface
+	Test      bool // declared in a test file
 }
 
 // moduleInfo holds analysis results for a single package/module.
@@ -902,6 +904,38 @@ func (s *server) indexOneRepoBranch(ctx context.Context, prog *IndexProgress, rp
 // to a logged error + prog.Error entry rather than a silent skip. Still
 // publishes onboarding.prefill.completed at the end so the dashboard knows
 // the run finished even when individual steps failed.
+// prefillModuleLists is the prefill's view of the modules: the source
+// modules' names, and those with more than 5 source dependents as high
+// risk, on the same dependency graph the codex uses (updateCodexModules;
+// the old count keyed raw import strings by module name and never matched
+// for Go, F25). Test-only modules are left out on both sides, as the codex
+// leaves them out: counted in, the test helper package every test imports
+// came out "high-risk" and the module count was off by one (rerun NEW-4).
+func prefillModuleLists(modules []moduleInfo) (names, highRisk []string) {
+	source := make([]moduleInfo, 0, len(modules))
+	for _, m := range modules {
+		if !m.IsTest {
+			source = append(source, m)
+		}
+	}
+	names = make([]string, 0, len(source))
+	for _, m := range source {
+		names = append(names, m.Name)
+	}
+	dependentsByMod := map[string]int{}
+	for _, depList := range buildDependencyGraph(source) {
+		for _, dep := range depList {
+			dependentsByMod[dep]++
+		}
+	}
+	for _, m := range source {
+		if dependentsByMod[m.Name] > 5 {
+			highRisk = append(highRisk, m.Name)
+		}
+	}
+	return names, highRisk
+}
+
 func (s *server) runPrefill(
 	ctx context.Context,
 	prog *IndexProgress,
@@ -918,10 +952,7 @@ func (s *server) runPrefill(
 	for _, l := range languages {
 		langNames = append(langNames, l.Name)
 	}
-	moduleNames := make([]string, 0, len(modules))
-	for _, m := range modules {
-		moduleNames = append(moduleNames, m.Name)
-	}
+	moduleNames, highRisk := prefillModuleLists(modules)
 
 	// top-10 hotspots by commit count
 	sortedStats := append([]gitFileStats(nil), gitStats...)
@@ -948,20 +979,6 @@ func (s *server) runPrefill(
 			Count:    g.Count,
 			RefFiles: firstN(g.Files, 5),
 		})
-	}
-
-	// High-risk modules: dependents>5 (mirrors updateCodexModules).
-	dependentsByMod := map[string]int{}
-	for _, m := range modules {
-		for _, imp := range m.Imports {
-			dependentsByMod[imp]++
-		}
-	}
-	var highRisk []string
-	for _, m := range modules {
-		if dependentsByMod[m.Name] > 5 {
-			highRisk = append(highRisk, m.Name)
-		}
 	}
 
 	// Sibling repo URLs for cross_repo_imports (same product, this repo excluded).
@@ -1089,6 +1106,9 @@ func (s *server) runIncrementalIndex(ctx context.Context, prog *IndexProgress, s
 	// 4. Re-analyze only changed modules
 	prog.setPhase(PhaseAnalyzeAST)
 	modules, err := analyzeModules(indexRepoPath, changedFileInfos, prog)
+	if err == nil {
+		modules = disambiguateModuleNamesWith(modules, packageNameCounts(indexRepoPath, allFiles))
+	}
 	if err != nil {
 		return fmt.Errorf("analyze changed modules: %w", err)
 	}
@@ -1476,6 +1496,10 @@ func analyzeModules(repoPath string, files []fileInfo, prog *IndexProgress) ([]m
 			// supported languages go through the deep langanalyzer package.
 			if fi.Language == "Rust" {
 				rustChunks, rustImports := extractRustSymbols(fi.Path, string(content))
+				for i := range rustChunks {
+					rustChunks[i].Exported = true // the Rust extractor does not track visibility
+					rustChunks[i].Test = fi.Category == "test"
+				}
 				mi.Functions = append(mi.Functions, rustChunks...)
 				mi.Imports = mergeUnique(mi.Imports, rustImports)
 			} else {
@@ -1497,11 +1521,16 @@ func analyzeModules(repoPath string, files []fileInfo, prog *IndexProgress) ([]m
 							Signature: sym.Signature,
 							Body:      sym.Signature, // full signature provides embedding context
 							StartLine: sym.Line,
+							Exported:  sym.Exported,
+							Test:      fi.Category == "test",
 						})
 					case langanalyzer.KindClass, langanalyzer.KindStruct,
 						langanalyzer.KindInterface, langanalyzer.KindEnum,
 						langanalyzer.KindType:
-						mi.Types = mergeUnique(mi.Types, []string{sym.Name})
+						// Only exported types are part of the public interface (F23).
+						if sym.Exported && fi.Category != "test" {
+							mi.Types = mergeUnique(mi.Types, []string{sym.Name})
+						}
 					}
 				}
 				// Convert langanalyzer Imports → module import paths.
@@ -1516,7 +1545,78 @@ func analyzeModules(repoPath string, files []fileInfo, prog *IndexProgress) ([]m
 		}
 	}
 
-	return modules, nil
+	return disambiguateModuleNames(modules), nil
+}
+
+// disambiguateModuleNames makes module names unique within a repository.
+// Modules are keyed by (product, branch, name); a Go repository with two
+// `package main` directories (or internal/x and pkg/x) collided and the
+// second silently overwrote the first (F22). A package name used by more
+// than one directory — and `main`, which always is — becomes the directory
+// path; a unique package name stays as it was.
+func disambiguateModuleNames(modules []moduleInfo) []moduleInfo {
+	count := make(map[string]int, len(modules))
+	for _, m := range modules {
+		count[m.Name]++
+	}
+	return disambiguateModuleNamesWith(modules, count)
+}
+
+// goPackageLine finds the package clause of a Go file.
+var goPackageLine = regexp.MustCompile(`(?m)^package\s+(\w+)`)
+
+// packageNameCounts counts, over every source directory of the repository,
+// how many directories declare each Go package name. An incremental run
+// analyses only the changed modules, so collisions must be counted over
+// the whole repository or a lone internal/x is stored as x beside pkg/x
+// (review I2).
+func packageNameCounts(repoPath string, files []fileInfo) map[string]int {
+	firstGo := map[string]string{}
+	for _, f := range files {
+		if f.Category != "source" || f.Language != "Go" {
+			continue
+		}
+		dir := filepath.Dir(f.Path)
+		if _, seen := firstGo[dir]; !seen {
+			firstGo[dir] = f.Path
+		}
+	}
+	counts := map[string]int{}
+	for _, rel := range firstGo {
+		content, err := os.ReadFile(filepath.Join(repoPath, rel))
+		if err != nil {
+			continue
+		}
+		if m := goPackageLine.FindSubmatch(content); m != nil {
+			counts[string(m[1])]++
+		}
+	}
+	return counts
+}
+
+// disambiguateModuleNamesWith is disambiguateModuleNames with the collision
+// counts supplied (repository-wide for an incremental run).
+func disambiguateModuleNamesWith(modules []moduleInfo, count map[string]int) []moduleInfo {
+	for i := range modules {
+		m := &modules[i]
+		if (m.Name == "main" || count[m.Name] > 1) && m.Path != "" && m.Path != "." {
+			m.Name = filepath.ToSlash(m.Path)
+		}
+	}
+	return modules
+}
+
+// publicFunctionNames is the module's public interface: exported functions
+// and methods declared outside test files. It listed every symbol before,
+// Test* functions, init and unexported helpers included (F23).
+func publicFunctionNames(chunks []functionChunk) []string {
+	names := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		if c.Exported && !c.Test {
+			names = append(names, c.Name)
+		}
+	}
+	return names
 }
 
 // extractRustSymbols is a lightweight fallback for Rust files (not yet covered
@@ -2125,7 +2225,13 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 	if branch == "" {
 		branch = "main"
 	}
-	log.Printf("knowledge-indexer: updating codex with %d modules (product=%v repo=%v branch=%s)", len(modules), productID, repoID, branch)
+	attempted := 0
+	for _, m := range modules {
+		if !m.IsTest {
+			attempted++
+		}
+	}
+	log.Printf("knowledge-indexer: updating codex with %d modules, %d test-only skipped (product=%v repo=%v branch=%s)", attempted, len(modules)-attempted, productID, repoID, branch)
 	upserted := 0
 	var errs []string
 	for _, m := range modules {
@@ -2134,10 +2240,10 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 			continue
 		}
 		log.Printf("knowledge-indexer: upserting module %s (%d functions, %d types)", m.Name, len(m.Functions), len(m.Types))
-		s.progress.setDetail(fmt.Sprintf("module %d/%d: %s", upserted+1, len(modules), m.Name))
+		s.progress.setDetail(fmt.Sprintf("module %d/%d: %s", upserted+1, attempted, m.Name))
 
 		pubInterface, _ := json.Marshal(map[string]interface{}{
-			"functions": functionNames(m.Functions),
+			"functions": publicFunctionNames(m.Functions),
 			"types":     m.Types,
 		})
 
@@ -2212,16 +2318,26 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 	if progRef := s.progress; progRef != nil {
 		progRef.addModules(upserted)
 	}
-	log.Printf("knowledge-indexer: upserted %d/%d modules (%d changed)", upserted, len(modules), len(changed))
-	if upserted == 0 && len(modules) > 0 {
-		return changed, fmt.Errorf("no modules successfully upserted out of %d attempted: %s",
-			len(modules), strings.Join(errs, "; "))
+	log.Printf("knowledge-indexer: upserted %d/%d modules (%d changed)", upserted, attempted, len(changed))
+	return changed, upsertOutcome(upserted, attempted, errs)
+}
+
+// upsertOutcome is the result of a codex module update: a run that
+// attempted modules and landed none failed; one whose modules were all
+// test-only attempted nothing and succeeded with nothing to upsert.
+func upsertOutcome(upserted, attempted int, errs []string) error {
+	if attempted == 0 {
+		return nil
+	}
+	if upserted == 0 {
+		return fmt.Errorf("no modules successfully upserted out of %d attempted: %s",
+			attempted, strings.Join(errs, "; "))
 	}
 	if len(errs) > 0 {
-		return changed, fmt.Errorf("%d of %d modules failed to upsert: %s",
-			len(errs), len(modules), strings.Join(errs, "; "))
+		return fmt.Errorf("%d of %d modules failed to upsert: %s",
+			len(errs), attempted, strings.Join(errs, "; "))
 	}
-	return changed, nil
+	return nil
 }
 
 // buildArchitectureContent assembles the architecture section content map.

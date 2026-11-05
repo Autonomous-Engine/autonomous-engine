@@ -219,13 +219,33 @@ func (eh *EmbeddingProviderHandlers) CreateEmbeddingProvider(w http.ResponseWrit
 		credIDVal = credID
 	}
 
-	_, err := eh.db.Exec(r.Context(), `
-		INSERT INTO embedding_providers
-			(id, name, provider_type, endpoint, model, dimension, api_key_credential_id, settings)
-		VALUES ($1, $2, $3, $4, $5, 0, $6, $7)
-	`, providerID, req.Name, req.ProviderType, req.Endpoint, req.Model, credIDVal, settingsJSON)
+	// The first enabled embedding provider becomes the default:
+	// knowledge-indexer refuses to start without one (F16, F19). A disabled
+	// default loses the flag in the same transaction: the partial unique
+	// index allows one is_default row whether enabled or not, so the
+	// insert collided with it before.
+	err := pgx.BeginFunc(r.Context(), eh.db, func(tx pgx.Tx) error {
+		makeDefault := false
+		if err := tx.QueryRow(r.Context(), `SELECT NOT EXISTS (SELECT 1 FROM embedding_providers WHERE is_default AND enabled)`).Scan(&makeDefault); err != nil {
+			return fmt.Errorf("check default embedding provider: %w", err)
+		}
+		if makeDefault {
+			if _, err := tx.Exec(r.Context(), `UPDATE embedding_providers SET is_default = false WHERE is_default`); err != nil {
+				return fmt.Errorf("clear disabled default: %w", err)
+			}
+		}
+		_, err := tx.Exec(r.Context(), `
+			INSERT INTO embedding_providers
+				(id, name, provider_type, endpoint, model, dimension, api_key_credential_id, settings, is_default)
+			VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+		`, providerID, req.Name, req.ProviderType, req.Endpoint, req.Model, credIDVal, settingsJSON, makeDefault)
+		if err != nil {
+			return fmt.Errorf("insert embedding_provider: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("insert embedding_provider: %v", err))
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 

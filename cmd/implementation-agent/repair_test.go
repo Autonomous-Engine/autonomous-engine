@@ -87,16 +87,19 @@ func (a *queueAdapter) Complete(_ context.Context, req adapter.CompletionRequest
 			a.prompts = append(a.prompts, m.Content)
 		}
 	}
-	half := a.tokens / 2
+	// The budget counts work (output plus input not sent before, capped at
+	// the input reported): one token of input and the rest as output makes
+	// every call cost exactly a.tokens, whatever the prompt's size.
+	in, out := 1, a.tokens-1
 	if a.n < len(a.steps) {
 		s := a.steps[a.n]
 		a.n++
 		if len(s.calls) > 0 {
-			return &adapter.CompletionResponse{ToolCalls: s.calls, FinishReason: "tool_calls", InputTokens: half, OutputTokens: half}, nil
+			return &adapter.CompletionResponse{ToolCalls: s.calls, FinishReason: "tool_calls", InputTokens: in, OutputTokens: out}, nil
 		}
-		return &adapter.CompletionResponse{Content: s.text, FinishReason: "stop", InputTokens: half, OutputTokens: half}, nil
+		return &adapter.CompletionResponse{Content: s.text, FinishReason: "stop", InputTokens: in, OutputTokens: out}, nil
 	}
-	return &adapter.CompletionResponse{Content: "Done.", FinishReason: "stop", InputTokens: half, OutputTokens: half}, nil
+	return &adapter.CompletionResponse{Content: "Done.", FinishReason: "stop", InputTokens: in, OutputTokens: out}, nil
 }
 func (a *queueAdapter) Stream(context.Context, adapter.CompletionRequest) (<-chan adapter.StreamChunk, error) {
 	return nil, errors.New("not used")
@@ -175,6 +178,7 @@ func (d *detailRecorder) eventsOf(tool string) []controller.EventRow {
 // origin) whose base ships repairRunner, a controller run, a budget and
 // the production executor and callback.
 type repairHarness struct {
+	maxIters int
 	f        *finalizeFixture
 	workID   uuid.UUID
 	taskID   uuid.UUID
@@ -226,6 +230,7 @@ func newRepairHarness(t *testing.T, model *queueAdapter, clock *fakeClock, run *
 		now = clock.Now
 	}
 	h.budget = newAttemptBudget(now, h.run, logging.New("implementation-agent-test"), h.taskID.String())
+	h.maxIters = 30
 	kb := &consoleBus{}
 	h.executor = tools.NewExecutorWithCodex(f.worktree, nil, nil, &h.product, kb, &h.workID)
 	h.executor.SetAskingAgent(agentID)
@@ -259,7 +264,7 @@ func (h *repairHarness) attempt(t *testing.T, pool *pgxpool.Pool, sink completio
 			Messages: []adapter.ChatMessage{{Role: adapter.RoleSystem, Content: "sys"}, {Role: adapter.RoleUser, Content: "make feature.txt say done"}},
 			Tools:    tools.SafeImplementationTools(), ToolChoice: "auto",
 		},
-		systemPrompt: "sys", maxIters: 30, llmAdapter: h.model, executor: h.executor, pool: pool,
+		systemPrompt: "sys", maxIters: h.maxIters, llmAdapter: h.model, executor: h.executor, pool: pool,
 		turnToolCalls: &h.calls, logger: logger, budget: h.budget, run: h.run,
 	}, sink)
 	if gen.stopped != nil {
@@ -768,4 +773,43 @@ func (a *toolRecordingAdapter) Complete(ctx context.Context, req adapter.Complet
 		}
 	}
 	return a.queueAdapter.Complete(ctx, req)
+}
+
+// A pre-commit check that could not run in this environment (here the
+// container has no toolchain) blocks with that message: no repair is
+// spent on it, even when a failing test sits next to it in the output,
+// because the environment, not the change, is what failed.
+func TestRepairStopsWhenTheEnvironmentCannotRunTheChecks(t *testing.T) {
+	model := &queueAdapter{tokens: 10, steps: []step{
+		readStep(), writeStep("alpha"), textStep("Implemented."),
+		textStep("revised plan: the image needs the Go toolchain"),
+	}}
+	h := newRepairHarness(t, model, nil, nil)
+	writeFile(t, h.f.worktree, "run_tests.sh",
+		"echo '--- FAIL: TestAlpha (0.00s)'\necho '    alpha_test.go:5: wrong'\necho 'FAIL'\n"+
+			"echo 'OCI runtime exec failed: exec failed: unable to start container process: exec: \"go\": executable file not found in $PATH: unknown' >&2\nexit 126\n")
+	gitRun(t, h.f.worktree, "add", "-A")
+	gitRun(t, h.f.worktree, "commit", "-m", "runner has no toolchain")
+	h.f.baseSHA = gitOutput(t, h.f.worktree, "rev-parse", "HEAD")
+	gen := h.attempt(t, nil, h.sink)
+	if gen.stopped == nil || gen.stopped.reason != stopNotRepairable || !strings.Contains(gen.stopped.detail, "environment") || !strings.Contains(gen.stopped.detail, `"go"`) {
+		t.Fatalf("stopped = %+v, want not_repairable naming the environment failure", gen.stopped)
+	}
+	st := h.rec.repair(t)
+	if st.Repairs != 0 || st.Runs != 1 {
+		t.Fatalf("repair state = %+v, want no repair spent", st)
+	}
+	for _, p := range model.prompts {
+		if strings.HasPrefix(p, "Repair attempt") {
+			t.Fatalf("a repair was spent on an environment failure:\n%s", p)
+		}
+	}
+	var fps []string
+	for _, f := range st.Failures {
+		fps = append(fps, f.Fingerprint)
+	}
+	if len(fps) != 2 {
+		t.Fatalf("failures = %+v, want the test failure and the environment record", st.Failures)
+	}
+	requireStoppedOutcome(t, h, "not_repairable: ", "repair stopped: not_repairable", fps, "alpha")
 }

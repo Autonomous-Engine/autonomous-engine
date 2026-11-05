@@ -75,7 +75,7 @@ func insertPrompt(ctx context.Context, ex execer, p *Prompt) error {
 		actions = []byte("[]")
 	}
 	_, err := ex.Exec(ctx, insertPromptSQL,
-		p.ID, p.WorkItemID, p.ProductID, p.AskingAgent, p.Trigger, p.PromptType,
+		p.ID, p.WorkItemID, nullIfNilUUID(p.ProductID), p.AskingAgent, p.Trigger, p.PromptType,
 		p.Headline, p.Question, p.ContextLink, ctxPayload, actions,
 		p.State, p.RequestedAt, p.PromptedVia)
 	return err
@@ -138,6 +138,31 @@ func (s *Store) MarkAnswered(ctx context.Context, id uuid.UUID, ans AnswerInput)
 	return nil
 }
 
+// CancelPendingTx supersedes the work item's pending prompts in the caller's
+// transaction — the one that resumes or cancels the item — so a question
+// the item no longer waits on leaves Approvals with it. The rows become
+// cancelled with who superseded them and why; answered and revoked rows
+// are untouched. Returns how many were cancelled.
+func CancelPendingTx(ctx context.Context, tx pgx.Tx, workItemID uuid.UUID, by, reason string) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("interactions: CancelPendingTx requires the caller's transaction")
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE user_interactions
+		SET state = 'cancelled',
+			answered_at = NOW(),
+			answered_by = $2,
+			answered_via = 'system',
+			action_chosen = 'superseded',
+			answer_text = $3
+		WHERE work_item_id = $1 AND state = 'pending'
+	`, workItemID, by, reason)
+	if err != nil {
+		return 0, fmt.Errorf("cancel pending prompts of %s: %w", workItemID, err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ApplyClassification writes the triage output (and the polymorphic codex
 // back-link, if the answer was promoted). Idempotent — safe to call twice.
 func (s *Store) ApplyClassification(ctx context.Context, id uuid.UUID, r ClassificationResult) error {
@@ -194,8 +219,21 @@ func (s *Store) MarkRevoked(ctx context.Context, id uuid.UUID, by, reason string
 	return nil
 }
 
+// NilProductSQL is the SQL form of uuid.Nil: a prompt raised for a work
+// item without a product (migration 067) reads back with ProductID
+// uuid.Nil, so every reader keeps a plain uuid.UUID.
+const NilProductSQL = `'00000000-0000-0000-0000-000000000000'::uuid`
+
+// nullIfNilUUID stores uuid.Nil as NULL (the foreign key has no nil row).
+func nullIfNilUUID(id uuid.UUID) any {
+	if id == uuid.Nil {
+		return nil
+	}
+	return id
+}
+
 const selectPromptCols = `
-	SELECT id, work_item_id, product_id, asking_agent, trigger, prompt_type,
+	SELECT id, work_item_id, COALESCE(product_id, ` + NilProductSQL + `), asking_agent, trigger, prompt_type,
 	       headline, question, COALESCE(context_link, ''), context_payload, actions,
 	       state, requested_at, answered_at, prompted_via,
 	       COALESCE(answered_by, ''), COALESCE(answered_via, ''),
@@ -274,7 +312,7 @@ func nullIfEmpty(s string) any {
 func (s *Store) FindByCodexEntry(ctx context.Context, codexEntryID uuid.UUID, table string) (uuid.UUID, uuid.UUID, error) {
 	var promptID, productID uuid.UUID
 	err := s.db.QueryRow(ctx, `
-		SELECT id, product_id FROM user_interactions
+		SELECT id, COALESCE(product_id, `+NilProductSQL+`) FROM user_interactions
 		WHERE codex_entry_id = $1 AND codex_entry_table = $2
 		ORDER BY requested_at DESC LIMIT 1
 	`, codexEntryID, table).Scan(&promptID, &productID)

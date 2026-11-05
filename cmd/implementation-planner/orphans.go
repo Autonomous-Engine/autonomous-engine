@@ -52,6 +52,10 @@ type rehomedCriterion struct {
 	TaskIndex   int      `json:"task_index"`
 	TaskTitle   string   `json:"task_title,omitempty"`
 	Files       []string `json:"files"`
+	// Words are the criterion's words the step's title or description
+	// shares, when the criterion names no path and was re-homed by wording
+	// (wordHome) rather than by file overlap.
+	Words []string `json:"words,omitempty"`
 }
 
 var (
@@ -298,6 +302,7 @@ func normaliseOrphans(workID uuid.UUID, b *planBuild, vs []plan.Violation, build
 	}
 	var rehomed []rehomedCriterion
 	var unowned []string
+	unownedWhy := map[string]string{}
 	for _, id := range ids {
 		c, ok := b.criterionByID(id)
 		if !ok {
@@ -312,9 +317,33 @@ func normaliseOrphans(workID uuid.UUID, b *planBuild, vs []plan.Violation, build
 			why := "its text names no repository path"
 			if len(paths) > 0 {
 				why = "no task changes all of " + strings.Join(paths, ", ")
+			} else if home, words, tied, ok := wordHome(b.raw, b.specs, c.Text); ok {
+				// Live (ciblame AC-3 "Rows are sorted chronologically by
+				// date"): a path-less orphan the step "Sort the day rows"
+				// was plainly for became a gap and a human escalation. The
+				// step whose wording shares the criterion's words owns it;
+				// the verifier judges it there, and an unmet criterion is
+				// a fix round, not an escalation.
+				i, ok := byIndex[home.Index]
+				if !ok {
+					return b, vs, ""
+				}
+				raw[i].CriterionIDs = append(raw[i].CriterionIDs, id)
+				rehomed = append(rehomed, rehomedCriterion{CriterionID: id, TaskIndex: home.Index, TaskTitle: home.Title, Words: words})
+				log.Printf("implementation-planner: work_id=%s: criterion %s re-homed to task %d by wording (%s)", workID, id, home.Index, strings.Join(words, ", "))
+				continue
+			} else if len(tied) > 1 {
+				var ns []string
+				for _, n := range tied {
+					ns = append(ns, fmt.Sprint(n))
+				}
+				why += ", and steps " + joinWords(ns) + " share its wording equally"
+			} else {
+				why += ", and no step shares its wording"
 			}
 			log.Printf("implementation-planner: work_id=%s: criterion %s is unowned after planning (%s) — recorded as a gap for review", workID, id, why)
 			unowned = append(unowned, id)
+			unownedWhy[id] = why
 			continue
 		}
 		home := homeStep(cands)
@@ -338,6 +367,13 @@ func normaliseOrphans(workID uuid.UUID, b *planBuild, vs []plan.Violation, build
 	// round) is kept.
 	nb.rehomed = append(append([]rehomedCriterion(nil), b.rehomed...), rehomed...)
 	nb.unowned = append(append([]string(nil), b.unowned...), unowned...)
+	nb.unownedWhy = map[string]string{}
+	for id, why := range b.unownedWhy {
+		nb.unownedWhy[id] = why
+	}
+	for id, why := range unownedWhy {
+		nb.unownedWhy[id] = why
+	}
 	nb.attached = append([]attachedCheck(nil), b.attached...)
 	nvs := nb.validate()
 	countViolations(nvs)
@@ -367,10 +403,120 @@ func (b *planBuild) unownedViolations(vs []plan.Violation) []plan.Violation {
 		if v.Code == plan.CodeOrphanCriterion && gap[v.CriterionID] {
 			c, _ := b.criterionByID(v.CriterionID)
 			c.Unowned = true
+			c.NonCodeReason = b.unownedWhy[v.CriterionID]
 			out = append(out, plan.Violation{Code: plan.CodeNonCodeCriterion, Severity: plan.SeverityWarning, CriterionID: v.CriterionID, Message: plan.UnownedGap(c)})
 			continue
 		}
 		out = append(out, v)
 	}
 	return out
+}
+
+// Re-homing by wording (a path-less orphan after the last round).
+
+// minSharedWords is how many of a criterion's words a step's wording must
+// share to own the criterion: one shared word is a coincidence.
+const minSharedWords = 2
+
+// wordStopList are words too common in criteria and plan text to tie one
+// to the other.
+var wordStopList = map[string]bool{
+	"the": true, "and": true, "for": true, "are": true, "but": true, "not": true, "with": true, "that": true,
+	"this": true, "from": true, "into": true, "onto": true, "when": true, "than": true, "then": true, "each": true,
+	"all": true, "any": true, "one": true, "two": true, "new": true, "via": true, "per": true, "its": true,
+	"has": true, "have": true, "had": true, "can": true, "may": true, "must": true, "should": true, "will": true,
+	"also": true, "only": true, "same": true, "such": true, "there": true, "their": true, "they": true, "them": true,
+	"after": true, "before": true, "being": true, "been": true, "does": true, "did": true, "done": true, "every": true,
+	"some": true, "more": true, "most": true, "other": true, "over": true, "under": true, "out": true, "off": true,
+	"use": true, "used": true, "uses": true, "using": true, "set": true, "get": true, "add": true, "adds": true,
+	"added": true, "make": true, "makes": true, "made": true, "run": true, "runs": true, "ran": true, "work": true,
+	"works": true, "code": true, "task": true, "step": true, "file": true, "files": true, "change": true,
+	"changes": true, "changed": true, "update": true, "updates": true, "updated": true, "implement": true,
+	"implements": true, "implemented": true, "ensure": true, "ensures": true, "support": true, "supports": true,
+	"supported": true, "user": true, "users": true, "value": true, "values": true, "field": true, "fields": true,
+	"function": true, "functions": true, "method": true, "methods": true, "test": true, "tests": true,
+	"tested": true, "return": true, "returns": true, "returned": true, "create": true, "creates": true,
+	"created": true, "remove": true, "removes": true, "removed": true, "show": true, "shows": true, "shown": true,
+	"like": true, "data": true, "type": true, "types": true, "name": true, "names": true, "named": true,
+	"list": true, "lists": true, "existing": true, "current": true, "correct": true, "correctly": true,
+	"properly": true, "true": true, "false": true, "nil": true, "null": true,
+}
+
+// contentWords are the content words of text: lower-case runs of ASCII
+// letters and digits of three or more characters that are not stop words,
+// once each in order.
+func contentWords(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, w := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	}) {
+		if len(w) < 3 || wordStopList[w] || seen[w] {
+			continue
+		}
+		seen[w] = true
+		out = append(out, w)
+	}
+	return out
+}
+
+// wordsMatch reports whether two content words are the same word in another
+// form: one is a prefix of the other (sorted/sort, chronologically/
+// chronological, date/dates). A crude stem, enough for plan text.
+func wordsMatch(a, b string) bool {
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+	return len(a) >= 3 && strings.HasPrefix(b, a)
+}
+
+// sharedWords are the words of criterion that step matches, in the
+// criterion's order.
+func sharedWords(criterion, step []string) []string {
+	var out []string
+	for _, c := range criterion {
+		for _, s := range step {
+			if wordsMatch(c, s) {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// wordHome is the active step whose title and description share the most
+// of a criterion's words — at least minSharedWords, and more than any other
+// step. ok is false when no step qualifies; tied then names the steps that
+// share the best score when that score is reached by more than one (the
+// planner does not take a coin flip).
+func wordHome(raw []decomposedTask, specs []plan.TaskSpecWithFiles, text string) (home plan.TaskSpecWithFiles, words []string, tied []int, ok bool) {
+	criterion := contentWords(text)
+	if len(criterion) < minSharedWords {
+		return home, nil, nil, false
+	}
+	byIndex := map[int]decomposedTask{}
+	for _, t := range raw {
+		byIndex[t.index] = t
+	}
+	best := 0
+	for _, s := range specs {
+		if s.Dropped != "" {
+			continue
+		}
+		t := byIndex[s.Index]
+		shared := sharedWords(criterion, contentWords(t.Title+" "+t.Description))
+		switch n := len(shared); {
+		case n < minSharedWords || n < best:
+			continue
+		case n == best:
+			tied = append(tied, s.Index)
+		default:
+			best, home, words, tied = n, s, shared, []int{s.Index}
+		}
+	}
+	if best == 0 || len(tied) != 1 {
+		return home, nil, tied, false
+	}
+	return home, words, nil, true
 }

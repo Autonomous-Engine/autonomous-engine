@@ -48,11 +48,32 @@ type gatedChange struct {
 	BaseEvents []snapshot.Event
 }
 
+// errAlreadyGated: the branch is already a pending change at this verified
+// head, so the gate records nothing more (recordGatedPR treats it as done).
+// Live, two verification.complete events for one parent — one per approved
+// subtask of the round — each ran the PR loop over every passed child and
+// gated the same branch at the same head twice: two pending changes and two
+// "Create PR" prompts for one PR.
+var errAlreadyGated = errors.New("branch already pending at this head")
+
+// pendingAtHeadSQL counts the pending changes of a work item's branch at a
+// verified head (NULL head_sha, a pre-046 or legacy row, counts as "").
+const pendingAtHeadSQL = `SELECT count(*) FROM pending_pr_changes
+	WHERE work_item_id = $1 AND branch = $2 AND status = 'pending' AND COALESCE(head_sha, '') = $3`
+
 // commitGatedPR writes the pending change, enqueues pr.gated and records the
 // pr-gate prompt (row + user_prompt.requested) in one transaction: all of it
-// commits or none of it does.
+// commits or none of it does. A branch already pending at the same head is
+// errAlreadyGated, and nothing is written.
 func commitGatedPR(ctx context.Context, db workgraph.TxBeginner, prompts *interactions.Publisher, c gatedChange) error {
 	return workgraph.WithTx(ctx, db, func(tx pgx.Tx) error {
+		var pending int
+		if err := tx.QueryRow(ctx, pendingAtHeadSQL, c.WorkID, c.Branch, c.HeadSHA).Scan(&pending); err != nil {
+			return fmt.Errorf("check pending_pr_changes: %w", err)
+		}
+		if pending > 0 {
+			return errAlreadyGated
+		}
 		if err := insertPendingPRChange(ctx, tx, c.WorkID, c.RepoID, c.Branch, c.BaseBranch, c.Files, c.PRTitle, c.PRDesc, c.HeadSHA); err != nil {
 			return fmt.Errorf("insert pending_pr_changes: %w", err)
 		}
@@ -156,7 +177,7 @@ var commitRetryBackoff = []time.Duration{200 * time.Millisecond, 800 * time.Mill
 // constraint or schema error (classes 22, 23, 42). Anything else (a lost
 // connection, a serialization failure, a deadlock, a shutdown) is transient.
 func permanentCommitError(err error) bool {
-	if errors.Is(err, workgraph.ErrInvalidTransition) || errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, workgraph.ErrInvalidTransition) || errors.Is(err, pgx.ErrNoRows) || errors.Is(err, errAlreadyGated) {
 		return true
 	}
 	var pgErr *pgconn.PgError
@@ -275,6 +296,10 @@ func recordGatedPR(ctx context.Context, db workgraph.TxBeginner, prompts *intera
 	if idempotency.IsDuplicate(cerr) {
 		log.Printf("pr-coordinator: work_id=%s duplicate delivery reached the gate commit — nothing recorded, stopping", c.WorkID)
 		return true, nil // M1-05: the first delivery gated these repositories
+	}
+	if errors.Is(cerr, errAlreadyGated) {
+		log.Printf("pr-coordinator: work_id=%s repo=%s branch=%s head=%s is already a pending change — not gated again", c.WorkID, repoName, c.Branch, c.HeadSHA)
+		return false, nil
 	}
 	log.Printf("pr-coordinator: ERROR gated PR for work_id=%s repo=%s branch=%s not recorded (pending row, pr.gated and prompt rolled back): %v — blocking", c.WorkID, repoName, c.Branch, cerr)
 	return true, blockAfterCommitFailure(ctx, db, c.WorkID, fmt.Sprintf("pr-coordinator could not record the gated PR for repo %s branch %s: %v", repoName, c.Branch, cerr))

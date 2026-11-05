@@ -199,7 +199,7 @@ func (h *PromptsHandlers) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		if h.onPRGateAnswer != nil {
 			workflowErr = h.onPRGateAnswer(r.Context(), existing.WorkItemID, body.ActionChosen, body.AnswerText, ans.AnsweredBy)
 		}
-	case interactions.TriggerBlocked:
+	case interactions.TriggerBlocked, interactions.TriggerBudgetExhausted, interactions.TriggerRepairStopped:
 		if h.onBlockedAnswer != nil {
 			workflowErr = h.onBlockedAnswer(r.Context(), existing.WorkItemID, body.ActionChosen, body.AnswerText, ans.AnsweredBy)
 		}

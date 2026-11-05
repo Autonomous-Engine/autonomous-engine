@@ -31,6 +31,7 @@ import (
 
 	"github.com/autonomousengine/autonomous-engine/internal/evidence"
 	"github.com/autonomousengine/autonomous-engine/internal/plan"
+	"github.com/autonomousengine/autonomous-engine/internal/testdetect"
 	"github.com/google/uuid"
 )
 
@@ -121,6 +122,24 @@ func repositoryCommands(b *planBuild, repoID string, k evidence.CheckKind) []str
 	return out
 }
 
+// defaultCommand is the repository's own command of kind k, from its
+// toolchain (testdetect), or "" when it has none or no clone to look at.
+func defaultCommand(b *planBuild, repoID string, k evidence.CheckKind) string {
+	root := b.statRoots[repoID]
+	if root == "" {
+		return ""
+	}
+	switch k {
+	case evidence.CheckKindLint:
+		return testdetect.DetectLintCommand(root)
+	case evidence.CheckKindTest:
+		return testdetect.DetectTestCommand(root)
+	case evidence.CheckKindBuild:
+		return testdetect.DetectBuildCommand(root)
+	}
+	return ""
+}
+
 // checkTarget is the step a verifier_missing violation is about: the
 // lowest-index active step that owns the criterion, or, for a repository
 // policy kind, the group's first step (v.TaskIndex).
@@ -167,8 +186,19 @@ func attachChecks(workID uuid.UUID, b *planBuild, vs []plan.Violation, build fun
 			continue
 		}
 		cmds := repositoryCommands(b, target.RepositoryID, k)
+		source := "the repository's one whole-suite %s command"
 		if len(cmds) != 1 || !wholeSuiteCommand(cmds[0]) {
-			continue
+			// No step runs a command of the kind, or none that qualifies
+			// (two candidates, a scoped one): the repository's own default
+			// (go vet, npm run lint; its test command), when its toolchain
+			// names one. Live, three godoc criteria required a lint check no
+			// step ran, and a step owning a test criterion sat next to
+			// scoped test commands; both plans were rejected after repair.
+			d := defaultCommand(b, target.RepositoryID, k)
+			if d == "" {
+				continue
+			}
+			cmds, source = []string{d}, "the repository's default %s command"
 		}
 		i, ok := byIndex[target.Index]
 		if !ok {
@@ -183,7 +213,7 @@ func attachChecks(workID uuid.UUID, b *planBuild, vs []plan.Violation, build fun
 		if what == "" {
 			what = "the repository's verification policy"
 		}
-		log.Printf("implementation-planner: work_id=%s: %s check %q attached to task %d for %s (the repository's one whole-suite %s command)", workID, k, cmds[0], target.Index, what, k)
+		log.Printf("implementation-planner: work_id=%s: %s check %q attached to task %d for %s ("+source+")", workID, k, cmds[0], target.Index, what, k)
 	}
 	if len(attached) == 0 {
 		return b, vs

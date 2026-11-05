@@ -108,6 +108,9 @@ type planBuild struct {
 	// gaps because no step's files cover them.
 	rehomed []rehomedCriterion
 	unowned []string
+	// unownedWhy is, per unowned criterion id, why no step could own it;
+	// it is the reason in the gap line a person sees.
+	unownedWhy map[string]string
 	// attached are the checks attachChecks attached (R9: verifier_missing's
 	// normaliser).
 	attached []attachedCheck
@@ -843,10 +846,17 @@ func planWithPolicy(workID uuid.UUID, decompose func(repair string, reserved []s
 	roundNote := ""
 	// R13 D2: the derived criteria of earlier rounds stay known.
 	carried := newCarriedDerived()
+	var prevRaw []decomposedTask
 	for attempt := 1; ; attempt++ {
 		raw, err := decompose(repair, carried.reservedIDs())
 		if err != nil {
 			return planOutcome{attempts: attempt, decomposeErr: err, previous: previous}
+		}
+		if repair != "" {
+			if merged, ok := mergeRepairedTasks(prevRaw, raw); ok {
+				log.Printf("implementation-planner: work_id=%s: plan attempt %d: the repair answered with %d of %d tasks — merged into the previous plan", workID, attempt, len(raw), len(prevRaw))
+				raw = merged
+			}
 		}
 		for _, note := range carried.restore(raw) {
 			log.Printf("implementation-planner: work_id=%s: plan attempt %d: %s", workID, attempt, note)
@@ -895,6 +905,7 @@ func planWithPolicy(workID uuid.UUID, decompose func(repair string, reserved []s
 			return planOutcome{build: fb, violations: fvs, attempts: attempt, previous: previous, orphanNote: note, roundNote: roundNote}
 		}
 		previous = nvs
+		prevRaw = nb.raw
 		repair = repairPrompt(nvs, nb.raw, repairHints(nb, nvs))
 		log.Printf("implementation-planner: work_id=%s: plan rejected with %d violation(s) — repair round %d", workID, len(plan.Errors(nvs)), attempt)
 	}
@@ -1077,7 +1088,7 @@ func attachNonCodeCriteria(b *planBuild) {
 	for _, id := range b.unowned {
 		if _, ok := marks[id]; !ok {
 			unowned[id] = true
-			marks[id] = "owned by no task after planning"
+			marks[id] = b.unownedWhy[id] // the planner's reason; "" keeps the bare gap line
 		}
 	}
 	if len(marks) == 0 {
@@ -1134,8 +1145,12 @@ func attachRehomedCriteria(b *planBuild) {
 				if c, ok := b.criterionByID(r.CriterionID); ok {
 					text = fmt.Sprintf("%s (%q)", c.ID, c.Text)
 				}
-				lines = append(lines, fmt.Sprintf("- %s was owned by no step after planning; the planner added it to step %q because that step changes %s. Satisfy it in that step; review verifies it as usual.",
-					text, st.Title, strings.Join(r.Files, ", ")))
+				because := fmt.Sprintf("because that step changes %s", strings.Join(r.Files, ", "))
+				if len(r.Words) > 0 {
+					because = fmt.Sprintf("because that step's wording matches it (%s)", strings.Join(r.Words, ", "))
+				}
+				lines = append(lines, fmt.Sprintf("- %s was owned by no step after planning; the planner added it to step %q %s. Satisfy it in that step; review verifies it as usual.",
+					text, st.Title, because))
 			}
 		}
 		if len(lines) == 0 {

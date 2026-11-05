@@ -137,7 +137,7 @@ func TestTwentyIterationImplementationRunStaysNearTheFloor(t *testing.T) {
 	task := req.Messages[1].Content
 	floor := tools.EstimatePromptTokens(req)
 	scope, _ := taskScope(attempt6PlanTask(t))
-	opts := implementationLoopOptions(req.Tools, func() bool { return false }, scope)
+	opts := implementationLoopOptions(req.Tools, func() bool { return false }, scope, nil)
 	if _, err := tools.RunToolLoopWithOptions(context.Background(), model, req, ex, 60, nil, nil, opts); err != nil {
 		t.Fatalf("loop: %v", err)
 	}

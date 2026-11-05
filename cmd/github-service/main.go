@@ -218,26 +218,12 @@ func (e *noGitHubRemoteError) Error() string {
 // ssh://git@github.com/owner/repo. Any other remote is a
 // *noGitHubRemoteError.
 func resolveOwnerRepo(githubURL string) (owner, repo string, err error) {
-	kind, norm := gitremote.Classify(githubURL)
-	if !kind.IsGitHub() {
-		return "", "", &noGitHubRemoteError{kind: kind}
+	owner, repo, err = gitremote.OwnerRepo(githubURL)
+	var ng *gitremote.NotGitHubError
+	if errors.As(err, &ng) {
+		return "", "", &noGitHubRemoteError{kind: ng.Kind}
 	}
-	var path string
-	if kind == gitremote.KindGitHubSSH && !strings.Contains(norm, "://") {
-		path = norm[strings.Index(norm, ":")+1:] // scp-like git@github.com:owner/repo
-	} else {
-		u, perr := url.Parse(norm)
-		if perr != nil {
-			return "", "", fmt.Errorf("parse GitHub remote: %w", perr)
-		}
-		path = u.Path
-	}
-	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("GitHub remote %q does not name owner/repo", githubURL)
-	}
-	return parts[0], parts[1], nil
+	return owner, repo, err
 }
 
 // ownerRepoOrRespond resolves owner/repo for a GitHub API handler, or writes

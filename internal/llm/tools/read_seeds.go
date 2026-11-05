@@ -81,7 +81,7 @@ func (e *Executor) defaultWindow(path string, args map[string]interface{}, lines
 		chars += len(l)
 	}
 	maxChars := readResultMaxChars()
-	if total == 0 || (total <= readDefaultLines && chars <= maxChars) {
+	if total == 0 || (total <= e.readDefault() && chars <= maxChars) {
 		return args, "", false
 	}
 	seed := e.readSeed(path)
@@ -92,16 +92,16 @@ func (e *Executor) defaultWindow(path string, args map[string]interface{}, lines
 	if seed <= 0 {
 		start, end = 1, 1
 		size := len(lines[0])
-		for end < min(total, readDefaultLines) && size+len(lines[end]) <= maxChars {
+		for end < min(total, e.readDefault()) && size+len(lines[end]) <= maxChars {
 			size += len(lines[end])
 			end++
 		}
 	} else {
 		// The 400-line window around the seed, as before X1 …
 		lo := max(1, seed-seedReadRadius)
-		hi := min(total, lo+readDefaultLines-1)
-		if hi-lo+1 < readDefaultLines {
-			lo = max(1, hi-readDefaultLines+1)
+		hi := min(total, lo+e.readDefault()-1)
+		if hi-lo+1 < e.readDefault() {
+			lo = max(1, hi-e.readDefault()+1)
 		}
 		// … narrowed to the char cap around the seed.
 		start, end = seed, seed

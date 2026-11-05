@@ -40,6 +40,12 @@ const (
 	vectorCollection = "codebase"
 )
 
+// chatLoopOptions: at the iteration cap the agent answers from what it
+// did (CloseAtLimit) instead of failing the turn with no reply.
+func chatLoopOptions() tools.LoopOptions {
+	return tools.LoopOptions{CloseAtLimit: true}
+}
+
 // chatMessage is received from chat.message.
 type chatMessage struct {
 	SessionID   string          `json:"session_id"`
@@ -93,6 +99,10 @@ CITING SOURCES (CRITICAL — the UI renders these as clickable links):
 - If you used a tool that returned results WITHOUT file paths (e.g. codex_find_module returns module names), you MUST call search_code or read_file to find the actual file path and line number BEFORE writing your response.
 - The module name from codex_find_module is often a directory path (e.g. "cmd/dashboard-backend") — use search_code to find the specific file and line for each function you mention.
 - Include line numbers whenever possible so the user can jump directly to the relevant code.
+- A work item links as ` + "`" + `/work-items/<id>` + "`" + ` (the id the create_work_item tool returns). Never link to "#".
+
+GROUNDING (CRITICAL):
+- State a repository's owner, URL or module path ONLY as given in the context block ("Repository: … remote … declares module …"). If the context does not say, say you do not know. Never guess an owner or a GitHub URL.
 
 Be concise and direct. When you use tools to find information, summarize what
 you found rather than dumping raw output. Ask follow-up questions when the
@@ -348,6 +358,7 @@ func buildChatHandler(
 			var prodName string
 			if err := pool.QueryRow(msgCtx, `SELECT name FROM products WHERE id = $1`, *productID).Scan(&prodName); err == nil {
 				contextBlock += fmt.Sprintf("\n- Active product: %s (%s)", prodName, productID)
+				contextBlock += loadRepoContext(msgCtx, pool, *productID)
 			}
 		}
 
@@ -406,7 +417,7 @@ func buildChatHandler(
 			Temperature: 0.3,
 		}
 
-		resp, err := tools.RunToolLoop(msgCtx, llmAdapter, req, executor, maxIterations, pool, workItemID)
+		resp, err := tools.RunToolLoopWithOptions(msgCtx, llmAdapter, req, executor, maxIterations, pool, workItemID, chatLoopOptions())
 		if err != nil {
 			log.Printf("chat-agent: tool loop error for session=%s: %v", sessionID, err)
 			publishError(ctx, kb, sessionID,

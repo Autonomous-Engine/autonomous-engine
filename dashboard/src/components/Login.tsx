@@ -3,6 +3,19 @@ import { useNavigate } from 'react-router-dom'
 import { useApi } from '@/hooks/useApi'
 import type { AuthProvider } from '@/types'
 
+
+// The backend nests the first-run flag under user: {token, user:{...,
+// password_change_required}}. Reading it top-level never prompted (F2).
+interface LoginResponse {
+  token: string
+  password_change_required?: boolean
+  user?: { password_change_required?: boolean }
+}
+
+export function passwordChangeRequired(res: LoginResponse): boolean {
+  return Boolean(res.user?.password_change_required ?? res.password_change_required)
+}
+
 export default function Login() {
   const navigate = useNavigate()
   const { get, post } = useApi()
@@ -57,12 +70,12 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      const res = await post<{ token: string; password_change_required?: boolean }>(
+      const res = await post<LoginResponse>(
         '/auth/login',
         { email, password },
       )
       localStorage.setItem('auth_token', res.token)
-      if (res.password_change_required) {
+      if (passwordChangeRequired(res)) {
         navigate('/change-password')
       } else {
         navigate('/')
@@ -84,12 +97,12 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      const res = await post<{ token: string; password_change_required?: boolean }>(
+      const res = await post<LoginResponse>(
         '/auth/login/ldap',
         { username: ldapUsername, password: ldapPassword },
       )
       localStorage.setItem('auth_token', res.token)
-      if (res.password_change_required) {
+      if (passwordChangeRequired(res)) {
         navigate('/change-password')
       } else {
         navigate('/')

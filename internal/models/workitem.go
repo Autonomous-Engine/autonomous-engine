@@ -72,6 +72,18 @@ const (
 )
 
 // WorkItem represents a unit of work tracked through the autonomous pipeline.
+// ReviewFixSubtaskTitle is the title status-orchestrator gives the subtask it
+// creates when the independent verifier requests changes ("Address review
+// feedback"); its description is the verifier's feedback. The implementation
+// agent starts such a task from the parent's implementation branch, so a
+// retry must dispatch it as a review fix again.
+const ReviewFixSubtaskTitle = "Address review feedback"
+
+// IsReviewFix reports whether the subtask is the verifier's fix task.
+func (w *WorkItem) IsReviewFix() bool {
+	return w != nil && w.Type == WorkItemTypeSubtask && w.Title == ReviewFixSubtaskTitle
+}
+
 type WorkItem struct {
 	ID           uuid.UUID     `json:"id" db:"id"`
 	ExternalRef  string        `json:"external_ref" db:"external_ref"`

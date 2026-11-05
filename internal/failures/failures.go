@@ -8,6 +8,7 @@
 package failures
 
 import (
+	"fmt"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
@@ -181,6 +182,10 @@ func Parse(lang string, r Result) []Record {
 	if len(recs) == 0 {
 		recs = toolingRecords(out)
 	}
+	// An environment failure is recorded whatever else the output holds:
+	// a failing test beside it may be its symptom, and the loop must see
+	// that the environment, not the change, is what failed.
+	recs = append(recs, environmentRecords(out, r.ExitCode, recs)...)
 	recs = goVetCategory(recs, r.Command)
 	if r.TimedOut && !hasCategory(recs, CategoryTimeout) {
 		recs = append(recs, Record{Category: CategoryTimeout, Message: "command timed out: " + r.Command, Span: tailLines(out, spanMaxLines)})
@@ -427,6 +432,45 @@ func toolingRecords(out string) []Record {
 		return nil
 	}
 	return []Record{{Category: CategoryTooling, Message: strings.TrimSpace(m), Span: tailLines(out, spanMaxLines), Ownership: OwnedEnvironment}}
+}
+
+// reEnvironmentOutput finds, in raw output, a line saying the check could
+// not run in this environment: a toolchain the image lacks (a container
+// exec that failed, a go/npm/python binary not found), a module cache or
+// script it cannot use (permission denied, cannot find main module), a
+// process it could not start (fork/exec, spawn ENOENT), or the resource
+// and network failures reEnvironment knows.
+var reEnvironmentOutput = regexp.MustCompile(`(?im)^.*(` +
+	`OCI runtime exec failed|executable file not found|command not found|: not found$|` +
+	`fork/exec .*: no such file or directory|spawn \S+ ENOENT|EACCES|` +
+	`go: cannot find main module|could not create module cache|GOMODCACHE|GOPATH entry|` +
+	`permission denied|no space left on device|cannot allocate memory|out of memory|killed: 9|` +
+	`connection refused|could not resolve host|temporary failure in name resolution|network is unreachable|dial tcp|i/o timeout` +
+	`).*$`)
+
+// Exit codes a shell gives when the command itself could not run: 126 (not
+// executable), 127 (not found); -1 is the agent's "failed to start".
+func exitCodeMeansEnvironment(code *int) bool {
+	return code != nil && (*code == 126 || *code == 127 || *code == -1)
+}
+
+// environmentRecords recognises a run the environment failed (see
+// reEnvironmentOutput and exitCodeMeansEnvironment): one tooling record
+// owned by the environment, unless recs already holds one for that line.
+func environmentRecords(out string, exitCode *int, recs []Record) []Record {
+	m := strings.TrimSpace(reEnvironmentOutput.FindString(out))
+	if m == "" {
+		if !exitCodeMeansEnvironment(exitCode) {
+			return nil
+		}
+		m = fmt.Sprintf("the check could not run (exit %d): %s", *exitCode, firstMeaningfulLine(out))
+	}
+	for _, r := range recs {
+		if r.Ownership == OwnedEnvironment && strings.TrimSpace(r.Message) == m {
+			return nil
+		}
+	}
+	return []Record{{Category: CategoryTooling, Message: m, Span: tailLines(out, spanMaxLines), Ownership: OwnedEnvironment}}
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

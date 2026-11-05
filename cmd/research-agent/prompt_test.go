@@ -23,7 +23,12 @@ import (
 // and a 4,783-char user message carrying the PRD again.
 const floorBefore = 8720
 
-const floorCeiling = 3200 // estimated tokens, R1 acceptance
+// floorCeiling is the R1 acceptance (3,200) plus the findings store's
+// share: the record_finding schema, two strategy lines and the codex
+// pointer (~150 tokens). The store is what lets the task message drop the
+// codex-sections dump (11.7k chars in the rerun), which this floor does
+// not model since the fixture never carried one.
+const floorCeiling = 3350 // estimated tokens
 
 // testPRD is a 4.6k-char PRD with a unique marker on its first line.
 func testPRD() string {
@@ -391,5 +396,23 @@ func TestHandlerDoesNotDiscardCodexErrors(t *testing.T) {
 		if strings.Contains(s, bad) {
 			t.Errorf("main.go still contains %q", bad)
 		}
+	}
+}
+
+// Research keeps one turn of tool results and records findings: the
+// transcript is not the memory, the findings store is.
+func TestResearchLoopKeepsOneTurnAndRecordsFindings(t *testing.T) {
+	o := researchLoopOptions("code_trace", func() bool { return false })
+	if o.KeepRecent != 1 || !o.Findings {
+		t.Fatalf("KeepRecent=%d Findings=%v, want 1 and true", o.KeepRecent, o.Findings)
+	}
+	found := false
+	for _, tl := range researchToolSet("code_trace", false) {
+		if tl.Name == "record_finding" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("research tool set must offer record_finding")
 	}
 }

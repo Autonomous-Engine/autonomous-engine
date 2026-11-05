@@ -116,8 +116,10 @@ func main() {
 	handlers := NewHandlers(wg, cx, kb, interactionsStore, interactionsPublisher, evidenceStore)
 	authSvc := NewAuthService(pool)
 	wsHub := NewWSHub(pool)
+	handlers.promptHub = wsHub // a retry that supersedes prompts tells the bell
 	adminHandlers := NewAdminHandlers(configStore, pool)
 	authHandlers := NewAuthHandlers(authManager, pool)
+	authHandlers.invalidate = authSvc.Invalidate
 	userHandlers := NewUserHandlers(pool)
 	ollamaHandlers := NewOllamaHandlers(pool, configStore)
 	providerHandlers := NewProviderHandlers(pool, configStore)
@@ -233,11 +235,13 @@ func main() {
 	mux.HandleFunc("/api/work-items/approve", authSvc.Middleware(handlers.ApproveWorkItem))
 	mux.HandleFunc("/api/work-items/approve-prd", authSvc.Middleware(handlers.ApprovePRD))
 	mux.HandleFunc("/api/work-items/reject-prd", authSvc.Middleware(handlers.RejectPRD))
+	mux.HandleFunc("/api/work-items/revise-prd", authSvc.Middleware(handlers.RevisePRD))
 	// Admin-prefixed aliases — the dashboard UI's WorkItemDetail + ApprovalQueue
 	// components were built against /admin/work-items/... per an earlier spec.
 	// Keep both routes active so the UI works without a re-release of the frontend.
 	mux.HandleFunc("/api/admin/work-items/approve-prd", authSvc.Middleware(AdminOnly(handlers.ApprovePRD)))
 	mux.HandleFunc("/api/admin/work-items/reject-prd", authSvc.Middleware(AdminOnly(handlers.RejectPRD)))
+	mux.HandleFunc("/api/admin/work-items/revise-prd", authSvc.Middleware(AdminOnly(handlers.RevisePRD)))
 	mux.HandleFunc("/api/work-items/cancel", authSvc.Middleware(handlers.CancelWorkItem))
 	mux.HandleFunc("/api/work-items/retry", authSvc.Middleware(handlers.RetryWorkItem))
 	mux.HandleFunc("/api/work-items/update-and-retry", authSvc.Middleware(handlers.UpdateAndRetry))
@@ -285,6 +289,7 @@ func main() {
 	mux.HandleFunc("/api/admin/credentials/resolve", authSvc.Middleware(AdminOnly(adminHandlers.ResolveCredentialPreview)))
 	mux.HandleFunc("/api/admin/config", authSvc.Middleware(AdminOnly(adminHandlers.ListConfig)))
 	mux.HandleFunc("/api/admin/config/update", authSvc.Middleware(AdminOnly(adminHandlers.UpdateConfig)))
+	mux.HandleFunc("/api/admin/config/jira-ingest", authSvc.Middleware(AdminOnly(adminHandlers.GetJiraIngestConfig)))
 	mux.HandleFunc("/api/admin/audit", authSvc.Middleware(AdminOnly(adminHandlers.ListAudit)))
 
 	// Admin-only product management routes
@@ -368,6 +373,7 @@ func main() {
 	mux.HandleFunc("/api/admin/providers/delete", authSvc.Middleware(AdminOnly(providerHandlers.DeleteProvider)))
 	mux.HandleFunc("/api/admin/providers/set-default", authSvc.Middleware(AdminOnly(providerHandlers.SetDefault)))
 	mux.HandleFunc("/api/admin/providers/test", authSvc.Middleware(AdminOnly(providerHandlers.TestConnection)))
+	mux.HandleFunc("/api/admin/providers/probe", authSvc.Middleware(AdminOnly(providerHandlers.Probe)))
 	mux.HandleFunc("/api/admin/providers/models", authSvc.Middleware(AdminOnly(providerHandlers.ListModels)))
 	mux.HandleFunc("/api/admin/providers/pull", authSvc.Middleware(AdminOnly(providerHandlers.PullModel)))
 	mux.HandleFunc("/api/admin/providers/models/delete", authSvc.Middleware(AdminOnly(providerHandlers.DeleteModel)))

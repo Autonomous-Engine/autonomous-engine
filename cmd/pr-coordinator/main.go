@@ -846,7 +846,11 @@ func buildHandler(
 			if gateReason == gateReasonNoGitHub {
 				log.Printf("pr-coordinator: work_id=%s repo=%s has a %s remote (not GitHub): GitHub API PR creation skipped; routing branch %s through the manual PR gate", workID, repoName, repoKind, branch)
 			}
-			if gateReason != "" {
+			// gate records this repository's branch as a pending change with
+			// the pr-gate prompt. detail, when set, is why github-service
+			// opened no PR (gateReasonNoPR): the prompt says so, and a person
+			// creates the PR from the dashboard once the cause is fixed.
+			gate := func(reason, detail string) (stop bool, err error) {
 				gatedMsg := prReadyMessage{
 					WorkID:            workID.String(),
 					ProductID:         productIDStr,
@@ -865,6 +869,9 @@ func buildHandler(
 					productUUID = pid
 				}
 				question := fmt.Sprintf("Branch %s is ready to create a PR against %s.", branch, baseBranch)
+				if detail != "" {
+					question = noPRGateLine(detail) + "\n\n" + question
+				}
 				if headSHA != "" {
 					question += fmt.Sprintf("\n\nVerified head SHA: %s", headSHA)
 				}
@@ -896,6 +903,8 @@ func buildHandler(
 						"head_sha":           headSHA,
 						"partially_verified": partiallyVerified,
 						"verification":       verificationPayload(outcomes),
+						"gate_reason":        reason,
+						"gate_detail":        detail,
 					},
 					Actions: []interactions.Action{
 						{ID: "approve", Label: "Create PR", Semantic: interactions.SemanticContinue},
@@ -923,42 +932,47 @@ func buildHandler(
 				// together through the outbox, or none of them do. A failed
 				// commit blocks the parent, and no further repository is
 				// gated against a blocked parent.
-				if stop, rerr := recordGatedPR(msgCtx, db, prompts, change, repoName); rerr != nil {
-					unackedErr = rerr
+				return recordGatedPR(msgCtx, db, prompts, change, repoName)
+			}
+			if gateReason != "" {
+				stop, gerr := gate(gateReason, "")
+				if gerr != nil {
+					unackedErr = gerr
 					break subtasks
-				} else if stop {
+				}
+				if stop {
 					log.Printf("pr-coordinator: work_id=%s blocked after a failed gate commit — not gating the remaining repositories", workID)
 					break subtasks
 				}
-
 				results = append(results, perRepoResult{repoName: repoName, repoID: repoID, branch: branch})
 				shippedPRs[c.ID] = true
 				continue
 			}
 
-			prURL, prNumber := createGitHubPR(msgCtx, githubServiceURL, repoID, prTitle, prDesc, branch, baseBranch)
+			prURL, prNumber, prFailure := createGitHubPR(msgCtx, githubServiceURL, repoID, prTitle, prDesc, branch, baseBranch)
 			if prURL != "" {
 				log.Printf("pr-coordinator: created PR %s (#%d) for work_id=%s repo=%s", prURL, prNumber, workID, repoName)
 			} else {
-				log.Printf("pr-coordinator: github-service returned no PR for work_id=%s repo=%s branch=%s", workID, repoName, branch)
-			}
-
-			// Never publish pr.ready without a real PR URL. If
-			// github-service failed to open the PR (auth, conflict, etc.)
-			// prURL will be empty; downstream review-agent would then run
-			// against a nonexistent PR, produce a meaningless decision,
-			// and potentially restart the implementation loop. Fail
-			// honestly: log the skip and move on.
-			if prURL == "" {
-				log.Printf("pr-coordinator: skipping pr.ready publish for repo=%s branch=%s — no PR URL from github-service", repoName, branch)
-				// The drift was still observed: keep the audit row. The pool
-				// (not the guarded beginner) so it never takes the delivery's
-				// guard ahead of a later repository's pr.ready.
-				for _, ev := range drift.Events {
-					if err := recordDriftEventOwnTx(msgCtx, wg.DB(), ev); err != nil {
-						log.Printf("pr-coordinator: record drift event for work_id=%s repo=%s: %v", workID, repoName, err)
-					}
+				// Never publish pr.ready without a real PR URL: review-agent
+				// would run against a PR that does not exist. Before, this
+				// was a log line and `continue` — the parent sat in
+				// verification with nothing to answer (live: an auto-gate
+				// item with no GitHub token). The verified branch is gated
+				// instead, as a non-GitHub remote is: a pending change and a
+				// "Create PR" prompt that says why, so a person retries the
+				// PR from the dashboard once the cause is fixed.
+				log.Printf("pr-coordinator: github-service opened no PR for work_id=%s repo=%s branch=%s (%s) — routing the branch through the manual PR gate", workID, repoName, branch, prFailure)
+				stop, gerr := gate(gateReasonNoPR, prFailure)
+				if gerr != nil {
+					unackedErr = gerr
+					break subtasks
 				}
+				if stop {
+					log.Printf("pr-coordinator: work_id=%s blocked after a failed gate commit — not gating the remaining repositories", workID)
+					break subtasks
+				}
+				results = append(results, perRepoResult{repoName: repoName, repoID: repoID, branch: branch})
+				shippedPRs[c.ID] = true
 				continue
 			}
 			prMsg := prReadyMessage{
@@ -1031,7 +1045,14 @@ func buildHandler(
 const (
 	gateReasonManual   = "manual"    // the work item's pr_gate_mode
 	gateReasonNoGitHub = "no-github" // G1: the remote is not on github.com
+	gateReasonNoPR     = "no-pr"     // github-service opened no PR (auto mode)
 )
+
+// noPRGateLine opens the pr-gate prompt of a branch github-service could not
+// open a PR for: what github-service answered, and what to do.
+func noPRGateLine(detail string) string {
+	return fmt.Sprintf("github-service opened no PR for this branch: %s. Fix the cause (a missing or expired GitHub credential, a GitHub outage), then create the PR from here — or reject it.", strings.TrimSpace(detail))
+}
 
 // manualGateReason returns why the PR goes through the manual gate, or ""
 // when it is opened through github-service. A repository whose remote is not
@@ -1048,9 +1069,11 @@ func manualGateReason(prGateMode string, kind gitremote.Kind, noGitHub bool) str
 	return ""
 }
 
-// createGitHubPR calls the github-service to create a real GitHub pull request.
-// Returns the PR URL and number, or empty string on failure.
-func createGitHubPR(ctx context.Context, githubServiceURL, repositoryID, title, body, head, base string) (string, int) {
+// createGitHubPR calls the github-service to create a real GitHub pull
+// request. It returns the PR URL and number, or an empty URL and what went
+// wrong (one line, from github-service's answer or the transport error) so
+// the manual gate's prompt can say why there is no PR.
+func createGitHubPR(ctx context.Context, githubServiceURL, repositoryID, title, body, head, base string) (string, int, string) {
 	reqBody := createPRRequest{
 		RepositoryID: repositoryID,
 		Title:        title,
@@ -1061,13 +1084,13 @@ func createGitHubPR(ctx context.Context, githubServiceURL, repositoryID, title, 
 	data, err := json.Marshal(reqBody)
 	if err != nil {
 		log.Printf("pr-coordinator: marshal create-pr request: %v", err)
-		return "", 0
+		return "", 0, "could not encode the create-pr request: " + err.Error()
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, githubServiceURL+"/pr", bytes.NewReader(data))
 	if err != nil {
 		log.Printf("pr-coordinator: build create-pr request: %v", err)
-		return "", 0
+		return "", 0, "could not build the create-pr request: " + err.Error()
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
@@ -1075,23 +1098,35 @@ func createGitHubPR(ctx context.Context, githubServiceURL, repositoryID, title, 
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("pr-coordinator: POST github-service /pr: %v", err)
-		return "", 0
+		return "", 0, "github-service unreachable: " + err.Error()
 	}
 	defer resp.Body.Close()
 
 	respData, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		log.Printf("pr-coordinator: github-service /pr returned %d: %s", resp.StatusCode, respData)
-		return "", 0
+		return "", 0, fmt.Sprintf("github-service answered %d: %s", resp.StatusCode, oneLine(string(respData)))
 	}
 
 	var prResp createPRResponse
 	if err := json.Unmarshal(respData, &prResp); err != nil {
 		log.Printf("pr-coordinator: parse github-service /pr response: %v", err)
-		return "", 0
+		return "", 0, "github-service answered something other than a PR: " + err.Error()
 	}
 
-	return prResp.PRURL, prResp.PRNumber
+	if prResp.PRURL == "" {
+		return "", 0, "github-service answered without a PR URL"
+	}
+	return prResp.PRURL, prResp.PRNumber, ""
+}
+
+// oneLine is s on one line, trimmed, at most 300 characters.
+func oneLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 300 {
+		s = s[:300] + "…"
+	}
+	return s
 }
 
 // buildPRDescription gathers the actual git diff (never the LLM's account of

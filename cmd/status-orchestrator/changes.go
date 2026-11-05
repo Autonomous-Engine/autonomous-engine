@@ -71,7 +71,7 @@ func maxChangeCycles() int {
 
 // fixSubtaskTitle is the title of every fix subtask requestChanges creates;
 // the breaker's defect history reads them back by it.
-const fixSubtaskTitle = "Address review feedback"
+const fixSubtaskTitle = models.ReviewFixSubtaskTitle
 
 // Bounds of the defect history in the breaker's human-review prompt.
 const (

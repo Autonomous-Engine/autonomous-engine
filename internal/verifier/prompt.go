@@ -49,7 +49,7 @@ When you have finished investigating, reply with ONE JSON object and nothing els
   "schema_version": 1,
   "per_criterion": [
     {"id": "AC-1", "status": "met|not_met|not_verifiable",
-     "evidence": ["<tool call id from this conversation>", "path/to/file.go:42"],
+     "evidence": ["<the id a tool result ends with: 'tool call id: …'>", "path/to/file.go:42"],
      "note": "why — required unless met"}
   ],
   "defects": [
@@ -61,7 +61,7 @@ When you have finished investigating, reply with ONE JSON object and nothing els
   "summary": "one paragraph"
 }
 
-Rules the parser enforces: exactly one per_criterion entry for every criterion listed above and no others; "met" must cite at least one evidence reference, each either a tool call id you received in this conversation, a path:line (path:start-end) reference, or the path of a file that exists at head (file-level, weaker than path:line); a citation that is none of these makes that criterion not_verifiable; every other status needs a note; defects may be empty; unknown fields are rejected.`
+Rules the parser enforces: exactly one per_criterion entry for every criterion listed above and no others; "met" must cite at least one evidence reference, each either a tool call id (every tool result you received ends with "tool call id: <id>"; cite that id, never a description of the command or its output), a path:line (path:start-end) reference, or the path of a file that exists at head (file-level, weaker than path:line); a citation that is none of these makes that criterion not_verifiable; every other status needs a note; defects may be empty; unknown fields are rejected.`
 
 // RenderPrompt is the verifier's user message. It is a pure function of
 // Input, so what the model sees is exactly what Input admits.

@@ -224,10 +224,11 @@ func TestReplayAttempt14RepeatsAreAnswered(t *testing.T) {
 			short++
 		}
 	}
-	// The last request holds the latest two turns in full (KeepRecent 2):
-	// calls 10 and 11 were second repeats (public 836-853, landing 855).
-	if short != 2 {
-		t.Fatalf("short answers in the last request = %d, want 2", short)
+	// The last request holds the latest turn in full (KeepRecent 1, the
+	// findings store is the memory): call 11 was a second repeat (landing
+	// 855); call 10's (public 836-853) has already left for the ledger.
+	if short != 1 {
+		t.Fatalf("short answers in the last request = %d, want 1", short)
 	}
 	found := false
 	for _, m := range res.reqs[7].Messages { // after call 7: public/index.html, first repeat

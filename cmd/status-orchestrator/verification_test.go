@@ -58,7 +58,7 @@ func TestDecideVerificationRound(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := decideVerificationRound(c.subs, nil, c.results, time.Time{})
+			got := decideVerificationRound(c.subs, nil, nil, c.results, time.Time{})
 			if got.Running != c.running || got.Wait != c.wait || got.Empty != c.empty {
 				t.Fatalf("running=%t wait=%t empty=%t, want %t %t %t (%+v)", got.Running, got.Wait, got.Empty, c.running, c.wait, c.empty, got)
 			}
@@ -78,17 +78,17 @@ func TestDecideVerificationRoundIgnoresEarlierRounds(t *testing.T) {
 	old, fix := subtask(models.WorkItemStatePassed), subtask(models.WorkItemStatePassed)
 	passed := map[uuid.UUID]time.Time{old.ID: t0, fix.ID: start.Add(time.Minute)}
 	results := map[uuid.UUID]stage.Result{old.ID: result(old.ID, stage.DecisionRequestChanges, t0)}
-	got := decideVerificationRound([]*models.WorkItem{old, fix}, passed, results, start)
+	got := decideVerificationRound([]*models.WorkItem{old, fix}, passed, nil, results, start)
 	if !got.Wait || len(got.Waiting) != 1 || !strings.Contains(got.Waiting[0], fix.ID.String()) {
 		t.Fatalf("got %+v, want to wait for the fix subtask only", got)
 	}
 	results[fix.ID] = result(fix.ID, stage.DecisionApprove, start.Add(2*time.Minute))
-	if got := decideVerificationRound([]*models.WorkItem{old, fix}, passed, results, start); got.Wait || got.Decision != stage.DecisionApprove {
+	if got := decideVerificationRound([]*models.WorkItem{old, fix}, passed, nil, results, start); got.Wait || got.Decision != stage.DecisionApprove {
 		t.Fatalf("got %+v, want approve from the fix subtask alone", got)
 	}
 	// A stale result for a subtask of this round is not this round's.
 	results[fix.ID] = result(fix.ID, stage.DecisionApprove, t0)
-	if got := decideVerificationRound([]*models.WorkItem{old, fix}, passed, results, start); !got.Wait {
+	if got := decideVerificationRound([]*models.WorkItem{old, fix}, passed, nil, results, start); !got.Wait {
 		t.Fatalf("a result older than the round must not count: %+v", got)
 	}
 }
@@ -123,5 +123,28 @@ func TestRoundStart(t *testing.T) {
 	}
 	if got := roundStart(ts[:2]); !got.IsZero() {
 		t.Fatalf("first round start = %v, want zero", got)
+	}
+}
+
+// A result recorded before the subtask's latest attempt is an earlier attempt's.
+// Live, the failed attempt's not_run row ("legacy message without
+// evidence") settled the parent approve the instant the next attempt
+// passed, while the verifier was still running on the passed head. A
+// result older than the attempt is not the attempt's: wait for it.
+func TestDecideVerificationRoundIgnoresResultsOlderThanThePass(t *testing.T) {
+	t0 := time.Now().Add(-time.Hour)
+	sub := subtask(models.WorkItemStatePassed)
+	passed := map[uuid.UUID]time.Time{sub.ID: t0.Add(20 * time.Minute)}
+	started := map[uuid.UUID]time.Time{sub.ID: t0.Add(15 * time.Minute)} // the latest attempt
+	stale := result(sub.ID, stage.DecisionNotRun, t0.Add(10*time.Minute)) // after the round started, before the attempt
+	stale.Legacy = true
+	results := map[uuid.UUID]stage.Result{sub.ID: stale}
+	if got := decideVerificationRound([]*models.WorkItem{sub}, passed, started, results, t0); !got.Wait {
+		t.Fatalf("got %+v, want to wait for the attempt's own result", got)
+	}
+	// The stage may record the attempt's result before the subtask passes.
+	results[sub.ID] = result(sub.ID, stage.DecisionApprove, t0.Add(18*time.Minute))
+	if got := decideVerificationRound([]*models.WorkItem{sub}, passed, started, results, t0); got.Wait || got.Decision != stage.DecisionApprove {
+		t.Fatalf("got %+v, want approve from the attempt's result", got)
 	}
 }

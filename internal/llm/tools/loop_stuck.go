@@ -84,6 +84,11 @@ func newStuckTracker(prior []LoopStuck) *stuckTracker {
 // the call targets as it is now; "" for a call without a path (run_command
 // and searches are not tracked).
 func (e *Executor) callFingerprint(call adapter.ToolCall) (fp, path string) {
+	if call.Name == "record_finding" {
+		// A refused finding is guidance, not a failing file edit
+		// (findings.go): three of them must not end the loop as stuck.
+		return "", ""
+	}
 	var args map[string]any
 	if json.Unmarshal([]byte(call.Arguments), &args) != nil {
 		return "", ""
@@ -101,8 +106,13 @@ func (e *Executor) callFingerprint(call adapter.ToolCall) (fp, path string) {
 			digest = hex.EncodeToString(sum[:8])
 		}
 	}
-	return call.Name + "\x00" + canonicalArgs(call.Arguments) + "\x00" + digest, path
+	return call.Name + fingerprintSep + canonicalArgs(call.Arguments) + fingerprintSep + digest, path
 }
+
+// fingerprintSep joins the parts of a call fingerprint. It is the ASCII unit
+// separator, not NUL: a LoopStuck is serialised into research.results and
+// stored as jsonb, and Postgres rejects the \u0000 escape (SQLSTATE 22P05).
+const fingerprintSep = "\x1f"
 
 func isEditTool(name string) bool { return IsFileEditTool(name) }
 

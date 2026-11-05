@@ -135,7 +135,7 @@ export default function PipelineBoard() {
             <div>
               <p className="text-sm font-semibold text-yellow-300">No LLM provider configured</p>
               <p className="text-xs text-yellow-400/80 mt-0.5">
-                Work items will be blocked until a model provider is added. Go to Admin &rarr; Models to configure one, or use the Onboarding Wizard for guided setup.
+                Work items will be blocked until a model provider is added. Go to Admin &rarr; Providers to configure one, or use the Onboarding Wizard for guided setup.
               </p>
             </div>
           </div>

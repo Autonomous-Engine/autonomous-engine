@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,6 +43,8 @@ type outboxTx struct {
 	key       string
 	payload   []byte
 	err       error // returned by the outbox insert
+	// cancelled is the row count answered to a prompt-cancel UPDATE.
+	cancelled int
 }
 
 func (f *outboxTx) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -54,6 +57,9 @@ func (f *outboxTx) Exec(_ context.Context, sql string, args ...any) (pgconn.Comm
 		f.key, _ = args[4].(string)
 		f.payload, _ = args[5].([]byte)
 		return pgconn.CommandTag{}, f.err
+	}
+	if strings.Contains(sql, "UPDATE user_interactions") && strings.Contains(sql, "'cancelled'") {
+		return pgconn.NewCommandTag(fmt.Sprintf("UPDATE %d", f.cancelled)), nil
 	}
 	return pgconn.CommandTag{}, nil
 }
@@ -95,9 +101,13 @@ type transitionCall struct {
 // transitions, which must arrive on the handler's transaction.
 type approvalsFake struct {
 	item        *models.WorkItem
+	children    []*models.WorkItem
 	artifacts   map[models.ArtifactType][]*models.WorkItemArtifact
 	transitions []transitionCall
 	transErr    error
+	// awaitingErr makes the awaiting_user path fail without recording,
+	// the way the real one does when the item has already moved on.
+	awaitingErr error
 }
 
 func (f *approvalsFake) GetWorkItem(_ context.Context, id uuid.UUID) (*models.WorkItem, error) {
@@ -106,6 +116,10 @@ func (f *approvalsFake) GetWorkItem(_ context.Context, id uuid.UUID) (*models.Wo
 	}
 	cp := *f.item
 	return &cp, nil
+}
+
+func (f *approvalsFake) GetChildren(_ context.Context, _ uuid.UUID) ([]*models.WorkItem, error) {
+	return f.children, nil
 }
 
 func (f *approvalsFake) GetArtifacts(_ context.Context, _ uuid.UUID, t models.ArtifactType) ([]*models.WorkItemArtifact, error) {
@@ -121,6 +135,9 @@ func (f *approvalsFake) TransitionStateTx(_ context.Context, tx pgx.Tx, id uuid.
 }
 
 func (f *approvalsFake) TransitionFromAwaitingUserToStateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, to models.WorkItemState, agentID, reason string) error {
+	if f.awaitingErr != nil {
+		return f.awaitingErr
+	}
 	f.transitions = append(f.transitions, transitionCall{tx: tx, id: id, to: to, reason: reason})
 	return f.transErr
 }
@@ -251,7 +268,7 @@ func TestCommitUpdateAndRetry_DescriptionStateTransitionAndIntakeShareOneTx(t *t
 	item := &models.WorkItem{ID: uuid.New(), State: models.WorkItemStateBlocked, ProductID: &product}
 	tx := &outboxTx{}
 	db := &txBeginnerFake{tx: tx}
-	if err := commitUpdateAndRetry(context.Background(), db, item, "new desc", "u1"); err != nil {
+	if err := commitUpdateAndRetry(context.Background(), db, item, "new desc", "u1", nil); err != nil {
 		t.Fatalf("commitUpdateAndRetry: %v", err)
 	}
 	if db.begins != 1 || tx.commits != 1 || tx.calls != 1 {
@@ -273,7 +290,7 @@ func TestCommitUpdateAndRetry_DescriptionStateTransitionAndIntakeShareOneTx(t *t
 	}
 
 	tx = &outboxTx{err: errors.New("boom")}
-	if err := commitUpdateAndRetry(context.Background(), &txBeginnerFake{tx: tx}, item, "d", "u"); err == nil || tx.rollbacks != 1 || tx.commits != 0 {
+	if err := commitUpdateAndRetry(context.Background(), &txBeginnerFake{tx: tx}, item, "d", "u", nil); err == nil || tx.rollbacks != 1 || tx.commits != 0 {
 		t.Errorf("enqueue failure: err=%v commits=%d rollbacks=%d", err, tx.commits, tx.rollbacks)
 	}
 }
@@ -529,5 +546,227 @@ func TestDashboard_StartsOneNamedDispatcherAndWaits(t *testing.T) {
 	}
 	if !strings.Contains(code, "outboxDispatcher.Wait()") {
 		t.Error("main.go does not wait for the outbox dispatcher on shutdown")
+	}
+}
+
+// An implementation stop (budget exhausted, repeated failure) prompts the
+// parent with "Retry with a fresh attempt". Retry restarted the pipeline
+// from research — the research and the plan were thrown away, and the
+// stopped subtask's own Retry was refused because its parent was blocked.
+// A parent whose subtasks stopped resumes implementation: the parent and
+// each stopped subtask move to implementation and each subtask's
+// implementation.tasks retry is enqueued, all in one transaction.
+func TestBlockedPromptAnswer_ParentRetryWithStoppedSubtasksResumesImplementation(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateBlocked, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateAwaitingUser,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	done := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStatePassed, ParentID: &parent.ID}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{done, child}
+	a.g.artifacts[models.ArtifactTypePRD] = []*models.WorkItemArtifact{prdArtifact(t)} // a PRD exists; research is still not restarted
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), parent.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if a.db.begins != 1 || a.tx.commits != 1 || a.tx.rollbacks != 0 {
+		t.Fatalf("begins=%d commits=%d rollbacks=%d, want one committed transaction", a.db.begins, a.tx.commits, a.tx.rollbacks)
+	}
+	if len(a.g.transitions) != 2 || a.g.transitions[0].id != parent.ID || a.g.transitions[0].to != models.WorkItemStateImplementation ||
+		a.g.transitions[1].id != child.ID || a.g.transitions[1].to != models.WorkItemStateImplementation || a.g.transitions[1].tx != a.tx {
+		t.Fatalf("transitions = %+v, want the parent then the stopped subtask to implementation", a.g.transitions)
+	}
+	if a.tx.calls != 1 || a.tx.topic != bus.TopicImplementationTasks || a.tx.key != child.ID.String() || a.tx.aggregate != parent.ID {
+		t.Fatalf("events=%d topic=%s key=%s aggregate=%s, want one implementation.tasks for the subtask", a.tx.calls, a.tx.topic, a.tx.key, a.tx.aggregate)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(a.tx.payload, &body)
+	if body["work_id"] != parent.ID.String() || body["task_id"] != child.ID.String() || body["retry"] != true {
+		t.Errorf("payload = %v", body)
+	}
+}
+
+// The admin retry of a blocked parent whose subtasks stopped resumes
+// implementation too (the research and the plan stand), instead of
+// resetting to the PRD and running research again.
+func TestRetryWorkItem_ParentWithStoppedSubtasksResumesImplementation(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateBlocked, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateBlocked,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{child}
+	a.g.artifacts[models.ArtifactTypePRD] = []*models.WorkItemArtifact{prdArtifact(t)}
+	rec := post(a.h.RetryWorkItem, "/api/work-items/retry?id="+parent.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if a.db.begins != 1 || a.tx.commits != 1 || len(a.g.transitions) != 2 ||
+		a.g.transitions[0].id != parent.ID || a.g.transitions[0].to != models.WorkItemStateImplementation ||
+		a.g.transitions[1].id != child.ID || a.g.transitions[1].to != models.WorkItemStateImplementation {
+		t.Fatalf("begins=%d commits=%d transitions=%+v, want parent and subtask to implementation in one transaction", a.db.begins, a.tx.commits, a.g.transitions)
+	}
+	if a.tx.calls != 1 || a.tx.topic != bus.TopicImplementationTasks || a.tx.key != child.ID.String() {
+		t.Fatalf("events=%d topic=%s key=%s, want one implementation.tasks for the subtask", a.tx.calls, a.tx.topic, a.tx.key)
+	}
+}
+
+// The answer handler and status-orchestrator race: the orchestrator
+// restores the parent awaiting_user → blocked on the same answer, and the
+// handler's awaiting_user transition then failed ("invalid transition:
+// state is blocked, expected awaiting_user") — the retry was recorded as
+// answered and nothing resumed. An item that has moved on takes the
+// ordinary transition instead.
+func TestBlockedPromptAnswer_ParentRetryFallsBackWhenTheOrchestratorRestoredItFirst(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateAwaitingUser, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateBlocked,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{child}
+	a.g.awaitingErr = errors.New("invalid transition: state is blocked, expected awaiting_user or prd_approval")
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), parent.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	if a.tx.commits != 1 || len(a.g.transitions) != 2 || a.g.transitions[0].id != parent.ID || a.g.transitions[0].to != models.WorkItemStateImplementation ||
+		a.g.transitions[1].id != child.ID || a.tx.calls != 1 || a.tx.topic != bus.TopicImplementationTasks {
+		t.Fatalf("commits=%d transitions=%+v events=%d, want the parent and subtask resumed through the ordinary transition", a.tx.commits, a.g.transitions, a.tx.calls)
+	}
+}
+
+// A review-fix subtask (the orchestrator's "Address review feedback",
+// branched from the parent's implementation branch) retried through the
+// prompt sheet was dispatched as a plain task: no is_review_fix, no
+// review_feedback, so the fresh attempt started from main and its
+// "passing" head had lost the feature. The retry carries both.
+func TestBlockedPromptAnswer_ReviewFixSubtaskRetryKeepsItsIdentity(t *testing.T) {
+	item := blockedSubtask()
+	item.Title, item.Description = models.ReviewFixSubtaskTitle, "INDEPENDENT VERIFIER REQUESTED CHANGES: fix the override"
+	a := newApprovalHarness(item)
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), item.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	body := a.assertOneCommittedEvent(t, models.WorkItemStateImplementation, bus.TopicImplementationTasks, item.ID.String(), *item.ParentID)
+	if body["is_review_fix"] != true || body["review_feedback"] != item.Description {
+		t.Errorf("payload = %v, want is_review_fix and the feedback", body)
+	}
+}
+
+// ─── superseded prompts ──────────────────────────────────────────────────────
+
+// promptHubFake records the prompt events a handler pushes to the dashboard.
+type promptHubFake struct{ events []map[string]any }
+
+func (h *promptHubFake) PushPromptEvent(eventType string, payload map[string]any) {
+	cp := map[string]any{"type": eventType}
+	for k, v := range payload {
+		cp[k] = v
+	}
+	h.events = append(h.events, cp)
+}
+
+// cancelSQLs are the UPDATE user_interactions … 'cancelled' statements the
+// transaction ran, with the work item each one names.
+func cancelSQLs(tx *outboxTx) []uuid.UUID {
+	var ids []uuid.UUID
+	for i, s := range tx.sqls {
+		if strings.Contains(s, "UPDATE user_interactions") && strings.Contains(s, "'cancelled'") && strings.Contains(s, "state = 'pending'") {
+			id, _ := tx.args[i][0].(uuid.UUID)
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func containsID(ids []uuid.UUID, id uuid.UUID) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+func cancelledEvents(h *promptHubFake, workID uuid.UUID) int {
+	n := 0
+	for _, e := range h.events {
+		if e["type"] == "prompt_cancelled" && e["work_item_id"] == workID.String() {
+			n++
+		}
+	}
+	return n
+}
+
+// A stopped subtask parked on its own "Blocked:" prompt is resumed by the
+// parent's retry, but its prompt stayed pending in Approvals (NEW-17
+// family). The retry supersedes the pending prompts of the parent and of
+// every stopped subtask in its transaction, and tells the dashboard.
+func TestBlockedPromptAnswer_ParentRetrySupersedesTheStoppedSubtasksOwnPrompts(t *testing.T) {
+	product, repo := uuid.New(), uuid.New()
+	parent := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeFeature, State: models.WorkItemStateBlocked, ProductID: &product}
+	child := &models.WorkItem{ID: uuid.New(), Type: models.WorkItemTypeSubtask, State: models.WorkItemStateAwaitingUser,
+		ParentID: &parent.ID, ProductID: &product, RepositoryID: &repo, Title: "t", Description: "d"}
+	a := newApprovalHarness(parent)
+	a.g.children = []*models.WorkItem{child}
+	a.tx.cancelled = 1 // the child's prompt
+	hub := &promptHubFake{}
+	a.h.promptHub = hub
+	if err := a.h.HandleBlockedPromptAnswer(context.Background(), parent.ID, "retry", "", "u"); err != nil {
+		t.Fatalf("answer: %v", err)
+	}
+	ids := cancelSQLs(a.tx)
+	if !containsID(ids, child.ID) || !containsID(ids, parent.ID) {
+		t.Fatalf("prompts superseded for %v, want the parent %s and the subtask %s, in the retry's transaction", ids, parent.ID, child.ID)
+	}
+	if a.tx.commits != 1 || a.tx.calls != 1 {
+		t.Fatalf("commits=%d events=%d, want the one committed transaction with its implementation.tasks", a.tx.commits, a.tx.calls)
+	}
+	if cancelledEvents(hub, child.ID) != 1 {
+		t.Fatalf("dashboard events = %v, want prompt_cancelled for the subtask", hub.events)
+	}
+}
+
+// The admin retry of a stopped subtask supersedes that subtask's own
+// pending prompt the same way.
+func TestRetryWorkItem_SubtaskRetrySupersedesItsOwnPrompt(t *testing.T) {
+	item := blockedSubtask()
+	a := newApprovalHarness(item)
+	a.tx.cancelled = 1
+	hub := &promptHubFake{}
+	a.h.promptHub = hub
+	rec := post(a.h.RetryWorkItem, "/api/work-items/retry?id="+item.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if ids := cancelSQLs(a.tx); !containsID(ids, item.ID) {
+		t.Fatalf("prompts superseded for %v, want the subtask %s", ids, item.ID)
+	}
+	if cancelledEvents(hub, item.ID) != 1 {
+		t.Fatalf("dashboard events = %v, want prompt_cancelled for the subtask", hub.events)
+	}
+}
+
+// Update & Retry of a product-less item (blocked by product-agent with
+// "has no product") assigns the product in the same transaction, and the
+// intake event product-agent reprocesses carries it.
+func TestCommitUpdateAndRetry_AssignsAProduct(t *testing.T) {
+	item := &models.WorkItem{ID: uuid.New(), State: models.WorkItemStateBlocked, Description: "the description"}
+	product := uuid.New()
+	tx := &outboxTx{}
+	if err := commitUpdateAndRetry(context.Background(), &txBeginnerFake{tx: tx}, item, item.Description, "u1", &product); err != nil {
+		t.Fatalf("commitUpdateAndRetry: %v", err)
+	}
+	var assigned bool
+	for i, s := range tx.sqls {
+		if s == assignProductSQL {
+			assigned = tx.args[i][0] == product && tx.args[i][1] == item.ID
+		}
+	}
+	if !assigned || tx.commits != 1 {
+		t.Fatalf("statements = %q (commits %d), want the product assigned in the retry's transaction", tx.sqls, tx.commits)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(tx.payload, &body)
+	if body["product_id"] != product.String() {
+		t.Errorf("intake payload product_id = %v, want %s", body["product_id"], product)
 	}
 }

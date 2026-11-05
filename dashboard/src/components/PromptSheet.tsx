@@ -142,7 +142,13 @@ export function PromptDetailPane({
 }) {
   const [actionId, setActionId] = useState<string>('')
   const [answerText, setAnswerText] = useState('')
-  const [saveAs, setSaveAs] = useState<SaveAsOverride>('codex_fact')
+  // Default to "just this run": a codex fact is an explicit choice. Every
+  // answer defaulted to codex_fact, so Approve/Retry wrote junk rows (F38).
+  const [saveAs, setSaveAs] = useState<SaveAsOverride>('ephemeral')
+  // "Request changes" on a PRD approval: the item goes back through intake
+  // with the feedback instead of being approved as-is or killed (F34).
+  const isRevise = prompt.prompt_type === 'approval' && actionId === 'revise'
+  const canRequestChanges = prompt.prompt_type === 'approval' && prompt.trigger === 'approval:prd' && Boolean(prompt.work_item_id)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -150,12 +156,12 @@ export function PromptDetailPane({
   useEffect(() => {
     setActionId('')
     setAnswerText('')
-    setSaveAs('codex_fact')
+    setSaveAs('ephemeral')
     setError(null)
   }, [prompt.id])
 
   const canSubmit =
-    !submitting && (actionId !== '' || answerText.trim().length > 0)
+    !submitting && (isRevise ? answerText.trim().length > 0 : (actionId !== '' || answerText.trim().length > 0))
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -163,6 +169,14 @@ export function PromptDetailPane({
     setSubmitting(true)
     setError(null)
     try {
+      if (isRevise) {
+        // The revise travels as the prompt's answer: while the prompt is
+        // pending the item sits in awaiting_user, and the answer path
+        // restores its state before acting (rerun NEW-5).
+        await answerPrompt(prompt.id, { action_chosen: 'revise', answer_text: answerText.trim(), save_as_override: 'ephemeral' })
+        onSubmitted()
+        return
+      }
       await answerPrompt(prompt.id, {
         action_chosen: actionId || undefined,
         answer_text: answerText.trim() || undefined,
@@ -185,8 +199,19 @@ export function PromptDetailPane({
           : prompt.question}
       </Markdown>
 
-      {prompt.actions.length > 0 && (
+      {(prompt.actions.length > 0 || canRequestChanges) && (
         <div className="flex flex-wrap gap-2">
+          {canRequestChanges && (
+            <button
+              type="button"
+              onClick={() => setActionId('revise')}
+              className={`border px-3 py-1.5 text-xs font-mono uppercase tracking-wide transition ${
+                actionId === 'revise' ? 'border-amber-400 bg-amber-400 text-surface-900' : 'border-rule text-fg hover:border-amber-400'
+              }`}
+            >
+              Request changes
+            </button>
+          )}
           {prompt.actions.map((a) => (
             <button
               key={a.id}
@@ -249,6 +274,21 @@ export function PromptDetailPane({
         </>
       )}
 
+      {isRevise && (
+        <label className="block">
+          <span className="text-xs font-mono uppercase tracking-wider text-muted">
+            What should change (required)
+          </span>
+          <textarea
+            rows={4}
+            value={answerText}
+            onChange={(e) => setAnswerText(e.target.value)}
+            placeholder="Say what is wrong or missing; the product agent rewrites the PRD against this."
+            className="mt-1 w-full resize-y rounded-sm border border-rule bg-surface-950 p-2 text-sm text-fg focus:border-amber-400 focus:outline-none"
+          />
+        </label>
+      )}
+
       {prompt.prompt_type === 'approval' && actionId === 'approve' && (
         <label className="block">
           <span className="text-xs font-mono uppercase tracking-wider text-muted">
@@ -297,7 +337,17 @@ export function PromptDetailPane({
           disabled={!canSubmit}
           className="bg-lime-400 px-4 py-2 font-mono text-xs uppercase tracking-wide text-surface-900 transition disabled:opacity-40"
         >
-          {submitting ? 'Submitting…' : prompt.prompt_type === 'approval' ? (actionId === 'reject' ? 'Reject' : 'Approve') : 'Submit'}
+          {submitting
+            ? 'Submitting…'
+            : prompt.prompt_type !== 'approval'
+              ? 'Submit'
+              : actionId === 'approve'
+                ? 'Approve'
+                : actionId === 'reject'
+                  ? 'Reject'
+                  : actionId === 'revise'
+                    ? 'Send back for changes'
+                    : 'Submit decision'}
         </button>
       </div>
     </form>

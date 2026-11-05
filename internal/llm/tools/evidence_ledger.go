@@ -91,6 +91,27 @@ type LoopOptions struct {
 	// database (tests and offline replays); with a database the snapshots
 	// go to conversation_snapshots.
 	CheckpointStore func(ctx context.Context, snapshotID, workItemID uuid.UUID, agentType string, seq int, messagesJSON []byte, summary string, turns int) error
+	// EditGate, when > 0, is how many consecutive read turns a loop with
+	// PinReads may make without an edit before further reads are refused
+	// until an edit is made (gate.go). The implementation agent sets it:
+	// live, 21 calls and three nudges went by without one edit.
+	EditGate int
+	// Carry, when set, receives the compacted transcript and the ledger
+	// when the loop returns, and a loop given a carry with a ledger
+	// continues that ledger (carry.go). The implementation agent sets it
+	// so its passes share one ledger and one set of pins.
+	Carry *LoopCarry
+	// Findings (findings.go) offers record_finding's results as the loop's
+	// memory: findings are stored for the work item when the loop has a
+	// database, rendered in the ledger message, and a finding recorded
+	// after a read makes a repeat of that read productive rather than
+	// stuck. Research sets it.
+	Findings bool
+	// CloseAtLimit: at the iteration cap, after tools ran, the loop ends
+	// with one call that offers no tools and asks for the answer from
+	// what was read and run, instead of ErrSafetyLimit (the verifier's
+	// verdict; Findings loops close from their findings instead).
+	CloseAtLimit bool
 }
 
 // pinnedRead is the latest compacted read of one file.
@@ -108,12 +129,16 @@ const (
 )
 
 const (
-	ledgerHeader          = "## Evidence ledger"
-	defaultLedgerKeep     = 2
-	ledgerArgsMax         = 80
-	ledgerSummaryMax      = 160
-	ledgerAssistantKeep   = 300
-	ledgerHeaderParagraph = ledgerHeader + "\n" +
+	ledgerHeader        = "## Evidence ledger"
+	defaultLedgerKeep   = 2
+	ledgerArgsMax       = 80
+	ledgerSummaryMax    = 160
+	ledgerAssistantKeep = 300
+	// ledgerAssistantStubsWithFindings is how many trimmed assistant turns
+	// a Findings loop keeps: the ledger holds what the older turns did, and
+	// 25 stubs of 300 chars were 2k tokens on every call live.
+	ledgerAssistantStubsWithFindings = 4
+	ledgerHeaderParagraph            = ledgerHeader + "\n" +
 		"Earlier tool calls and what they returned; the full results were removed to save context. " +
 		"Do not repeat a call listed here: use its result.\n"
 )
@@ -174,6 +199,9 @@ type evidenceLedger struct {
 	// stays centred on the one or the other (R12 review).
 	lastEdit map[string]int
 	seedOf   func(path string) int
+	// findings, when set (LoopOptions.Findings), supplies the loop's
+	// findings for the message's "Findings so far" section.
+	findings func() []CitedFinding
 }
 
 // pinnedRange is one pin a ledger message showed: lines start..end of path
@@ -483,6 +511,11 @@ func (l *evidenceLedger) message(pinned string) string {
 	if pinned != "" {
 		msg += "\n\n" + pinned
 	}
+	if l.findings != nil {
+		if s := findingsSection(l.findings()); s != "" {
+			msg += "\n\n" + s
+		}
+	}
 	return msg
 }
 
@@ -496,7 +529,9 @@ func isLedgerMessage(m adapter.ChatMessage) bool {
 // the ledger message is (re)placed right after the first user message.
 // User and system messages are kept as they are.
 func compactTranscript(msgs []adapter.ChatMessage, ledger *evidenceLedger, keepRecent int) []adapter.ChatMessage {
-	if keepRecent < 1 {
+	// keepRecent 0 compacts every tool turn (a pass handing its transcript
+	// to the next, carry.go); negative means the default of one.
+	if keepRecent < 0 {
 		keepRecent = 1
 	}
 	base := make([]adapter.ChatMessage, 0, len(msgs)+1)
@@ -522,7 +557,10 @@ func compactTranscript(msgs []adapter.ChatMessage, ledger *evidenceLedger, keepR
 		}
 	}
 	cutoff := firstUser + 1
-	if len(groups) > keepRecent {
+	switch {
+	case keepRecent == 0:
+		cutoff = len(base)
+	case len(groups) > keepRecent:
 		cutoff = groups[len(groups)-keepRecent]
 	}
 
@@ -554,6 +592,26 @@ func compactTranscript(msgs []adapter.ChatMessage, ledger *evidenceLedger, keepR
 			}
 		default:
 			out = append(out, m)
+		}
+	}
+	if ledger.findings != nil {
+		// Only the last few assistant stubs stay (findings.go).
+		stubs := 0
+		for _, m := range out[ledgerAt:] {
+			if m.Role == adapter.RoleAssistant {
+				stubs++
+			}
+		}
+		if drop := stubs - ledgerAssistantStubsWithFindings; drop > 0 {
+			kept := out[:ledgerAt]
+			for _, m := range out[ledgerAt:] {
+				if m.Role == adapter.RoleAssistant && drop > 0 {
+					drop--
+					continue
+				}
+				kept = append(kept, m)
+			}
+			out = kept
 		}
 	}
 	out = append(out, base[cutoff:]...)

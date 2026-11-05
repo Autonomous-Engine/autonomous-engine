@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/autonomousengine/autonomous-engine/internal/llm/adapter"
 )
@@ -134,6 +135,17 @@ func (m *readMemo) answer(ctx context.Context, e *Executor, calls []adapter.Tool
 			}
 		}
 		if hit == nil {
+			// A read that has left the transcript, of lines the model
+			// recorded a finding from (unchanged since), is answered with
+			// that finding: findings are the memory, not the transcript.
+			if n, f, r := m.recordedFinding(e, p, start, end, unchanged); f != nil {
+				res := adapter.ToolResult{ToolCallID: c.ID, Content: rereadFindingResult(p, r.start, r.end, n, *f)}
+				e.markObserved(p)
+				e.markRead(p, start, end, total)
+				e.notifyReused(c, res)
+				out[i] = res
+				continue
+			}
 			if cur, ok := e.currentLines(p, start, end); ok {
 				thisTurn = append(thisTurn, readRecord{path: p, start: start, end: end, body: cur, turn: turn})
 			}
@@ -151,6 +163,61 @@ func (m *readMemo) answer(ctx context.Context, e *Executor, calls []adapter.Tool
 		out[i] = res
 	}
 	return out
+}
+
+// recordedFinding is the newest finding of e citing lines that cover
+// start..end of p, with its 1-based number and the read record (any turn)
+// that returned those lines and still matches the file; nil when there is
+// none. A finding cites lines the loop read, so a record normally exists.
+func (m *readMemo) recordedFinding(e *Executor, p string, start, end int, unchanged func(string, int, int, string) bool) (int, *CitedFinding, *readRecord) {
+	fs := e.Findings()
+	for n := len(fs) - 1; n >= 0; n-- {
+		f := fs[n]
+		if pinPath(f.Path) != p || f.StartLine > start || end > f.EndLine {
+			continue
+		}
+		for k := len(m.records) - 1; k >= 0; k-- {
+			r := &m.records[k]
+			if r.path == p && r.start <= start && end <= r.end && unchanged(p, r.start, r.end, r.body) {
+				return n + 1, &fs[n], r
+			}
+		}
+	}
+	return 0, nil, nil
+}
+
+// rereadFindingResult is the short answer to a re-read of lines a finding
+// covers; it carries rereadMarker (a re-read to the ledger) and stays
+// under isRereadResult's bound.
+func rereadFindingResult(path string, start, end, n int, f CitedFinding) string {
+	return fmt.Sprintf("%s%s%d-%d; you recorded finding #%d from them: %s (%s:%d-%d). Cite it, or request a different range",
+		path, rereadMarker, start, end, n, truncateRunes(f.Claim, 160), f.Path, f.StartLine, f.EndLine)
+}
+
+// assistantProseMax bounds the prose of an assistant turn kept in the
+// transcript. Live (enmime, 2026-11-03 15:54) a model wrote 24k characters
+// around one tool call; the one-turn window kept the turn whole, so the
+// next call carried 6k tokens of the model's own words and the work meter
+// counted them. The tool calls are what the history needs; the prose is
+// kept as its head (the plan) and tail (the next step) with a note.
+const assistantProseMax = 2000
+
+// trimAssistantProse keeps content under assistantProseMax: the first 1500
+// and last 500 characters with a note saying how much is gone.
+func trimAssistantProse(content string) string {
+	if len(content) <= assistantProseMax {
+		return content
+	}
+	head, tail := assistantProseMax*3/4, assistantProseMax/4
+	// Cut on rune boundaries.
+	for head > 0 && !utf8.RuneStart(content[head]) {
+		head--
+	}
+	for tail > 0 && !utf8.RuneStart(content[len(content)-tail]) {
+		tail--
+	}
+	return fmt.Sprintf("%s\n[… %d chars trimmed from the transcript; the tool calls stand …]\n%s",
+		content[:head], len(content)-head-tail, content[len(content)-tail:])
 }
 
 // readPlan is the path (pinPath form) and the lines start..end of total a
@@ -201,11 +268,11 @@ func (e *Executor) readPlan(ctx context.Context, c adapter.ToolCall) (path strin
 			end = int(v)
 		}
 		if end == 0 || end < start {
-			end = start + readDefaultLines - 1
+			end = start + e.readDefault() - 1
 		}
-		end = min(end, start+readMaxLines-1, total)
+		end = min(end, start+e.readMax()-1, total)
 	} else {
-		start, end, _ = readWindow(args, total)
+		start, end, _ = readWindow(args, total, e.readDefault(), e.readMax())
 	}
 	if total == 0 || start > end {
 		return "", 0, 0, 0, false

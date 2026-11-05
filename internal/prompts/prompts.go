@@ -354,6 +354,11 @@ func (ps *PromptStore) SeedDefaults(ctx context.Context) error {
 			desc:       "Default system prompt for generate_prd intent",
 		},
 		{
+			intentType: "check_prd_conflicts",
+			content:    `You are a requirements reviewer. You read a Product Requirements Document's acceptance criteria and find the ones that cannot all be satisfied by one implementation: contradictory orderings, limits, defaults, formats or behaviours. A criterion that is merely vague, or a pair that can hold at once, is not a conflict. Answer with JSON only.`,
+			desc:       "Default system prompt for check_prd_conflicts intent",
+		},
+		{
 			intentType: "evaluate_findings",
 			content:    `You are a senior technical analyst evaluating research findings. Assess evidence quality, identify patterns, flag contradictions, and rank findings by impact and confidence. Distinguish facts from assumptions.`,
 			desc:       "Default system prompt for evaluate_findings intent",

@@ -90,7 +90,19 @@ func (h *AdminHandlers) guardCredential(w http.ResponseWriter, r *http.Request, 
 	if !shapes {
 		return false, true
 	}
-	if !guardedChange(w, r, h.guardDB(), credentialChange(action, scope, target, category, key, overlay, write)) {
+	ch := credentialChange(action, scope, target, category, key, overlay, write)
+	// The "before" capture overlays the value currently stored in this exact
+	// row, so writing the same value again is unchanged and only a real
+	// change is guarded (F10a). A missing credential overlays "" — the
+	// agents' real view. Peek, not Resolve: the resolve path audits reads.
+	current := ""
+	if h.store != nil {
+		if v, found, err := h.store.PeekCredential(r.Context(), scope, target, category, key); err == nil && found {
+			current = v
+		}
+	}
+	ch.BeforeOverlay = rollout.OverlayForCredential(category, key, current)
+	if !guardedChange(w, r, h.guardDB(), ch) {
 		return true, false
 	}
 	// The write committed: drop the local cache entry again (F2). The one
@@ -289,6 +301,19 @@ func (h *AdminHandlers) CreateCredential(w http.ResponseWriter, r *http.Request)
 	}
 	if req.Value == "" {
 		writeError(w, http.StatusBadRequest, "value is required")
+		return
+	}
+
+	// A GitHub token is a GitHub account, not a registry row: the wizard,
+	// repo picker and pipeline read github_accounts only, so a token saved
+	// here under any key name was silently ignored (F7, F8).
+	if strings.EqualFold(req.Category, "github") && req.Scope == "global" && looksLikeGitHubTokenKey(req.KeyName) {
+		acct, status, err := h.createGitHubAccount(r.Context(), req.Value, strings.TrimSpace(req.Description))
+		if err != nil {
+			writeError(w, status, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]interface{}{"status": "created", "github_account": acct})
 		return
 	}
 
@@ -786,7 +811,16 @@ func (h *AdminHandlers) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "status": "created"})
+	// The wizard lists and names the product from this response; {id,
+	// status} alone left it nameless until a reload (rerun NEW-3).
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":          id.String(),
+		"name":        req.Name,
+		"description": req.Description,
+		"created_at":  now,
+		"updated_at":  now,
+		"status":      "created",
+	})
 }
 
 // updateProductRequest is the JSON body for UpdateProduct.
@@ -936,17 +970,17 @@ func (h *AdminHandlers) ReindexProduct(w http.ResponseWriter, r *http.Request) {
 
 // repositoryRow is the JSON shape returned by the repositories endpoints.
 type repositoryRow struct {
-	ID                string  `json:"id"`
-	ProductID         string  `json:"product_id"`
-	Name              string  `json:"name"`
-	GitHubURL         string  `json:"github_url"`
-	BaseBranch        string  `json:"base_branch"`
-	MergeStrategy     string  `json:"merge_strategy"`
-	BranchPrefix      string  `json:"branch_prefix"`
-	ClonePath         string  `json:"clone_path"`
-	LastIndexedCommit string  `json:"last_indexed_commit"`
-	Enabled           bool    `json:"enabled"`
-	CreatedAt         string  `json:"created_at"`
+	ID                string `json:"id"`
+	ProductID         string `json:"product_id"`
+	Name              string `json:"name"`
+	GitHubURL         string `json:"github_url"`
+	BaseBranch        string `json:"base_branch"`
+	MergeStrategy     string `json:"merge_strategy"`
+	BranchPrefix      string `json:"branch_prefix"`
+	ClonePath         string `json:"clone_path"`
+	LastIndexedCommit string `json:"last_indexed_commit"`
+	Enabled           bool   `json:"enabled"`
+	CreatedAt         string `json:"created_at"`
 }
 
 // ListRepositories handles GET /api/admin/repositories?product_id=<uuid>
@@ -996,12 +1030,12 @@ func (h *AdminHandlers) ListRepositories(w http.ResponseWriter, r *http.Request)
 
 // addRepositoryRequest is the JSON body for AddRepository.
 type addRepositoryRequest struct {
-	ProductID      string `json:"product_id"`
-	Name           string `json:"name"`
-	URL            string `json:"url"`
-	GitHubURL      string `json:"github_url"`
-	BaseBranch     string `json:"base_branch"`
-	MergeStrategy  string `json:"merge_strategy"`
+	ProductID       string `json:"product_id"`
+	Name            string `json:"name"`
+	URL             string `json:"url"`
+	GitHubURL       string `json:"github_url"`
+	BaseBranch      string `json:"base_branch"`
+	MergeStrategy   string `json:"merge_strategy"`
 	GitHubAccountID string `json:"github_account_id"`
 }
 
@@ -1133,19 +1167,19 @@ func (h *AdminHandlers) AddRepository(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":            id.String(),
-		"name":          req.Name,
-		"github_url":    repoURL,
-		"base_branch":   baseBranch,
+		"id":             id.String(),
+		"name":           req.Name,
+		"github_url":     repoURL,
+		"base_branch":    baseBranch,
 		"merge_strategy": mergeStrategy,
-		"clone_path":    clonePath,
-		"product_id":    productID.String(),
-		"enabled":       true,
-		"created_at":    now.Format(time.RFC3339),
-		"status":        "created",
-		"clone_success": cloneSuccess,
-		"clone_message": cloneMessage,
-		"remote_kind":   string(remoteKind),
+		"clone_path":     clonePath,
+		"product_id":     productID.String(),
+		"enabled":        true,
+		"created_at":     now.Format(time.RFC3339),
+		"status":         "created",
+		"clone_success":  cloneSuccess,
+		"clone_message":  cloneMessage,
+		"remote_kind":    string(remoteKind),
 	})
 }
 
@@ -1306,10 +1340,10 @@ func (h *AdminHandlers) RepoCloneStatus(w http.ResponseWriter, r *http.Request) 
 
 	cloned := strings.TrimSpace(clonePath) != "" && strings.TrimSpace(lastIndexedCommit) != ""
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"cloned":               cloned,
-		"clone_path":           clonePath,
-		"last_indexed_commit":  lastIndexedCommit,
-		"name":                 name,
+		"cloned":              cloned,
+		"clone_path":          clonePath,
+		"last_indexed_commit": lastIndexedCommit,
+		"name":                name,
 	})
 }
 
@@ -1368,7 +1402,7 @@ func (h *AdminHandlers) ValidateProduct(w http.ResponseWriter, r *http.Request) 
 	if reposMissingClone > 0 {
 		out = append(out, result{Check: "Every enabled repo is cloned", Passed: false, Message: fmt.Sprintf("%d enabled repos lack a clone_path", reposMissingClone)})
 	} else if enabledRepos > 0 {
-		out = append(out, result{Check: "Every enabled repo is cloned", Passed: true, Message: "all repos have clone paths"})
+		out = append(out, result{Check: "Every enabled repo is cloned", Passed: true, Message: "clone path recorded for every repo"})
 	}
 
 	// 4. Codex has modules
@@ -1402,6 +1436,60 @@ func (h *AdminHandlers) ValidateProduct(w http.ResponseWriter, r *http.Request) 
 		} else {
 			out = append(out, result{Check: "Operator reviewed candidates", Passed: true, Message: fmt.Sprintf("%d of %d candidates reviewed", reviewedCount, candidateCount)})
 		}
+	}
+
+	// 7-11. What onboarding actually needs to have happened (F30): before
+	// these, "ready" was reported with no model, no embeddings, no policy,
+	// no zones and the reviewed answers never approved.
+	var defaultModel string
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT COALESCE(settings->>'model', '') FROM llm_providers WHERE is_default AND enabled ORDER BY name, id LIMIT 1`).Scan(&defaultModel)
+	if strings.TrimSpace(defaultModel) == "" {
+		out = append(out, result{Check: "Default LLM provider has a model", Passed: false, Message: "no default LLM provider with a model — add one under Admin → Providers (the model is what every agent runs on)"})
+	} else {
+		out = append(out, result{Check: "Default LLM provider has a model", Passed: true, Message: defaultModel})
+	}
+
+	var embeddingName string
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT name FROM embedding_providers WHERE is_default AND enabled ORDER BY name, id LIMIT 1`).Scan(&embeddingName)
+	if embeddingName == "" {
+		out = append(out, result{Check: "Default embedding provider", Passed: false, Message: "no default embedding provider — knowledge-indexer and codex search need one (Admin → Embeddings)"})
+	} else {
+		out = append(out, result{Check: "Default embedding provider", Passed: true, Message: embeddingName})
+	}
+
+	if enabledRepos > 0 {
+		var reposWithoutPolicy int
+		_ = h.db.QueryRow(r.Context(),
+			`SELECT COUNT(*) FROM repositories r WHERE r.product_id=$1 AND r.enabled=true
+			   AND NOT EXISTS (SELECT 1 FROM repository_verification_policies p WHERE p.repository_id = r.id)`, productID).Scan(&reposWithoutPolicy)
+		if reposWithoutPolicy > 0 {
+			out = append(out, result{Check: "Verification policy saved for every repo", Passed: false, Message: fmt.Sprintf("%d enabled repo(s) have no verification policy — save one in the Verification step", reposWithoutPolicy)})
+		} else {
+			out = append(out, result{Check: "Verification policy saved for every repo", Passed: true, Message: "every enabled repo has a policy"})
+		}
+
+		var reposWithoutZones int
+		_ = h.db.QueryRow(r.Context(),
+			`SELECT COUNT(*) FROM repositories WHERE product_id=$1 AND enabled=true AND zones_confirmed_at IS NULL`, productID).Scan(&reposWithoutZones)
+		if reposWithoutZones > 0 {
+			out = append(out, result{Check: "Zones confirmed for every repo", Passed: false, Message: fmt.Sprintf("%d enabled repo(s) have unconfirmed zones — confirm them in the Zones step", reposWithoutZones)})
+		} else {
+			out = append(out, result{Check: "Zones confirmed for every repo", Passed: true, Message: "zones confirmed"})
+		}
+	}
+
+	var approvedVersions int
+	_ = h.db.QueryRow(r.Context(),
+		`SELECT COUNT(*) FROM codex_versions
+		  WHERE product_id=$1 AND change_source=$2
+		    AND EXISTS (SELECT 1 FROM unnest(sections_changed) s WHERE s LIKE 'section:%' AND s <> 'section:zones')`,
+		productID, "onboarding" /* models.CodexChangeSourceOnboarding; zone confirmations use it too */).Scan(&approvedVersions)
+	if approvedVersions == 0 {
+		out = append(out, result{Check: "Codex approved", Passed: false, Message: "the reviewed onboarding answers were never approved — click Approve Codex in the Codex step"})
+	} else {
+		out = append(out, result{Check: "Codex approved", Passed: true, Message: fmt.Sprintf("%d onboarding version(s) committed", approvedVersions)})
 	}
 
 	writeJSON(w, http.StatusOK, out)
@@ -1819,54 +1907,18 @@ func (h *AdminHandlers) ListAudit(w http.ResponseWriter, r *http.Request) {
 // Tests whether the configured GitHub token can access the given repository.
 func (ah *AdminHandlers) TestRepoAccess(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		GithubURL string `json:"github_url"`
+		GithubURL       string `json:"github_url"`
+		GitHubAccountID string `json:"github_account_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	// The GitHub API only knows GitHub remotes (G1).
-	if _, kind, err := products.ClassifyRemote(body.GithubURL); err != nil || !kind.IsGitHub() {
-		msg := "repository has no GitHub remote; access is not checked through the GitHub API"
-		if err != nil {
-			msg = err.Error()
-		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"accessible":  false,
-			"remote_kind": string(kind),
-			"error":       msg,
-		})
-		return
-	}
-
-	// Resolve GitHub token from credential registry
-	token, err := ah.store.ResolveCredential(r.Context(), "github", "token", "", "")
-	if err != nil || token == "" {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"accessible": false,
-			"error":      "No GitHub token configured",
-		})
-		return
-	}
-
-	// Test access: GET https://api.github.com/repos/{owner}/{repo}
-	req, _ := http.NewRequestWithContext(r.Context(), "GET",
-		"https://api.github.com/repos/"+body.GithubURL, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"accessible": false,
-			"error":      err.Error(),
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"accessible":  resp.StatusCode == 200,
-		"status_code": resp.StatusCode,
-	})
+	// The GitHub API path is built from owner/repo, never the raw input
+	// (F5); the token comes from the repository's GitHub account, not the
+	// legacy global credential; the answer is always 200 with accessible.
+	token := ah.githubTokenForAccess(r.Context(), body.GitHubAccountID)
+	writeJSON(w, http.StatusOK, checkRepoAccess(r.Context(), githubAPIBase, token, body.GithubURL))
 }
 
 // ─── Model evaluation handlers ────────────────────────────────────────────────
@@ -1942,7 +1994,7 @@ func (ah *AdminHandlers) ListModelProfiles(w http.ResponseWriter, r *http.Reques
 		profiles = append(profiles, map[string]interface{}{
 			"id": id, "provider": provider, "model_id": modelID,
 			"effective_context_window": ctxWindow,
-			"instruction_following": instrFollow, "code_generation": codeGen,
+			"instruction_following":    instrFollow, "code_generation": codeGen,
 			"code_understanding": codeUnder, "reasoning": reasoning, "synthesis": synthesis,
 			"avg_inference_speed": speed, "concurrent_capacity": concurrent,
 			"operating_mode": opMode, "evaluated_at": evalAt,
@@ -2172,7 +2224,7 @@ func (h *AdminHandlers) PreviewResolution(w http.ResponseWriter, r *http.Request
 		entries[i] = chainEntry{Template: t, Wins: i == 0}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"chain":  entries,
+		"chain": entries,
 		"winner": func() *prompts.PromptTemplate {
 			if len(chain) > 0 {
 				return chain[0]
@@ -2759,52 +2811,58 @@ func (h *AdminHandlers) AddGitHubAccount(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	username, avatarURL, err := resolveGitHubUser(r.Context(), req.Token)
+	acct, status, err := h.createGitHubAccount(r.Context(), req.Token, req.Label)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid token: "+err.Error())
+		writeError(w, status, err.Error())
 		return
 	}
+	writeJSON(w, http.StatusCreated, acct)
+}
 
-	label := strings.TrimSpace(req.Label)
+// createGitHubAccount validates token against GitHub and stores it as a
+// github_accounts row with its own credential. It is the one way a GitHub
+// token enters the system: Admin → Credentials routes github tokens here
+// too, since the wizard, repo picker and pipeline read github_accounts
+// only (F7). The int is the HTTP status to answer on error.
+func (h *AdminHandlers) createGitHubAccount(ctx context.Context, token, label string) (map[string]interface{}, int, error) {
+	username, avatarURL, err := resolveGitHubUser(ctx, token)
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("invalid token: %w", err)
+	}
+	label = strings.TrimSpace(label)
 
 	var exists bool
-	_ = h.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM github_accounts WHERE username = $1 AND label = $2)`, username, label).Scan(&exists)
+	_ = h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM github_accounts WHERE username = $1 AND label = $2)`, username, label).Scan(&exists)
 	if exists {
-		writeError(w, http.StatusConflict, fmt.Sprintf("account already exists: %s (label: %s)", username, label))
-		return
+		return nil, http.StatusConflict, fmt.Errorf("account already exists: %s (label: %s)", username, label)
 	}
 
 	id := uuid.New()
 	scopeTarget := "github_account:" + id.String()
-	if err := h.store.SetCredential(r.Context(),
-		"github_account", scopeTarget, "github", "token", req.Token,
+	if err := h.store.SetCredential(ctx,
+		"github_account", scopeTarget, "github", "token", token,
 		true, fmt.Sprintf("GitHub PAT for %s (%s)", username, label), nil,
 	); err != nil {
-		writeError(w, http.StatusInternalServerError, "store credential: "+err.Error())
-		return
+		return nil, http.StatusInternalServerError, fmt.Errorf("store credential: %w", err)
 	}
 
 	var credentialID uuid.UUID
-	err = h.db.QueryRow(r.Context(), `
+	if err := h.db.QueryRow(ctx, `
 		SELECT id FROM credential_registry
 		WHERE scope = 'github_account' AND scope_target = $1 AND key_name = 'token' AND category = 'github'
-	`, scopeTarget).Scan(&credentialID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "lookup credential: "+err.Error())
-		return
+	`, scopeTarget).Scan(&credentialID); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("lookup credential: %w", err)
 	}
 
 	now := time.Now().UTC()
-	_, err = h.db.Exec(r.Context(), `
+	if _, err := h.db.Exec(ctx, `
 		INSERT INTO github_accounts (id, username, avatar_url, credential_id, label, last_validated_at, valid, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, true, $7, $7)
-	`, id, username, avatarURL, credentialID, label, now, now)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "create account: "+err.Error())
-		return
+	`, id, username, avatarURL, credentialID, label, now, now); err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("create account: %w", err)
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
+	return map[string]interface{}{
 		"id":                id.String(),
 		"username":          username,
 		"label":             label,
@@ -2813,7 +2871,7 @@ func (h *AdminHandlers) AddGitHubAccount(w http.ResponseWriter, r *http.Request)
 		"last_validated_at": now.Format(time.RFC3339),
 		"valid":             true,
 		"created_at":        now.Format(time.RFC3339),
-	})
+	}, http.StatusCreated, nil
 }
 
 // MigrateLegacyGitHubToken converts the legacy global GitHub token (from the
@@ -2827,14 +2885,9 @@ func (h *AdminHandlers) MigrateLegacyGitHubToken(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// 1. Find the legacy credential.
-	var legacyCredID uuid.UUID
-	err := h.db.QueryRow(r.Context(), `
-		SELECT id FROM credential_registry
-		WHERE scope = 'global' AND key_name = 'token' AND category = 'github'
-		LIMIT 1
-	`).Scan(&legacyCredID)
-	if err != nil {
+	// 1. Find the legacy credential, under any token-like key name (F8).
+	legacyCredID, found, err := findLegacyGitHubToken(r.Context(), h.db)
+	if err != nil || !found {
 		writeError(w, http.StatusNotFound, "no legacy GitHub token found")
 		return
 	}
@@ -2914,7 +2967,7 @@ func (h *AdminHandlers) MigrateLegacyGitHubToken(w http.ResponseWriter, r *http.
 		"id":                accountID.String(),
 		"username":          username,
 		"avatar_url":        avatarURL,
-		"credential_id":    credentialID.String(),
+		"credential_id":     credentialID.String(),
 		"last_validated_at": now.Format(time.RFC3339),
 		"valid":             true,
 		"created_at":        now.Format(time.RFC3339),

@@ -151,6 +151,7 @@ func setModel(id uuid.UUID, model string) func(context.Context, pgx.Tx) error {
 func TestIntegration_DefaultChangeRefusedWithoutApproval(t *testing.T) {
 	p := pool(t)
 	ctx := context.Background()
+	seedProductionWorkItem(t, p) // production exists: the guard must refuse, not bootstrap (F20)
 	d := seedDefinitions(t, p)
 	r, candID, _ := propose(t, p, d)
 	isDefault := func(id uuid.UUID) bool {
@@ -480,4 +481,24 @@ func TestIntegration_ShadowIntakeOutcomesAndAttribution(t *testing.T) {
 	if a.CandidateRecords != 4 || a.CandidateAttributed != 2 || a.BaselineRecords != 1 || a.BaselineAttributed != 1 || len(a.Problems) != 2 {
 		t.Errorf("attribution: %+v", a)
 	}
+}
+
+// seedProductionWorkItem makes the database look like a system with
+// production behaviour to protect: the guard exempts a bootstrapping
+// install (no work item has ever existed), so a test that expects a
+// refusal needs one work item on record.
+func seedProductionWorkItem(t *testing.T, p *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	productID, workID := uuid.New(), uuid.New()
+	if _, err := p.Exec(ctx, `INSERT INTO products (id, name) VALUES ($1, $2)`, productID, "guard-prod-"+productID.String()[:8]); err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	if _, err := p.Exec(ctx, `INSERT INTO work_items (id, type, state, title, product_id) VALUES ($1, 'feature', 'intake', 'production marker', $2)`, workID, productID); err != nil {
+		t.Fatalf("seed work item: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = p.Exec(ctx, `DELETE FROM work_items WHERE id = $1`, workID)
+		_, _ = p.Exec(ctx, `DELETE FROM products WHERE id = $1`, productID)
+	})
 }

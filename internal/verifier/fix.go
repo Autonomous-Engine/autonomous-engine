@@ -100,9 +100,9 @@ func RenderFixBriefWithin(srcs []FixSource, max int) (string, []LineSeed) {
 			}
 			var refs []string
 			for _, ref := range r.Evidence {
-				if loc := strings.TrimSpace(string(ref)); fileLineRE.MatchString(loc) {
+				if loc := leadingRef(string(ref)); fileLineRE.MatchString(loc) {
 					refs = append(refs, loc)
-					addFile(refPath(ref))
+					addFile(refPath(Ref(loc)))
 				}
 			}
 			if len(refs) > 0 {

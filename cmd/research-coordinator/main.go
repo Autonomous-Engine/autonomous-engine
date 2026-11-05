@@ -53,6 +53,9 @@ type prdReadyMessage struct {
 	PRDContent   string `json:"prd_content"`
 	UserGuidance string `json:"user_guidance"`
 	Reason       string `json:"reason"`
+	// Retry is set by the dashboard's Retry on a blocked item. It must
+	// dispatch again even when this process already dispatched the item.
+	Retry bool `json:"retry"`
 }
 
 // Status values mirrored from research-agent. A result with Status != "ok"
@@ -86,6 +89,11 @@ type researchResultMessage struct {
 	Confidence          json.RawMessage `json:"confidence"` // accepts string or number
 	FollowupSuggestions string          `json:"followup_suggestions"`
 	ErrorDetail         string          `json:"error_detail,omitempty"`
+
+	// Findings are the claims the task recorded with verified citations
+	// (record_finding). The coordinator's copy of a result is what it
+	// persists and reuses on a retry, so they travel with it (NEW-9).
+	Findings []tools.CitedFinding `json:"findings,omitempty"`
 
 	// Criteria are the task's acceptance criteria (M2-04); merged into the
 	// brief by mergeBriefCriteria (criteria.go).
@@ -245,6 +253,22 @@ func (c *coordinator) remove(workID uuid.UUID) {
 	delete(c.sessions, workID.String())
 }
 
+// prepareDispatch reports whether a prd.ready for workID should dispatch a
+// research round. A retry forgets the in-memory session first, so the
+// item is dispatched again (finished tasks are reused through prdHash); a
+// plain redelivery of an already-dispatched item is ignored. Before this,
+// Retry on a blocked item was a silent no-op (F37).
+func (c *coordinator) prepareDispatch(workID uuid.UUID, retry bool) bool {
+	if retry {
+		c.remove(workID)
+		return true
+	}
+	s := c.getOrCreate(workID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.dispatched
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -303,6 +327,11 @@ func main() {
 		log.Fatalf("research-coordinator: start outbox dispatcher: %v", err)
 	}
 	log.Printf("research-coordinator: outbox dispatcher started claimed_by=%s", dispatcher.Name())
+
+	// Rounds whose tasks never report are closed by time and their work
+	// item blocked with a reason (F37); the result-driven path only
+	// evaluates the time budget when a result arrives.
+	go runRoundSweeper(ctx, pool, time.Minute, defaultTimeBudget+sweepGrace)
 
 	topics := []string{bus.TopicPRDReady, bus.TopicResearchResults}
 	// M1-05: deduplicate on the processed-event ledger (see the spec).
@@ -518,14 +547,13 @@ func handlePRDReady(
 		return nil
 	}
 
-	session := coord.getOrCreate(workID)
-	session.mu.Lock()
-	if session.dispatched {
-		session.mu.Unlock()
+	if !coord.prepareDispatch(workID, payload.Retry) {
 		log.Printf("research-coordinator: ignoring duplicate prd.ready for work_id=%s (already dispatched)", workID)
 		return nil
 	}
-	session.mu.Unlock()
+	if payload.Retry {
+		log.Printf("research-coordinator: retry of work_id=%s — dispatching a new round (finished tasks are reused)", workID)
+	}
 
 	// Build Codex context — product-scoped. Skip grounding when productID
 	// is absent so research agents don't receive cross-product modules.
@@ -963,6 +991,8 @@ func handleResearchResult(
 		return blockInOwnTx(msgCtx, idempotency.Wrap(msgCtx, pool), aggregateFor(workID, wi), workID, reason)
 	})
 	if handled {
+		// The item is blocked; forget its session so a Retry dispatches.
+		coord.remove(workID)
 		return err
 	}
 	if !decision.Known {

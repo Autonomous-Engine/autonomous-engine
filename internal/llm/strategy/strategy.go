@@ -48,6 +48,9 @@ const (
 	IntentAssessImpact            IntentType = "assess_impact"
 	IntentSearchRelatedBugs       IntentType = "search_related_bugs"
 	IntentMapJiraWorkflow         IntentType = "map_jira_workflow"
+	// IntentCheckPRDConflicts finds the acceptance criteria of a PRD that
+	// cannot both hold (product-agent, before the PRD approval prompt).
+	IntentCheckPRDConflicts IntentType = "check_prd_conflicts"
 )
 
 // Intent describes what the agent needs from the LLM.
@@ -126,6 +129,9 @@ func buildSystemPrompt(ctx context.Context, intent Intent) string {
 		return `You are an experienced product manager writing Product Requirements Documents. Structure your output with clear sections: Overview, Problem Statement, Goals, Non-Goals, User Stories, and Acceptance Criteria. Be precise about requirements without over-specifying implementation.
 
 You may include an Open Questions section ONLY for genuinely unresolvable unknowns — things that require business owner input that cannot be inferred from the request or the codebase. Questions about implementation approach, UI layout, label text, design patterns, or how to communicate changes are NOT open questions — those are engineering decisions the development team will make. If there are no genuine open questions, omit the section entirely. Most straightforward feature requests have zero open questions.`
+
+	case IntentCheckPRDConflicts:
+		return `You are a requirements reviewer. You read a Product Requirements Document's acceptance criteria and find the ones that cannot all be satisfied by one implementation: contradictory orderings, limits, defaults, formats or behaviours. A criterion that is merely vague, or a pair that can hold at once, is not a conflict. Answer with JSON only.`
 
 	case IntentEvaluateFindings:
 		return `You are a senior technical analyst evaluating research findings. Assess evidence quality, identify patterns, flag contradictions, and rank findings by impact and confidence. Distinguish facts from assumptions.`
@@ -212,6 +218,7 @@ func buildUserPrompt(intent Intent) string {
 		"technical_brief",
 		"prd",
 		"pain_point",
+		"user_guidance", // reviewer feedback from "Request changes" (F34)
 		"pattern_reference",
 		"target_file",
 		"diff",
@@ -260,6 +267,8 @@ func intentInstruction(t IntentType) string {
 		return "Analyze the pain point described above. Identify root causes, affected users, business impact, and key symptoms."
 	case IntentGeneratePRD:
 		return "Generate a comprehensive Product Requirements Document based on the information provided."
+	case IntentCheckPRDConflicts:
+		return "List the acceptance criteria of the PRD above that cannot both hold, as JSON. Cite criteria by their ids (AC-n) when the PRD numbers them, otherwise by a short quote. Report no conflict when every criterion can hold at once."
 	case IntentEvaluateFindings:
 		return "Evaluate the findings provided. Assess evidence quality, identify patterns, and rank by confidence and impact."
 	case IntentSynthesizeBrief:

@@ -661,6 +661,14 @@ func buildHandler(
 		// T3: the task, de-duplicated (steps once, criteria once, files in
 		// scope); the checkpoint keeps it verbatim on every call (B2).
 		taskInstructions := buildTaskMessage(task)
+		// What research recorded about this work item, with file:line
+		// (known_findings.go): the agent edits from it instead of
+		// re-reading what research already cited.
+		if known, kerr := tools.LoadKnownFindings(msgCtx, pool, workID, ""); kerr != nil {
+			logger.Warn(msgCtx, "known findings unavailable", map[string]interface{}{"error": kerr.Error()})
+		} else {
+			taskInstructions = taskMessageWithFindings(task, known)
+		}
 
 		// Build a VectorStore for codex_similar_code. Query-time vectors
 		// MUST come from the same embedding provider + model the knowledge-
@@ -698,6 +706,9 @@ func buildHandler(
 		// The worktree is the task's repository (not the product's first
 		// one): repo=<that name> reads it too.
 		executor.SetWorktreeRepo(taskRepoName(msgCtx, ps, task.RepositoryID))
+		// Reads come in windows the pins can hold: a read of envelope.go with
+		// no range was 16.7k chars, three times in one attempt, live.
+		executor.SetReadWindow(implementationReadWindow, implementationReadWindowMax)
 		// D4: both budgets are checked before every LLM call; a pending
 		// user prompt pauses the active-time clock.
 		executor.SetIterationHook(budget.iterationHook)
@@ -879,9 +890,11 @@ func buildHandler(
 				{Role: adapter.RoleSystem, Content: systemPrompt},
 				{Role: adapter.RoleUser, Content: taskInstructions},
 			},
-			Tools:       editTools(),
-			ToolChoice:  "auto",
-			MaxTokens:   8192,
+			Tools:      editTools(),
+			ToolChoice: "auto",
+			// 4096: an edit or a new file fits; the 8192 cap let a refused
+			// read turn into an 8k-token ramble twice in one attempt, live.
+			MaxTokens:   4096,
 			Temperature: 0.2,
 		}
 

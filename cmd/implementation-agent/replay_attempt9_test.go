@@ -154,7 +154,7 @@ func replayLoop(t *testing.T, tr attempt9Transcript, root, task string, first, l
 		},
 		Tools: withoutLSPUnlessReady(editTools(), false),
 	}
-	o := implementationLoopOptions(req.Tools, func() bool { return false }, attempt9Files)
+	o := implementationLoopOptions(req.Tools, func() bool { return false }, attempt9Files, nil)
 	// The live loop checkpoints (it has a database); so does the replay.
 	o.CheckpointStore = func(context.Context, uuid.UUID, uuid.UUID, string, int, []byte, string, int) error { return nil }
 	if opts != nil {

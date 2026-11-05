@@ -93,6 +93,16 @@ func (c *AnsweredConsumer) Handle(ctx context.Context, m *bus.Message) error {
 		res = &interactions.TriageResult{ClassifiedAs: interactions.ClassifiedAdHoc}
 	}
 
+	// A prompt raised for a work item without a product (a product-less
+	// block, NEW-35) has no product to keep the decision under: classify
+	// it for the record, but neither vectorise nor promote it.
+	if a.ProductID == uuid.Nil {
+		log.Printf("answered_consumer: prompt=%s answered for a work item without a product — classified, not stored", a.PromptID)
+		return c.store.ApplyClassification(ctx, a.PromptID, interactions.ClassificationResult{
+			ClassifiedAs: res.ClassifiedAs, Confidence: res.Confidence,
+		})
+	}
+
 	// Step 1 — always attempt qdrant upsert. Failure doesn't block the rest.
 	pointID, err := c.vectors.UpsertUserDecision(ctx, a.ProductID, UserDecisionPoint{
 		InteractionID: a.PromptID,

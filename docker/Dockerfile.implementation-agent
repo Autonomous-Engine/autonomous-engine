@@ -37,7 +37,17 @@ RUN cargo install asm-lsp --version 0.10.1 --locked --root /out
 # command testdetect.Detect returns for *.sln / *.csproj repos — requires
 # it. Pin csharp-ls@0.14.0: newer releases on NuGet ship an invalid
 # DotnetToolSettings.xml that breaks `dotnet tool install` on Alpine.
-FROM golang:1.22-alpine
+# Alpine 3.21, the golang:1.22-alpine builder's base: composer binds to
+# whatever PHP the alpine repo ships, and on a newer alpine that is php84
+# while the extensions below are php83-* (the phpactor install then fails
+# on a missing ext-tokenizer). The Go toolchain is copied in instead of
+# taken from the base: the agent runs the repository's own `go test`, and
+# Go 1.22 with GOTOOLCHAIN=local failed every repository whose go.mod asks
+# for a newer Go ("go.mod requires go >= 1.23"). GOTOOLCHAIN=auto lets a
+# requirement newer than the image's Go download its toolchain.
+FROM alpine:3.21
+COPY --from=golang:1.25-alpine /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:/go/bin:$PATH GOPATH=/go GOTOOLCHAIN=auto
 RUN apk --no-cache add \
     ca-certificates git \
     nodejs npm \

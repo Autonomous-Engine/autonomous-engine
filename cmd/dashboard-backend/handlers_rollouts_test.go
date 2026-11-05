@@ -79,6 +79,7 @@ func TestGuardConfigChange_NoDatabaseRefuses(t *testing.T) {
 // one once the rollout is approved.
 func TestIntegration_SetDefaultAgentRequiresApprovedRollout(t *testing.T) {
 	pool := runsIntegrationPool(t)
+	seedProductionWorkItem(t, pool) // production exists: the guard must refuse, not bootstrap
 	ctx := context.Background()
 
 	var enabled []uuid.UUID
@@ -199,6 +200,7 @@ func TestIntegration_SetDefaultAgentRequiresApprovedRollout(t *testing.T) {
 // without an approved rollout; nothing is written.
 func TestIntegration_CredentialAndEmbeddingPathsAreGuarded(t *testing.T) {
 	pool := runsIntegrationPool(t)
+	seedProductionWorkItem(t, pool) // production exists: the guard must refuse, not bootstrap
 	ctx := context.Background()
 	var enabled []uuid.UUID
 	rows, err := pool.Query(ctx, `SELECT id FROM agent_definitions WHERE enabled`)

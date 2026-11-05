@@ -125,6 +125,9 @@ type researchResultMessage struct {
 	// Note is the model's tool-less answer on a no_evidence result (R18),
 	// kept for the reader; it is not evidence.
 	Note string `json:"note,omitempty"`
+	// Findings are the claims the task recorded with verified citations
+	// (record_finding); stored per work item and recalled by later tasks.
+	Findings []tools.CitedFinding `json:"findings,omitempty"`
 
 	// Criteria are this task's acceptance criteria and evidence map (M2-04),
 	// grounded against the tool calls it made. Present on every ok result
@@ -314,13 +317,22 @@ func buildHandler(
 		var resultBaseSHAs map[string]string
 		// Both are set where the codex branch is resolved (codex grounding).
 		resultCodexVersion, resultCodexBranch := 0, ""
+		// findingsOf is the executor's findings once it exists: every result
+		// carries what the task recorded (findings_recall.go).
+		var findingsOf func() []tools.CitedFinding
+		// resultProductID is the task's product once resolved; the findings
+		// are stored with it in the result's transaction.
+		var resultProductID *uuid.UUID
 		report := func(status models.AssignmentStatus, result researchResultMessage) {
 			result.BaseSHAs = resultBaseSHAs
+			if findingsOf != nil {
+				result.Findings = findingsOf()
+			}
 			result.CodexVersion = resultCodexVersion
 			result.CodexBranch = resultCodexBranch
 			// M1-05: the result's transaction carries the processed-event
 			// guard row (Wrap).
-			err := commitResearchResult(msgCtx, idempotency.Wrap(msgCtx, pool), wg, aggregateID, assignment.ID, status, resultKey, result)
+			err := commitResearchResult(msgCtx, idempotency.Wrap(msgCtx, pool), wg, aggregateID, assignment.ID, status, resultKey, result, resultProductID)
 			if idempotency.IsDuplicate(err) {
 				log.Printf("research-agent: task_id=%s already reported — duplicate delivery", task.TaskID)
 				return
@@ -429,6 +441,7 @@ func buildHandler(
 				productIDPtr = &pid
 			}
 		}
+		resultProductID = productIDPtr
 
 		// Build a VectorStore for codex_similar_code. Query-time vectors
 		// MUST be produced by the same provider + model the knowledge-indexer
@@ -458,7 +471,14 @@ func buildHandler(
 		// Create executor rooted at the real repo, with the codex + vector
 		// store + product_id wired in so the codex_* tools can serve real
 		// data. kb + workID enable codex.gap event emission.
-		executor := tools.NewExecutorWithCodex(primaryPath, cx, vectorStore, productIDPtr, kb, &workID)
+		executor := newResearchExecutor(primaryPath, primaryRepoName(selectedRepos, repoPaths, primaryPath), cx, vectorStore, productIDPtr, kb, &workID, task.TaskID, task.ResearchType)
+		findingsOf = executor.Findings
+		// The PRD is retrieved a section at a time (read_document), not
+		// carried whole in every call.
+		executor.SetDocuments(map[string]string{"prd": task.StartingContext})
+		// Research stops at its share of the work item's token budget so the
+		// later stages still have theirs (F36).
+		executor.SetIterationHook(researchStageHook(researchTokenShare(), researchSpent(pool, workID), roundTaskCount(pool, task.TaskID)))
 
 		// Scope codex queries to the work item's branch snapshot.
 		if branch, headSHA := tools.ResolveWorkItemBranch(ctx, pool, workID); branch != "" {
@@ -556,6 +576,12 @@ func buildHandler(
 		go executor.WarmLSP(ctx)
 
 		userMessage += seedsSection(task)
+		// The work item's earlier findings are where this task starts.
+		if known, kerr := loadKnownFindings(msgCtx, pool, workID, task.TaskID); kerr != nil {
+			log.Printf("research-agent: task_id=%s: %v", task.TaskID, kerr)
+		} else {
+			userMessage += knownFindingsSection(known)
+		}
 
 		req := adapter.CompletionRequest{
 			Messages: []adapter.ChatMessage{
@@ -575,10 +601,7 @@ func buildHandler(
 
 		// Run the tool loop — the LLM will actually read files and search code.
 		// MaxIterations comes from the prompt scaffold (tier-adjusted).
-		maxIters := scaffold.MaxIterations
-		if maxIters <= 0 {
-			maxIters = 15
-		}
+		maxIters := researchMaxIterations(scaffold.MaxIterations)
 		resp, err := tools.RunToolLoopWithOptions(msgCtx, llmAdapter, req, executor, maxIters, pool, &workID,
 			researchTaskLoopOptions(task, func() bool { return executor.LSPReady(msgCtx) }))
 		if err != nil {
@@ -687,12 +710,20 @@ func buildHandler(
 	}
 }
 
-// commitResearchResult completes the agent's assignment with status and
-// enqueues the task's research.results event in one transaction. key and
-// payload are exactly what the direct publish sent.
-func commitResearchResult(ctx context.Context, db workgraph.TxBeginner, wg *workgraph.WorkGraph, aggregateID, assignmentID uuid.UUID, status models.AssignmentStatus, key string, result researchResultMessage) error {
+// commitResearchResult completes the agent's assignment with status,
+// stores the findings the task recorded and enqueues the task's
+// research.results event in one transaction. key and payload are exactly
+// what the direct publish sent.
+func commitResearchResult(ctx context.Context, db workgraph.TxBeginner, wg *workgraph.WorkGraph, aggregateID, assignmentID uuid.UUID, status models.AssignmentStatus, key string, result researchResultMessage, productID *uuid.UUID) error {
+	workID, err := uuid.Parse(result.WorkID)
+	if err != nil {
+		return fmt.Errorf("research result work_id %q: %w", result.WorkID, err)
+	}
 	return workgraph.WithTx(ctx, db, func(tx pgx.Tx) error {
 		if err := wg.CompleteAssignmentTx(ctx, tx, assignmentID, status); err != nil {
+			return err
+		}
+		if err := tools.StoreFindingsTx(ctx, tx, workID, result.TaskID, result.FindingType, productID, result.Findings); err != nil {
 			return err
 		}
 		return outbox.EnqueueJSON(ctx, tx, aggregateID, bus.TopicResearchResults, key, result)

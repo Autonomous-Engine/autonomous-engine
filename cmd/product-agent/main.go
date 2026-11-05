@@ -35,6 +35,47 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// guidanceFromIntake is the reviewer's feedback carried by a "Request
+// changes" intake (metadata.user_guidance), or "" (F34).
+func guidanceFromIntake(msg intakeMessage) string {
+	if msg.Metadata == nil {
+		return ""
+	}
+	if s, ok := msg.Metadata["user_guidance"].(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return ""
+}
+
+// joinGuidance is the reviewer's feedback and the conflict guidance
+// together, whichever are present.
+func joinGuidance(parts ...string) string {
+	var out []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
+// prdContext is the PRD generation prompt's context; user_guidance is
+// present only when a reviewer gave feedback.
+func prdContext(title, painPoint, workType, codexContext, source, workItemID, guidance string) map[string]string {
+	ctx := map[string]string{
+		"title":         title,
+		"pain_point":    painPoint,
+		"work_type":     workType,
+		"codex_context": codexContext,
+		"source":        source,
+		"work_item_id":  workItemID,
+	}
+	if guidance != "" {
+		ctx["user_guidance"] = "A reviewer sent the previous PRD back with this feedback; the new PRD must address it: " + guidance
+	}
+	return ctx
+}
+
 // updateTitleSQL replaces the work item title with the one extracted from
 // the PRD; it commits with the PRD artifact.
 const updateTitleSQL = `UPDATE work_items SET title = $1 WHERE id = $2`
@@ -212,13 +253,12 @@ func buildHandler(
 		}
 
 		// A work item without a product cannot get a PRD: grounding is
-		// product-scoped (no cross-product fallback) and the PRD approval prompt
-		// needs a product (user_interactions.product_id is NOT NULL). Block
-		// now, before any LLM work, rather than let the prompt insert roll
-		// back the PRD at the end.
+		// product-scoped (no cross-product fallback). Block now, before any
+		// LLM work; status-orchestrator raises the "Blocked:" prompt without
+		// a product, and Update & Retry on the work item assigns one.
 		if productID == nil {
 			reason := fmt.Sprintf("Work item %s has no product, so product-agent cannot ground or approve a PRD for it. "+
-				"Assign the work item to a product, then retry it.", workID)
+				"Choose the product on the work item page (Update & Retry), which retries it.", workID)
 			log.Printf("product-agent: blocking work_id=%s — no product", workID)
 			if err := blockInOwnTx(msgCtx, idempotency.Wrap(msgCtx, pool), aggregateID, workID, reason); err != nil {
 				log.Printf("product-agent: block work item: %v", err)
@@ -377,15 +417,8 @@ Return ONLY the JSON. No prose before or after.`,
 		}
 
 		prdIntent := strategy.Intent{
-			Type: strategy.IntentGeneratePRD,
-			Context: map[string]string{
-				"title":         workTitle,
-				"pain_point":    workDescription,
-				"work_type":     workType,
-				"codex_context": codexContext,
-				"source":        intake.Source,
-				"work_item_id":  workID.String(),
-			},
+			Type:    strategy.IntentGeneratePRD,
+			Context: prdContext(workTitle, workDescription, workType, codexContext, intake.Source, workID.String(), guidanceFromIntake(intake)),
 			OutputFormat: "Markdown with sections: Overview, Problem Statement, Goals, Non-Goals, User Stories, Acceptance Criteria. Only include an Open Questions section if there are genuinely unresolvable unknowns requiring business owner input. Omit it for straightforward requests.",
 		}
 		prdResult, err := llmSvc.Execute(msgCtx, prdIntent)
@@ -410,6 +443,19 @@ Return ONLY the JSON. No prose before or after.`,
 			wg.CompleteAssignment(msgCtx, assignment.ID, models.AssignmentStatusFailed) //nolint:errcheck
 			return nil
 		}
+
+		// Acceptance criteria that cannot both hold are settled here — by
+		// the model once, then by the person at the approval prompt — not
+		// by the verifier after implementation (reconcilePRD).
+		prdContent, prdConflicts := reconcilePRD(msgCtx, llmSvc, func(ctx context.Context, guidance string) (string, error) {
+			again := prdIntent
+			again.Context = prdContext(workTitle, workDescription, workType, codexContext, intake.Source, workID.String(), joinGuidance(guidanceFromIntake(intake), guidance))
+			res, err := llmSvc.Execute(ctx, again)
+			if err != nil {
+				return "", err
+			}
+			return res.Content, nil
+		}, prdContent)
 
 		// Extract a concise title from the PRD content. The LLM-generated PRD
 		// typically starts with "# <title>" or has an "## Overview" section.
@@ -453,11 +499,12 @@ Return ONLY the JSON. No prose before or after.`,
 			Trigger:     interactions.TriggerApprovalPRD,
 			PromptType:  interactions.PromptTypeApproval,
 			Headline:    fmt.Sprintf("PRD ready: %s", prdTitle),
-			Question:    prdContent,
+			Question:    conflictPromptBlock(prdConflicts) + prdContent,
 			ContextLink: fmt.Sprintf("/approvals?work_item_id=%s", workID),
 			ContextPayload: map[string]any{
-				"prd_content": prdContent,
-				"work_type":   workType,
+				"prd_content":   prdContent,
+				"work_type":     workType,
+				"prd_conflicts": prdConflicts,
 			},
 			Actions: []interactions.Action{
 				{ID: "approve", Label: "Approve", Semantic: interactions.SemanticContinue},
@@ -591,6 +638,16 @@ func extractTitle(prdContent, description string) string {
 			title := strings.TrimPrefix(line, "# ")
 			title = strings.TrimPrefix(title, "PRD: ")
 			title = strings.TrimSpace(title)
+			// Models head the PRD "Product Requirements Document: X". The
+			// generic prefix is not a title (F33); drop it, and when nothing
+			// is left keep the work item's existing title.
+			const generic = "product requirements document"
+			if strings.HasPrefix(strings.ToLower(title), generic) {
+				title = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(title[len(generic):]), ":\u2014\u2013- "))
+				if title == "" {
+					return ""
+				}
+			}
 			if len(title) > 100 {
 				title = title[:100]
 			}
