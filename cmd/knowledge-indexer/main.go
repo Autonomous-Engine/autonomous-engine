@@ -2240,7 +2240,7 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 			continue
 		}
 		log.Printf("knowledge-indexer: upserting module %s (%d functions, %d types)", m.Name, len(m.Functions), len(m.Types))
-		s.progress.setDetail(fmt.Sprintf("module %d/%d: %s", upserted+1, len(modules), m.Name))
+		s.progress.setDetail(fmt.Sprintf("module %d/%d: %s", upserted+1, attempted, m.Name))
 
 		pubInterface, _ := json.Marshal(map[string]interface{}{
 			"functions": publicFunctionNames(m.Functions),
@@ -2319,15 +2319,25 @@ func (s *server) updateCodexModules(ctx context.Context, modules []moduleInfo, d
 		progRef.addModules(upserted)
 	}
 	log.Printf("knowledge-indexer: upserted %d/%d modules (%d changed)", upserted, attempted, len(changed))
-	if upserted == 0 && len(modules) > 0 {
-		return changed, fmt.Errorf("no modules successfully upserted out of %d attempted: %s",
-			len(modules), strings.Join(errs, "; "))
+	return changed, upsertOutcome(upserted, attempted, errs)
+}
+
+// upsertOutcome is the result of a codex module update: a run that
+// attempted modules and landed none failed; one whose modules were all
+// test-only attempted nothing and succeeded with nothing to upsert.
+func upsertOutcome(upserted, attempted int, errs []string) error {
+	if attempted == 0 {
+		return nil
+	}
+	if upserted == 0 {
+		return fmt.Errorf("no modules successfully upserted out of %d attempted: %s",
+			attempted, strings.Join(errs, "; "))
 	}
 	if len(errs) > 0 {
-		return changed, fmt.Errorf("%d of %d modules failed to upsert: %s",
-			len(errs), len(modules), strings.Join(errs, "; "))
+		return fmt.Errorf("%d of %d modules failed to upsert: %s",
+			len(errs), attempted, strings.Join(errs, "; "))
 	}
-	return changed, nil
+	return nil
 }
 
 // buildArchitectureContent assembles the architecture section content map.
