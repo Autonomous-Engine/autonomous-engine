@@ -220,19 +220,31 @@ func (ph *ProviderHandlers) CreateProvider(w http.ResponseWriter, r *http.Reques
 
 	// The first enabled provider becomes the default: a provider that is
 	// not the default never reaches credential_registry, so agents had no
-	// model until the user also clicked Set as Default (F16).
-	makeDefault := false
-	if err := ph.db.QueryRow(r.Context(), `SELECT NOT EXISTS (SELECT 1 FROM llm_providers WHERE is_default AND enabled)`).Scan(&makeDefault); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("check default provider: %v", err))
-		return
-	}
-	_, err := ph.db.Exec(r.Context(), `
-		INSERT INTO llm_providers
-			(id, name, provider_type, endpoint, api_key_credential_id, settings, is_default)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, providerID, req.Name, req.ProviderType, req.Endpoint, credIDVal, settingsJSON, makeDefault)
+	// model until the user also clicked Set as Default (F16). A disabled
+	// default is not a default: it loses the flag in the same transaction,
+	// so re-enabling it later cannot leave two defaults.
+	err := pgx.BeginFunc(r.Context(), ph.db, func(tx pgx.Tx) error {
+		makeDefault := false
+		if err := tx.QueryRow(r.Context(), `SELECT NOT EXISTS (SELECT 1 FROM llm_providers WHERE is_default AND enabled)`).Scan(&makeDefault); err != nil {
+			return fmt.Errorf("check default provider: %w", err)
+		}
+		if makeDefault {
+			if _, err := tx.Exec(r.Context(), `UPDATE llm_providers SET is_default = false WHERE is_default`); err != nil {
+				return fmt.Errorf("clear disabled default: %w", err)
+			}
+		}
+		_, err := tx.Exec(r.Context(), `
+			INSERT INTO llm_providers
+				(id, name, provider_type, endpoint, api_key_credential_id, settings, is_default)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, providerID, req.Name, req.ProviderType, req.Endpoint, credIDVal, settingsJSON, makeDefault)
+		if err != nil {
+			return fmt.Errorf("insert provider: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("insert provider: %v", err))
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
