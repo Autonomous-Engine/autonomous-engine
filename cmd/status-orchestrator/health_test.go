@@ -17,7 +17,7 @@ import (
 func TestHealthIsUnhealthyUntilMigrationsApplied(t *testing.T) {
 	var migrated atomic.Bool
 	checker := health.New("status-orchestrator")
-	checker.AddCheck("migrations", migrationCheck(&migrated))
+	checker.AddCheck("migrations", migrationCheckOf(&migrated, new(atomic.Value)))
 
 	status := func() (string, int) {
 		rec := httptest.NewRecorder()
